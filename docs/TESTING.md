@@ -54,6 +54,9 @@ This used `attach_to_vcenter=false`; native-vCenter attachment, dashboards,
 the Java Content Factory pack, and live scenario-change/failure tests remain
 unverified by this gate.
 
+Comparison against a live vCenter was never run: that part of the live-vCenter
+and VCF Operations gate (steps 4 and 5 above) remains unverified.
+
 ## Determinism tests
 Given the same seed, entityRefId, metric and 5-minute UTC slot, return equal values regardless of request order or process restart. Different entities should not accidentally alias. Configured changes must take effect at a defined bucket boundary. Time window requests must contain only relevant bucket timestamps and honor unavailable or not-yet-populated bins.
 
