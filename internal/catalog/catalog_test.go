@@ -66,8 +66,6 @@ func TestCatalogContents(t *testing.T) {
 func TestFixturesAreSanitized(t *testing.T) {
 	// hardware vendors, not parts: the list must not itself name what the lab runs
 	brands := regexp.MustCompile(`(?i)Samsung|Sabrent|Seagate|FireCuda|\bTEAM\b|hynix|phison|\bAMD\b|\bIntel\b|Realtek|Mellanox|Broadcom Inc|Micron|Kingston|Western Digital|\bWDC\b|Crucial|\bDell\b|\bHPE\b|Lenovo|Supermicro|\bASUS\b|Gigabyte|Minisforum|Beelink|Micro Computer|JetKVM|Toshiba|Kioxia|Solidigm|Nvidia|Qualcomm`)
-	vdsUUID := regexp.MustCompile(`\b[0-9a-f]{2}(?: [0-9a-f]{2}){7}-[0-9a-f]{2}(?: [0-9a-f]{2}){7}\b`)
-	_ = vdsUUID
 	hosts := regexp.MustCompile(`\b[a-z0-9-]+\.(?:sentania|local|lan|home|internal|corp|int)\b`)
 	nqn := regexp.MustCompile(`nqn\.\d{4}-\d{2}\.[a-z.]+`)
 	entries, err := os.ReadDir(fixtures)

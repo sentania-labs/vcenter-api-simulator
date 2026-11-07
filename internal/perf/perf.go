@@ -34,9 +34,6 @@ func Buckets(start, end, now time.Time) []time.Time {
 		return nil
 	}
 	first := start.UTC().Truncate(Interval)
-	if !first.Add(Interval).After(start) {
-		first = first.Add(Interval)
-	}
 	latest := now.UTC().Truncate(Interval)
 	oldest := now.UTC().Add(-Retention).Truncate(Interval)
 	var out []time.Time
