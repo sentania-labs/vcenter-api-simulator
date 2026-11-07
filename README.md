@@ -26,8 +26,9 @@ certificate, and failure and latency knobs. An **identity registry** in the
 data directory keeps every MoRef and uuid stable across restarts and
 scenario edits. The Performance Service serves every entity family the
 sanitized live capture ([`fixtures/live/9.1.1`](fixtures/live/9.1.1/README.md))
-showed, with five-minute buckets and values that stay inside the envelope
-the live service showed for each metric.
+showed, with five-minute buckets and gauge values that stay inside the envelope
+the live service showed for each metric (cumulative `Raw` counters only climb
+from the observed minimum and never wrap).
 
 ```sh
 go build ./cmd/vcsimulator
@@ -83,7 +84,7 @@ or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
 | Check | How | Where it runs |
 |---|---|---|
 | Contract: every captured request replayed against the Phase 1 shape, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `go` job |
-| Phase 2: the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality, overrides), restart and edit identity stability through the registry, credentials, fault and latency knobs, inventory realism against the trimmed live inventory capture, metric values inside the live envelopes | `go test ./...` | CI `go` job |
+| Phase 2: the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality, overrides), restart and edit identity stability through the registry, credentials, fault and latency knobs, inventory realism against the trimmed live inventory capture, gauge values inside the live envelopes, `Raw` counters monotonic | `go test ./...` | CI `go` job |
 | Smoke: a plain vSphere client (govc) connects with the scenario's credentials (and is refused with a wrong password), lists clusters, hosts and VMs and compares the counts with what the simulator built, dumps every identity, restarts the simulator on the same data directory and checks the dump is identical | `tools/smoke/smoke.sh` | CI `smoke` job |
 | Chart: `helm lint --strict` with every `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template` and `kubeconform` of the rendered manifests and the Argo CD example | `.github/workflows/package.yml` | CI `package` workflow, `chart` job |
 | Image: build, OCI label and non-root check, `docker compose` boot, then a vSphere client smoke ([`tools/smoke/smoke.ps1`](tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, expected hosts and VMs back, wrong password refused | PowerCLI on `pwsh` | CI `package` workflow, `image` job |

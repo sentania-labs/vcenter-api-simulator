@@ -40,7 +40,7 @@ For each scenario sweep dashboard-only vs all modeled entity families, 5/10/15-m
 
 | Suite | Runs | Covers |
 |---|---|---|
-| `go test ./...` | CI, required | the Phase 1 contract replay; the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality and overrides); restart and edit identity stability through the registry; credentials; fault and latency knobs; inventory property paths against the trimmed live inventory capture; metric values inside each label's live envelope; fixture sanitization |
+| `go test ./...` | CI, required | the Phase 1 contract replay; the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality and overrides); restart and edit identity stability through the registry; credentials; fault and latency knobs; inventory property paths against the trimmed live inventory capture; gauge values inside each label's live envelope and `Raw` counters never decreasing across more than the 90-day retention; fixture sanitization |
 | `tools/smoke/smoke.sh` | CI, required | the principal's acceptance (2026-11-07): a plain vSphere client (govc) connects, lists hosts and VMs, counts match the scenario, identities identical across a restart |
 | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow, local | the reference pack's collector against every cluster of a scenario |
 | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow, local | `mp-test connect` and two collects through the Operations integration SDK |

@@ -28,7 +28,7 @@ Phase 1 proved the routing: one vcsim service serves `/sdk` and a registered `/v
 |---|---|---|
 | topology graph | `internal/scenario`, `internal/topology` | the operator's scenario file ([reference](SCENARIO.md)) materialized into one `Topology` with per-cluster seeded variation |
 | identity registry | `internal/registry` | `registry.json`: logical key to serial, never reused; uuids are UUID v5 of (seed namespace, kind, serial) |
-| deterministic clock | `internal/perf` | the five-minute bucket rule measured live; values as a pure function of (telemetry seed, entity, label, bucket) inside each label's captured envelope |
+| deterministic clock | `internal/perf` | the five-minute bucket rule measured live; values as a pure function of (telemetry seed, entity, label, bucket) inside each label's captured envelope; cumulative `Raw` counters start at the envelope minimum and only climb, never wrapping, so they may pass its maximum |
 | metrics scenarios | `internal/vsanhealth` (`Knobs`) | per-family and per-method faults with cluster and bucket-aligned time selectors; per-family and `/sdk` latency |
 | vCenter façade | `internal/sim` | builds the vcsim inventory in registry serial order through vcsim's own method handlers (an event-driven task waiter instead of the property collector's poll), shapes cluster, host, datastore and VM properties after the trimmed live inventory capture, enforces credentials |
 
