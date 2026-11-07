@@ -2,6 +2,7 @@ package perf
 
 import (
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -85,20 +86,28 @@ func TestValuesArePlausibleAgainstTheCapture(t *testing.T) {
 		families++
 		for _, label := range f.Labels {
 			if strings.HasSuffix(label, "Raw") {
-				// cumulative counters: inside the envelope and never decreasing
+				// cumulative counters: never decreasing, never below the
+				// observed minimum, across longer than the former 90-day wrap
 				st, ok := c.LabelStats(fam, label)
 				if !ok {
 					continue
 				}
+				var times []time.Time
+				for d := 0; d < 200; d++ {
+					times = append(times, start.Add(time.Duration(d)*24*time.Hour))
+				}
+				for k := -300; k <= 300; k++ {
+					times = append(times, start.Add(90*24*time.Hour+time.Duration(k)*Interval))
+				}
+				sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
 				var prev float64
-				for i := 0; i < 288; i++ {
-					b := start.Add(time.Duration(i) * Interval)
+				for i, b := range times {
 					v, err := strconv.ParseFloat(Value("seed", "entity-a", label, st, ok, c.Unit(fam, label), b), 64)
-					if err != nil || v < st.Min || v > st.Max {
-						t.Errorf("%s/%s: %v outside [%v, %v] (%v)", fam, label, v, st.Min, st.Max, err)
+					if err != nil || v < st.Min {
+						t.Errorf("%s/%s: %v below %v (%v)", fam, label, v, st.Min, err)
 					}
 					if i > 0 && v < prev {
-						t.Errorf("%s/%s: counter decreased %v -> %v", fam, label, prev, v)
+						t.Errorf("%s/%s: counter decreased %v -> %v at %v", fam, label, prev, v, b)
 					}
 					prev = v
 				}

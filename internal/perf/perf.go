@@ -5,7 +5,9 @@
 //
 // Values are plausible against the live capture: every label of every
 // family has an observed envelope (catalog.Stats: min, quartiles, max over
-// every entity and sample captured) and the model never leaves it. Each
+// every entity and sample captured) and the gauge model never leaves it.
+// Cumulative "Raw" counters start at the observed minimum and only climb,
+// without wrapping, so over long horizons they pass the observed maximum. Each
 // entity sits at its own seeded level inside the interquartile range, the
 // level follows a business-hours day (busier mid-afternoon UTC, quieter at
 // night), successive buckets drift smoothly instead of jumping, and a
@@ -32,6 +34,8 @@ const Interval = 5 * time.Minute
 // default retention is 90 days; windows older than that returned the empty
 // echo in the capture (edge case win1yearago).
 const Retention = 90 * 24 * time.Hour
+
+var counterOrigin = time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).Unix()
 
 // SampleLayout is the sampleInfo timestamp format: naive UTC, no zone.
 const SampleLayout = "2006-01-02 15:04:05"
@@ -76,9 +80,11 @@ func Format(ts []time.Time) []string {
 // the service's CSV cell. st is the label's observed envelope; without one
 // (ok false) the unit decides a generic range. "<x>Actual" equals "<x>"
 // (the live service returned identical values for every such pair);
-// "<x>Raw" is a cumulative counter: it never decreases from one bucket to
-// the next and, with an envelope, climbs through it over the retention
-// period (so a counter the live service held at zero stays at zero).
+// "<x>Raw" is a cumulative counter: it never decreases and never wraps.
+// With an envelope it starts at the observed minimum at a seeded origin and
+// climbs at a per-entity rate that crosses the observed range once per
+// retention period, so it keeps climbing past the observed maximum over
+// longer horizons (a counter the live service held constant stays constant).
 func Value(seed, ref, label string, st catalog.Stats, ok bool, unit string, bucket time.Time) string {
 	if base, found := strings.CutSuffix(label, "Actual"); found {
 		return Value(seed, ref, base, st, ok, unit, bucket)
@@ -90,8 +96,9 @@ func Value(seed, ref, label string, st catalog.Stats, ok bool, unit string, buck
 			return strconv.FormatInt(idx*(1+int64(hash(seed, ref, base, 0)%7))+int64(hash(seed, ref, base, 1)%100), 10)
 		}
 		period := int64(Retention / Interval)
-		phase := (idx + int64(hash(seed, ref, base, 0)%uint64(period))) % period
-		v := st.Min + (st.Max-st.Min)*float64(phase)/float64(period)
+		epoch := counterOrigin/int64(Interval/time.Second) - int64(hash(seed, ref, base, 0)%uint64(period))
+		rate := (st.Max - st.Min) / float64(period) * (0.5 + unitHash(hash(seed, ref, base, 2)))
+		v := st.Min + rate*float64(max(idx-epoch, 0))
 		if st.Float {
 			return strconv.FormatFloat(v, 'f', 2, 64)
 		}
@@ -122,7 +129,7 @@ func model(seed, ref, label string, st catalog.Stats, bucket time.Time) float64 
 	if hi <= lo {
 		lo, hi = st.Min, st.Max
 	}
-	level := lo + (hi-lo)*unit(hash(seed, ref, label, 0))
+	level := lo + (hi-lo)*unitHash(hash(seed, ref, label, 0))
 	room := math.Min(level-st.Min, st.Max-level)
 
 	// business-hours day: busiest at 14:00 UTC, quietest at 02:00
@@ -132,12 +139,12 @@ func model(seed, ref, label string, st catalog.Stats, bucket time.Time) float64 
 	// slow drift: linear interpolation between hourly knots
 	knot := bucket.Unix() / 3600
 	frac := float64(bucket.Unix()%3600) / 3600
-	k0 := unit(hash(seed, ref, label, uint64(knot)))
-	k1 := unit(hash(seed, ref, label, uint64(knot+1)))
+	k0 := unitHash(hash(seed, ref, label, uint64(knot)))
+	k1 := unitHash(hash(seed, ref, label, uint64(knot+1)))
 	drift := 2*(k0*(1-frac)+k1*frac) - 1
 
 	// per-bucket noise
-	noise := 2*unit(hash(seed, ref, label, uint64(bucket.Unix())|1<<62)) - 1
+	noise := 2*unitHash(hash(seed, ref, label, uint64(bucket.Unix())|1<<62)) - 1
 
 	v := level + room*(0.5*day+0.35*drift+0.15*noise)
 	if v < st.Min {
@@ -170,8 +177,8 @@ func genericStats(u string) catalog.Stats {
 	}
 }
 
-// unit maps a hash to [0,1).
-func unit(h uint64) float64 {
+// unitHash maps a hash to [0,1).
+func unitHash(h uint64) float64 {
 	return float64(h>>11) / float64(1<<53)
 }
 
