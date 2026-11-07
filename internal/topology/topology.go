@@ -279,26 +279,28 @@ func draw(v scenario.Vary, sub uint64) scenario.ClusterSpec {
 	rng := rand.New(rand.NewPCG(sub, sub^0x9E3779B97F4A7C15))
 	var d scenario.ClusterSpec
 	choice := func(opts []int) int {
+		u := rng.Uint64()
 		if len(opts) == 0 {
 			return 0
 		}
-		return opts[rng.IntN(len(opts))]
+		return opts[u%uint64(len(opts))]
 	}
 	rng1 := func(rg *scenario.Range) int {
+		u := rng.Uint64()
 		if rg == nil {
 			return 0
 		}
-		return rg.Min + rng.IntN(rg.Max-rg.Min+1)
+		return rg.Min + int(u%uint64(rg.Max-rg.Min+1))
 	}
 	// one draw per knob, always, so adding a knob to the file later does not
 	// re-roll the earlier ones
 	d.Hosts = choice(v.Hosts)
-	if v.VMsPerHost != nil {
-		d.VMs.PerHost = scenario.IntPtr(rng1(v.VMsPerHost))
+	if n := rng1(v.VMsPerHost); v.VMsPerHost != nil {
+		d.VMs.PerHost = scenario.IntPtr(n)
 	}
 	d.Host.ClaimedDevices = choice(v.ClaimedDevices)
-	if v.DomWorlds != nil {
-		d.Host.DomWorlds = scenario.IntPtr(rng1(v.DomWorlds))
+	if n := rng1(v.DomWorlds); v.DomWorlds != nil {
+		d.Host.DomWorlds = scenario.IntPtr(n)
 	}
 	d.Host.Threads = choice(v.Threads)
 	return d
@@ -326,11 +328,15 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 	// Devices: the local boot/VMFS devices first (vmhba0...), then the ESA
 	// storage pool members, each behind its own PCIe HBA.
 	di := 0
-	add := func(claimed bool, model struct {
+	add := func(claimed bool, ki int, model struct {
 		model, hba string
 		capacity   int64
 	}) {
-		dkey := fmt.Sprintf("%s/dev%d", key, di)
+		kind := "local"
+		if claimed {
+			kind = "claimed"
+		}
+		dkey := fmt.Sprintf("%s/%s%d", key, kind, ki)
 		d := &Device{
 			Index:         di,
 			Key:           dkey,
@@ -343,7 +349,7 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 			CapacityBytes: model.capacity,
 			Claimed:       claimed,
 		}
-		d.Revision = "SIMFW" + strings.ToUpper(r.Hex("firmware", d.Index, 3))
+		d.Revision = "SIMFW" + strings.ToUpper(r.Hex("firmware", d.Serial, 3))
 		d.SerialNumber = strings.ToUpper(r.Hex("nvme-serial", d.Serial, 16))
 		d.UUID = r.Hex("scsi-lun", d.Serial, 64)
 		d.CanonicalName = "t10.NVMe____" + T10Model(d.Model) + d.SerialNumber
@@ -357,10 +363,10 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 		di++
 	}
 	for i := 0; i < scenario.Int(cl.Spec.Host.LocalDevices); i++ {
-		add(false, localModels[i%len(localModels)])
+		add(false, i, localModels[i%len(localModels)])
 	}
 	for i := 0; i < cl.Spec.Host.ClaimedDevices; i++ {
-		add(true, claimedModels[i%len(claimedModels)])
+		add(true, i, claimedModels[i%len(claimedModels)])
 	}
 	// DOM worlds: the four world types seen live, cycled. Names carry a
 	// per-host hex address; ids are per host.

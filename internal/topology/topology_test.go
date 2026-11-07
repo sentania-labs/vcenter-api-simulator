@@ -2,6 +2,7 @@ package topology
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"testing"
@@ -267,5 +268,53 @@ func TestT10Model(t *testing.T) {
 	}
 	if got := T10Model("X-1"); got[:4] != "X2D1" {
 		t.Fatalf("hyphen encoding: %q", got)
+	}
+}
+
+// Changing how many local devices a host has must not re-assign the serials
+// of its claimed devices, and an unset vary knob must not shift the draws of
+// the knobs after it.
+func TestDeviceIdentityIsPerKind(t *testing.T) {
+	reg := registry.InMemory("dev")
+	gen := func(local int) *Host {
+		s, err := scenario.Parse([]byte(fmt.Sprintf(`
+seed: dev
+datacenters:
+  - name: dc-01
+    clusters: 1
+defaults:
+  hosts: 3
+  host:
+    localDevices: %d
+    claimedDevices: 1
+`, local)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Generate(s, reg).Clusters()[0].Hosts[0]
+	}
+	claimed := func(h *Host) *Device {
+		for _, d := range h.Devices {
+			if d.Claimed {
+				return d
+			}
+		}
+		t.Fatal("no claimed device")
+		return nil
+	}
+	a, b, c := claimed(gen(1)), claimed(gen(2)), claimed(gen(0))
+	if a.Serial != b.Serial || a.VsanUUID != b.VsanUUID || a.UUID != b.UUID || a.Revision != b.Revision {
+		t.Errorf("localDevices 1->2 changed the claimed device: %+v vs %+v", a, b)
+	}
+	if a.Serial != c.Serial || a.VsanUUID != c.VsanUUID {
+		t.Errorf("localDevices 1->0 changed the claimed device: %+v vs %+v", a, c)
+	}
+}
+
+func TestUnsetKnobDoesNotShiftLaterDraws(t *testing.T) {
+	with := draw(scenario.Vary{ClaimedDevices: []int{1, 2, 3, 4, 5, 6, 7, 8}}, 42)
+	without := draw(scenario.Vary{Hosts: []int{4, 6}, VMsPerHost: &scenario.Range{Min: 1, Max: 9}, ClaimedDevices: []int{1, 2, 3, 4, 5, 6, 7, 8}}, 42)
+	if with.Host.ClaimedDevices != without.Host.ClaimedDevices {
+		t.Errorf("setting earlier knobs re-rolled claimedDevices: %d vs %d", with.Host.ClaimedDevices, without.Host.ClaimedDevices)
 	}
 }
