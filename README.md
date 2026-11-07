@@ -87,6 +87,11 @@ non-root base, labeled with the source commit
 (`org.opencontainers.image.revision`) and version. Pull requests build and
 test the image without publishing it.
 
+GHCR creates the package private on first publish. To pull it without
+credentials (what the compose file and the chart's defaults assume), set it to
+public once under the package's settings on GitHub. To keep it private, give
+the chart an `imagePullSecrets` entry naming a registry pull secret.
+
 Login accepts any user name and password unless `VCSIM_USERNAME` and
 `VCSIM_PASSWORD` (or `-username`/`-password`) are set, in which case only
 that pair logs in. Use placeholders: this is a simulator, never point real

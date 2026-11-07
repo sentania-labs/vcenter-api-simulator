@@ -199,21 +199,3 @@ jobs:
             docker tag "$IMAGE:ci" "$tag"
             docker push "$tag"
           done
-
-      # The chart and compose file pull without credentials, so the package
-      # must be public. GHCR creates it private on first publish; the
-      # workflow token can usually flip it, and says so when it cannot.
-      - name: make the package public
-        if: steps.meta.outputs.push == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          package="${IMAGE#ghcr.io/sentania-labs/}"
-          current="$(gh api "/orgs/sentania-labs/packages/container/$package" --jq .visibility 2>/dev/null || echo unknown)"
-          echo "package $package visibility: $current"
-          if [ "$current" = public ]; then exit 0; fi
-          if gh api --method PATCH "/orgs/sentania-labs/packages/container/$package" --field visibility=public; then
-            echo "package $package is now public"
-          else
-            echo "::warning::could not make ghcr.io/sentania-labs/$package public with the workflow token; set it to public once in the package settings"
-          fi
