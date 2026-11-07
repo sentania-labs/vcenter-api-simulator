@@ -1,0 +1,26 @@
+{{- if and .Values.tls.certManager.enabled (not .Values.tls.existingSecret) }}
+{{- $host := required "hostname is required when tls.certManager.enabled" .Values.hostname }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "vcsim.fullname" . }}
+  labels:
+    {{- include "vcsim.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "vcsim.tlsSecretName" . }}
+  commonName: {{ $host }}
+  dnsNames:
+    {{- range (splitList "," (include "vcsim.tlsNames" .)) }}
+    - {{ . }}
+    {{- end }}
+  duration: {{ .Values.tls.certManager.duration }}
+  renewBefore: {{ .Values.tls.certManager.renewBefore }}
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: {{ required "tls.certManager.issuerRef.name is required" .Values.tls.certManager.issuerRef.name }}
+    kind: {{ .Values.tls.certManager.issuerRef.kind }}
+    group: {{ .Values.tls.certManager.issuerRef.group }}
+{{- end }}

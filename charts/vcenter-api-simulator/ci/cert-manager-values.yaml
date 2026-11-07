@@ -1,0 +1,11 @@
+hostname: vcsim-01.example.test
+tls:
+  certManager:
+    enabled: true
+    issuerRef:
+      name: lab-ca
+      kind: ClusterIssuer
+credentials:
+  enabled: true
+  username: simulator
+  password: placeholder-only

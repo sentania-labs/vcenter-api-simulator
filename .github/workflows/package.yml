@@ -1,0 +1,181 @@
+name: package
+
+# Container image and Helm chart gates. Pull requests build and test without
+# publishing; pushes to main publish ghcr.io/sentania-labs/vcenter-api-simulator
+# as :main and :sha-<commit>; vMAJOR.MINOR.PATCH tags publish that version
+# (and :latest when it is the highest). Nothing is pushed before the smoke
+# tests pass. GitHub-hosted runners: this needs a Docker daemon.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/sentania-labs/vcenter-api-simulator
+  POWERCLI_VERSION: 13.3.0.24145083
+  KUBECONFORM_VERSION: v0.6.7
+  KUBECONFORM_SHA256: 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73
+  CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+
+jobs:
+  chart:
+    name: helm lint, template and kubeconform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: install kubeconform (pinned)
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/kubeconform.tar.gz" \
+            "https://github.com/yannh/kubeconform/releases/download/$KUBECONFORM_VERSION/kubeconform-linux-amd64.tar.gz"
+          echo "$KUBECONFORM_SHA256  $RUNNER_TEMP/kubeconform.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/kubeconform.tar.gz" -C "$RUNNER_TEMP" kubeconform
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: helm lint, default values and every ci values file
+        run: |
+          helm version --short
+          helm lint --strict charts/vcenter-api-simulator
+          for f in charts/vcenter-api-simulator/ci/*-values.yaml; do
+            echo "== $f"
+            helm lint --strict charts/vcenter-api-simulator -f "$f"
+          done
+      - name: helm template and kubeconform, every variant
+        run: |
+          mkdir -p "$RUNNER_TEMP/rendered"
+          helm template vcsim charts/vcenter-api-simulator > "$RUNNER_TEMP/rendered/default.yaml"
+          for f in charts/vcenter-api-simulator/ci/*-values.yaml; do
+            helm template vcsim charts/vcenter-api-simulator -f "$f" > "$RUNNER_TEMP/rendered/$(basename "$f")"
+          done
+          kubeconform -strict -summary -kubernetes-version 1.31.0 \
+            -schema-location default -schema-location "$CRD_SCHEMAS" \
+            "$RUNNER_TEMP"/rendered/*.yaml
+      - name: kubeconform the Argo CD example
+        run: |
+          kubeconform -strict -summary -schema-location default -schema-location "$CRD_SCHEMAS" \
+            examples/argocd-application.yaml
+
+  image:
+    name: build, smoke, publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          # Tag validation and the latest-tag decision need main and every tag.
+          fetch-depth: 0
+
+      - name: decide version and image tags
+        id: meta
+        run: |
+          short="${GITHUB_SHA::12}"
+          case "$GITHUB_REF" in
+            refs/tags/*)
+              version="$GITHUB_REF_NAME"
+              echo "$version" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::tag $version is not vMAJOR.MINOR.PATCH"; exit 1; }
+              git fetch --no-tags origin main
+              git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::tag $version is not on main"; exit 1; }
+              tags="$IMAGE:$version"
+              highest="$(git tag --list | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+              if [ "$highest" = "$version" ]; then tags="$tags $IMAGE:latest"; fi
+              push=true ;;
+            refs/heads/main)
+              version="main"
+              tags="$IMAGE:main $IMAGE:sha-$short"
+              push=true ;;
+            *)
+              version="sha-$short"
+              tags=""
+              push=false ;;
+          esac
+          {
+            echo "version=$version"
+            echo "tags=$tags"
+            echo "push=$push"
+            echo "created=$(git show -s --format=%cI "$GITHUB_SHA")"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$version push=$push tags=[$tags]"
+
+      - name: build the image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          CREATED: ${{ steps.meta.outputs.created }}
+        run: |
+          docker build --pull \
+            --build-arg "VERSION=$VERSION" \
+            --build-arg "COMMIT=$GITHUB_SHA" \
+            --build-arg "SOURCE=https://github.com/$GITHUB_REPOSITORY" \
+            --build-arg "CREATED=$CREATED" \
+            --tag "$IMAGE:ci" .
+
+      - name: check labels, user and version stamp
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          test "$(docker image inspect "$IMAGE:ci" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$GITHUB_SHA"
+          test "$(docker image inspect "$IMAGE:ci" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = "$VERSION"
+          test "$(docker image inspect "$IMAGE:ci" --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" = "https://github.com/$GITHUB_REPOSITORY"
+          test "$(docker image inspect "$IMAGE:ci" --format '{{ .Config.User }}')" = "nonroot:nonroot"
+          docker run --rm "$IMAGE:ci" -version | tee /dev/stderr | grep -q "vcsimulator $VERSION ($GITHUB_SHA)"
+          docker image inspect "$IMAGE:ci" --format 'size={{ .Size }} bytes'
+
+      - name: cache VMware.PowerCLI
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/powershell/Modules
+          key: powercli-${{ env.POWERCLI_VERSION }}-${{ runner.os }}
+
+      - name: boot with docker compose (restricted login)
+        env:
+          VCSIM_TAG: ci
+          VCSIM_USERNAME: operator
+          VCSIM_PASSWORD: placeholder-only
+        run: |
+          docker compose config --quiet
+          docker compose up -d --no-build
+          docker compose ps
+
+      - name: smoke the container with PowerCLI (Connect-VIServer, Get-VMHost, Get-VM)
+        run: |
+          pwsh -NoLogo -File tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install \
+            -User operator -Password placeholder-only
+          if pwsh -NoLogo -File tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -User operator -Password wrong; then
+            echo "::error::a wrong password logged in"; exit 1
+          fi
+          echo "wrong password refused"
+
+      - name: container logs and stop
+        if: always()
+        env:
+          VCSIM_TAG: ci
+        run: |
+          docker compose logs || true
+          docker compose down -v || true
+
+      # Everything above passed; only now does anything leave the runner.
+      - name: sign in to GHCR
+        if: steps.meta.outputs.push == 'true'
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: push
+        if: steps.meta.outputs.push == 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            docker tag "$IMAGE:ci" "$tag"
+            docker push "$tag"
+          done

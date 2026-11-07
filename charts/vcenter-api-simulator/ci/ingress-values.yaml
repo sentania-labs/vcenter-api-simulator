@@ -1,0 +1,9 @@
+hostname: vcsim-01.example.test
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+  tls:
+    enabled: true
+    secretName: vcsim-01-ingress-tls

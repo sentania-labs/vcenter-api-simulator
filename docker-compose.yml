@@ -1,0 +1,46 @@
+# Local developer workflow: one simulated vCenter on https://localhost:8443.
+#
+#   docker compose up -d            # pulls ghcr.io/sentania-labs/vcenter-api-simulator:main
+#   docker compose up -d --build    # builds the image from this checkout instead
+#   docker compose logs -f
+#
+# The certificate is created on first start and kept in the `tls` volume, so
+# the fingerprint a management pack pinned survives `docker compose restart`.
+# Remove the volume (`docker compose down -v`) to issue a new one.
+services:
+  vcsim:
+    image: ghcr.io/sentania-labs/vcenter-api-simulator:${VCSIM_TAG:-main}
+    build:
+      context: .
+      args:
+        VERSION: ${VCSIM_TAG:-dev}
+    command:
+      - -listen=0.0.0.0:8443
+      - -tls-dir=/data/tls
+      - -seed=${VCSIM_SEED:-phase1}
+      # Extra subject alternative names for the certificate created on first
+      # start, for example the hostname collectors use to reach this machine.
+      - -tls-names=${VCSIM_TLS_NAMES:-}
+    environment:
+      # Leave both unset to accept any user name and password (the default).
+      # Set both to restrict login to one pair; placeholders only, never real
+      # vCenter credentials.
+      VCSIM_USERNAME: ${VCSIM_USERNAME:-}
+      VCSIM_PASSWORD: ${VCSIM_PASSWORD:-}
+    ports:
+      - "${VCSIM_PORT:-8443}:8443"
+    volumes:
+      - tls:/data/tls
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # No container healthcheck: the runtime image has no shell or curl. Probe
+    # from outside with https://localhost:8443/sdk/vimServiceVersions.xml.
+    restart: unless-stopped
+
+volumes:
+  tls:
