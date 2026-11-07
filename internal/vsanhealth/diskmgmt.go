@@ -52,9 +52,12 @@ func (b *queryManagedDisksBody) Fault() *soap.Fault { return b.Fault_ }
 // QueryVsanManagedDisks returns the host's ESA storage pool: one
 // single-tier entry per claimed device.
 func (s *DiskManagementSystem) QueryVsanManagedDisks(ctx *simulator.Context, req *vsantypes.QueryVsanManagedDisks) soap.HasFault {
-	h, _ := s.env.Host(req.Host)
+	h, cl := s.env.Host(req.Host)
 	if h == nil {
 		return &queryManagedDisksBody{Fault_: simulator.Fault("", &vim25types.ManagedObjectNotFound{Obj: req.Host})}
+	}
+	if fault := s.env.methodFault("QueryVsanManagedDisks", cl); fault != nil {
+		return &queryManagedDisksBody{Fault_: fault}
 	}
 	pool := storagePoolInfo{}
 	for _, d := range h.Devices {
@@ -84,7 +87,7 @@ func ScsiDisk(d *topology.Device) vim25types.HostScsiDisk {
 				DeviceName: "/vmfs/devices/disks/" + d.CanonicalName,
 				DeviceType: "disk",
 			},
-			Key:                    d.Key,
+			Key:                    d.ScsiKey,
 			Uuid:                   d.UUID,
 			CanonicalName:          d.CanonicalName,
 			DisplayName:            "Local NVMe Disk (" + d.CanonicalName + ")",
@@ -93,7 +96,7 @@ func ScsiDisk(d *topology.Device) vim25types.HostScsiDisk {
 			Model:                  padModel(d.Model),
 			Revision:               d.Revision,
 			ScsiLevel:              0,
-			SerialNumber:           "NVMe____SIM_SERIAL" + d.Serial,
+			SerialNumber:           "NVMe____SIM_SERIAL" + d.SerialNumber,
 			QueueDepth:             2046,
 			OperationalState:       []string{"ok"},
 			Capabilities:           &vim25types.ScsiLunCapabilities{UpdateDisplayNameSupported: true},

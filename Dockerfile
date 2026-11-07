@@ -41,14 +41,16 @@ LABEL org.opencontainers.image.title="vcenter-api-simulator" \
       org.opencontainers.image.vendor="sentania-labs"
 COPY --from=build /out/vcsimulator /vcsimulator
 COPY --from=build --chown=65532:65532 /out/data /data
-# Persisted certificate (cert.pem, key.pem). Mount a volume here so the
-# certificate the management pack pinned survives a restart.
-VOLUME ["/data/tls"]
+# State: the identity registry and the persisted certificate (tls/cert.pem,
+# tls/key.pem). Mount a volume here so the identities and the certificate the
+# management pack pinned survive a restart.
+VOLUME ["/data"]
 WORKDIR /data
 # vcsim keeps per-datastore scratch under TMPDIR; give it a tmpfs or emptyDir
-# when the root filesystem is read-only.
-ENV TMPDIR=/tmp
+# when the root filesystem is read-only. VCSIM_DATA is the -data default, so
+# a command line without -data still keeps its registry on the volume.
+ENV TMPDIR=/tmp VCSIM_DATA=/data
 USER nonroot:nonroot
 EXPOSE 8443
 ENTRYPOINT ["/vcsimulator"]
-CMD ["-listen", "0.0.0.0:8443", "-tls-dir", "/data/tls", "-seed", "phase1"]
+CMD ["-listen", "0.0.0.0:8443", "-data", "/data", "-seed", "phase1"]

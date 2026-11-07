@@ -1,0 +1,45 @@
+# Ten vSAN ESA clusters with varied host, VM and device counts: the Phase 2
+# acceptance scenario (82 hosts, 446 VMs). Every cluster draws its own
+# counts from `vary` with its own seed, so the clusters differ; `clusters`
+# pins a few explicitly. No faults or latency, so every collector check
+# passes against it.
+seed: ten-clusters
+datacenters:
+  - name: dc-01
+    clusters: 10
+defaults:
+  hosts: 8
+  dedup: true
+  compression: true
+  host:
+    threads: 32
+    domWorlds: 66
+    vsanPnics: 2
+    claimedDevices: 1
+    localDevices: 1
+  vms:
+    perHost: 4
+    disksPerVM: 1
+vary:
+  hosts: [4, 6, 8, 8, 12]
+  vmsPerHost: {min: 2, max: 8}
+  claimedDevices: [1, 1, 2]
+  domWorlds: {min: 40, max: 90}
+clusters:
+  - key: dc-01/cluster-01
+    hosts: 4
+  - key: dc-01/cluster-03
+    hosts: 16
+    dedup: false
+    compression: false
+auth:
+  users:
+    - name: administrator@vsphere.local
+      password: VMware1!
+    # a password can also come from the environment:
+    # - name: readonly@vsphere.local
+    #   passwordEnv: VCSIM_READONLY_PASSWORD
+# tls:
+#   certFile: /etc/vcsimulator/tls/tls.crt
+#   keyFile: /etc/vcsimulator/tls/tls.key
+# Failure and latency knobs: see faults-and-latency.yaml

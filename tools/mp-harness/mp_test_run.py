@@ -44,7 +44,7 @@ def bridge_ip() -> str:
     return out or "172.17.0.1"
 
 
-def write_connection(project: str, name: str, host: str, scope: str, attach: bool) -> None:
+def write_connection(project: str, name: str, host: str, scope: str, attach: bool, user: str = "user", password: str = "pass") -> None:
     path = os.path.join(project, "connections.json")
     cfg = {"connections": [], "suite_api_hostname": None, "suite_api_username": None, "suite_api_password": None}
     if os.path.exists(path):
@@ -62,8 +62,8 @@ def write_connection(project: str, name: str, host: str, scope: str, attach: boo
         },
         "credential": {
             "credential_kind_key": "vsan_vc_credential",
-            "vcenter_username": {"value": "user", "required": True, "password": False},
-            "vcenter_password": {"value": "pass", "required": True, "password": True},
+            "vcenter_username": {"value": user, "required": True, "password": False},
+            "vcenter_password": {"value": password, "required": True, "password": True},
         },
         # [] means endpointURLs was called and found none; without it mp-test
         # calls the adapter's endpointURLs first, which is fine too.
@@ -252,8 +252,11 @@ def main() -> int:
     ap.add_argument("--sim-host", help="address the adapter container uses (default: Docker bridge gateway)")
     ap.add_argument("--scope", default="dashboard", choices=["dashboard", "all"])
     ap.add_argument("--attach", default="true", choices=["true", "false"], help="attach_to_vcenter")
-    ap.add_argument("--hosts", type=int, default=4, help="hosts in the simulated cluster")
-    ap.add_argument("--vms", type=int, default=4)
+    ap.add_argument("--clusters", type=int, default=1, help="vSAN clusters in the scenario")
+    ap.add_argument("--hosts", type=int, default=4, help="hosts in the scenario, all clusters together")
+    ap.add_argument("--vms", type=int, default=4, help="VMs in the scenario, all clusters together")
+    ap.add_argument("--user", default="user", help="vCenter user name the adapter logs in with")
+    ap.add_argument("--password", default="pass")
     ap.add_argument("--timeout", type=int, default=1800, help="seconds per mp-test invocation (the first builds the image)")
     ap.add_argument("--fixtures", default="fixtures/live/9.1.1", help="sanitized capture, for the per-kind label comparison")
     ap.add_argument("--report")
@@ -267,7 +270,7 @@ def main() -> int:
     target = f"{host}:{args.sim_port}"
     project = os.path.abspath(args.mp)
     os.makedirs(os.path.join(project, "logs"), exist_ok=True)
-    write_connection(project, "sim", target, args.scope, args.attach == "true")
+    write_connection(project, "sim", target, args.scope, args.attach == "true", args.user, args.password)
     report: dict = {"target": target, "scope": args.scope, "runs": [], "failures": []}
 
     def fail(msg: str):
@@ -330,10 +333,14 @@ def main() -> int:
         for obj in collects[1].get("result", []):
             kinds[obj["key"]["objectKind"]] = kinds.get(obj["key"]["objectKind"], 0) + 1
         report["kinds"] = kinds
-        # object kinds are the pack's (app/perfsvc_model.py ENTITIES[*]["kind"])
-        expect = {"VsanClusterDomclient": 1, "VsanHostDomclient": args.hosts, "VsanCpu": args.hosts,
-                  "VsanPnic": args.hosts * 2, "VsanEsaDiskLayer": args.hosts, "VsanVirtualMachine": args.vms,
-                  "VsanVscsi": args.vms, "VsanVirtualDisk": args.vms}
+        # object kinds are the pack's (app/perfsvc_model.py ENTITIES[*]["kind"]).
+        # Per-host device and uplink counts vary per cluster in Phase 2
+        # scenarios, so the uplink and disk kinds are checked only for a
+        # single-cluster run with the default shape.
+        expect = {"VsanClusterDomclient": args.clusters, "VsanHostDomclient": args.hosts, "VsanCpu": args.hosts,
+                  "VsanVirtualMachine": args.vms, "VsanVscsi": args.vms, "VsanVirtualDisk": args.vms}
+        if args.clusters == 1:
+            expect.update({"VsanPnic": args.hosts * 2, "VsanEsaDiskLayer": args.hosts})
         for kind, count in expect.items():
             if kinds.get(kind) != count:
                 fail(f"kind {kind}: {kinds.get(kind)} objects, expected {count}")

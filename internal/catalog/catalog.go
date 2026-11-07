@@ -47,9 +47,25 @@ type Family struct {
 	// their kind: "cluster", "node", "disk", "vm", "vdisk-path", "cpu-N",
 	// "VSAN_0xHEX_NAME", "N", "vmnicN", "vmkN", "scsiN:M", "defaultTcpipStack".
 	RefShapes []string `json:"refShapes,omitempty"`
-	// Entities and SamplesPerEntity record the capture's cardinality for
-	// documentation and tests; they are not a target the simulator reproduces.
+	// Entities records the capture's cardinality for documentation and
+	// tests; it is not a target the simulator reproduces.
 	Entities int `json:"entities"`
+	// Stats are the observed value statistics per label, the envelope the
+	// simulator's values stay inside (package perf).
+	Stats map[string]Stats `json:"stats,omitempty"`
+}
+
+// Stats summarise every value the live service returned for one label of
+// a family: the five-number summary over all entities and samples, whether
+// the service returned decimals, and how many samples were seen.
+type Stats struct {
+	Min   float64 `json:"min"`
+	P25   float64 `json:"p25"`
+	P50   float64 `json:"p50"`
+	P75   float64 `json:"p75"`
+	Max   float64 `json:"max"`
+	Float bool    `json:"float,omitempty"`
+	N     int     `json:"n"`
 }
 
 // About is the vCenter identity from the capture.
@@ -158,6 +174,28 @@ func (c *Catalog) Unit(family, label string) string {
 		}
 	}
 	return "number"
+}
+
+// LabelStats returns the observed statistics of a label within a family.
+// A twin label ("<x>Actual", "<x>Raw") the service returned but the capture
+// did not, falls back to its base label; ok is false when nothing was
+// observed.
+func (c *Catalog) LabelStats(family, label string) (Stats, bool) {
+	f, found := c.Families[family]
+	if !found {
+		return Stats{}, false
+	}
+	if s, ok := f.Stats[label]; ok {
+		return s, true
+	}
+	for _, suffix := range []string{"Actual", "Raw"} {
+		if n := len(label) - len(suffix); n > 0 && label[n:] == suffix {
+			if s, ok := f.Stats[label[:n]]; ok {
+				return s, true
+			}
+		}
+	}
+	return Stats{}, false
 }
 
 // DataFamilies lists the families that return entities, sorted.

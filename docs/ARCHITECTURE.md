@@ -22,7 +22,17 @@ VCF Operations native vCenter adapter     Tier 2 Content Factory MP
                        Lattice operator UI
 ```
 
-This is the target architecture, not an assertion that stock vcsim exposes an extension interface suitable for /vsanHealth. Prove routing, SOAP serialization, vSAN type compatibility and session behavior in Phase 1. Consider a shared reverse proxy only if it preserves SOAP details, cookies, TLS, hostnames and fault shapes.
+Phase 1 proved the routing: one vcsim service serves `/sdk` and a registered `/vsanHealth` registry from one session store. Phase 2 built the rest of the left-hand column, as implemented:
+
+| Box | Package | What it is |
+|---|---|---|
+| topology graph | `internal/scenario`, `internal/topology` | the operator's scenario file ([reference](SCENARIO.md)) materialized into one `Topology` with per-cluster seeded variation |
+| identity registry | `internal/registry` | `registry.json`: logical key to serial, never reused; uuids are UUID v5 of (seed namespace, kind, serial) |
+| deterministic clock | `internal/perf` | the five-minute bucket rule measured live; values as a pure function of (telemetry seed, entity, label, bucket) inside each label's captured envelope; cumulative `Raw` counters start at the envelope minimum and only climb, never wrapping, so they may pass its maximum |
+| metrics scenarios | `internal/vsanhealth` (`Knobs`) | per-family and per-method faults with cluster and bucket-aligned time selectors; per-family and `/sdk` latency |
+| vCenter façade | `internal/sim` | builds the vcsim inventory in registry serial order through vcsim's own method handlers (an event-driven task waiter instead of the property collector's poll), shapes cluster, host, datastore and VM properties after the trimmed live inventory capture, enforces credentials |
+
+The Lattice operator UI, query telemetry and Prometheus export are not built yet.
 
 ## Source of truth
 One immutable versioned topology model backs both API surfaces. Objects have stable deterministic identities and relationships: datacenter, cluster, host, VM, storage, vDS, vSAN storage pool, NVMe device, native MoRefs and Performance Service entityRefIds. Store UUID namespaces and seed. Support create/clone/edit/reset operations with clear identity consequences; default restart preserves existing topology.

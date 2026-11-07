@@ -2,7 +2,7 @@
 
 A configurable, deployable vCenter and vSAN ESA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
-> Project status: Phase 1 (API compatibility milestone). No production-grade vCenter emulation is claimed.
+> Project status: Phase 2 (functional simulator). No production-grade vCenter emulation is claimed.
 
 ## Mission
 Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service** to let the real VCF Operations vCenter adapter and custom Tier 2 management packs discover entities, query metrics, and ingest simulated telemetry. The first executable target is [nickfirefoot/vsanhostmetrics](https://github.com/nickfirefoot/vsanhostmetrics), being ported to a VCF Content Factory Tier 2 MP.
@@ -16,57 +16,109 @@ Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service
 - Produce stable inventory UUIDs / MoRefs and deterministic, 5-minute-bucket ESA telemetry. Support scale from a tiny compatibility fixture to 100+ clusters as a **test target**, not a claimed capacity.
 - Build a small **Lattice**-styled operator UI with topology editor, generators, performance controls and API/collector observability. A mockup and independent end-user UX evaluation **precede UI implementation**.
 
-## Phase 1: run the simulator against the reference management pack
+## Phase 2: a functional simulator
 
-The first milestone is a Go service on [govmomi vcsim](https://github.com/vmware/govmomi/tree/main/vcsim)
-with an out-of-tree `/vsanHealth` extension. It serves one datacenter, one
-vSAN ESA cluster of four hosts (two NVMe devices each, one claimed), one vDS
-and four VMs on the vSAN datastore, and exactly the operations the reference
-pack's collection path calls: `/sdk` login, inventory reads, `HostVsanSystem`,
-and on `/vsanHealth` `VsanClusterGetConfig`, `VsanPerfQueryNodeInformation`,
-`VsanPerfGetSupportedEntityTypes`, `VsanPerfQueryPerf`, `QueryVsanManagedDisks`
-and `VsanQueryVcClusterHealthSummary`, sharing one session. Entity types,
-label sets, fault shapes and the five-minute bucket rule come from the
-sanitized live capture in [`fixtures/live/9.1.1`](fixtures/live/9.1.1/README.md).
-Identities are derived from a seed, so a restart reproduces every MoRef, UUID
-and metric value.
+The simulator is a Go service on [govmomi vcsim](https://github.com/vmware/govmomi/tree/main/vcsim)
+with an out-of-tree `/vsanHealth` extension. A **scenario file** describes
+the simulated vCenter: datacenters, many vSAN ESA clusters with their own
+host, device, VM, CPU, DOM-world and uplink counts, who may log in, the
+certificate, and failure and latency knobs. An **identity registry** in the
+data directory keeps every MoRef and uuid stable across restarts and
+scenario edits. The Performance Service serves every entity family the
+sanitized live capture ([`fixtures/live/9.1.1`](fixtures/live/9.1.1/README.md))
+showed, with five-minute buckets and gauge values that stay inside the envelope
+the live service showed for each metric (cumulative `Raw` counters only climb
+from the observed minimum and never wrap).
 
 ```sh
 go build ./cmd/vcsimulator
-./vcsimulator -listen 0.0.0.0:8443 -tls-dir ./data/tls -seed phase1
+./vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443
 # add -listen 0.0.0.0:443 (needs CAP_NET_BIND_SERVICE) for the 1.4.7 pack line, which ignores the port
 ```
 
-Any user name and password log in. The certificate in `-tls-dir` is created
-once and kept, so the 2.0.0 pack's certificate pin survives restarts.
+| Flag | Meaning |
+|---|---|
+| `-scenario FILE` | the scenario ([reference](docs/SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
+| `-data DIR` | holds `registry.json` (identities) and `tls/` (the self-signed certificate, created once); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
+| `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
+| `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
+| `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
+| `-session-timeout` | idle session timeout; sessions never expire by default |
+| `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
+
+What the scenario controls, and what the simulator guarantees:
+
+- **Topology.** Any number of datacenters and clusters. Each cluster draws
+  its own counts from the file's `vary` distributions with its own seed, so
+  ten generated clusters differ; explicit `clusters:` overrides pin any of
+  them. One vDS per datacenter with management, vMotion, vSAN and VM
+  portgroups; every host has management, vMotion and vSAN vmkernel NICs,
+  a local VMFS datastore per unclaimed NVMe device, and the cluster's vSAN
+  datastore.
+- **Identity.** uuids are UUID v5 of (seed namespace, kind, registry
+  serial); MoRefs follow a deterministic creation order. A restart on the
+  same data directory reproduces everything; an edit keeps every uuid it
+  did not touch and the MoRefs of everything created before the edit's
+  first removal; only a seed change plus `-regenerate` churns identities.
+- **Metrics.** Values are a pure function of (telemetry seed, entity,
+  label, bucket); nothing is stored. Each label stays inside the min..max
+  the live capture showed for it, follows a business-hours day and drifts
+  smoothly; labels the live service held constant stay constant.
+- **Auth and TLS.** Configured users are enforced on `/sdk` (password
+  login; the token and certificate logins vcsim would accept from anyone
+  are refused), and `/vsanHealth` shares the session (no cookie,
+  `NotAuthenticated`). With no users configured any name and password log
+  in. The certificate persists,
+  so the 2.0.0 pack's certificate pin survives restarts.
+- **Faults and latency.** Per-family or per-method SOAP faults
+  (`invalid-argument`, `not-supported`, `system-error`, `timeout`) by
+  cluster and time window; per-family and `/sdk` latency with jitter.
+
+Known gaps: the vDS is served under vcsim's base type
+`DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
+metric labels the live service only ever answered with `None` get generic
+values; no OSA, iSCSI target service, file service, NFS/FC/iSCSI datastores
+or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
 
 ### Checks
 
 | Check | How | Where it runs |
 |---|---|---|
-| Contract: every captured request replayed, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `ci` workflow, `go` job |
+| Contract: every captured request replayed against the Phase 1 shape, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `go` job |
+| Phase 2: the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality, overrides), restart and edit identity stability through the registry, credentials, fault and latency knobs, inventory realism against the trimmed live inventory capture, gauge values inside the live envelopes, `Raw` counters monotonic | `go test ./...` | CI `go` job |
+| Smoke: a plain vSphere client (govc) connects with the scenario's credentials (and is refused with a wrong password), lists clusters, hosts and VMs and compares the counts with what the simulator built, dumps every identity, restarts the simulator on the same data directory and checks the dump is identical | `tools/smoke/smoke.sh` | CI `smoke` job |
 | Chart: `helm lint --strict` with every `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template` and `kubeconform` of the rendered manifests and the Argo CD example | `.github/workflows/package.yml` | CI `package` workflow, `chart` job |
 | Image: build, OCI label and non-root check, `docker compose` boot, then a vSphere client smoke ([`tools/smoke/smoke.ps1`](tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, expected hosts and VMs back, wrong password refused | PowerCLI on `pwsh` | CI `package` workflow, `image` job |
 | Chart install (manual): the chart in a disposable kind cluster with default values, the same smoke through the Service, the certificate unchanged across a pod restart, an upgrade to `tls.existingSecret` and restricted login that verifies against the issuing CA | [`tools/smoke/helm-kind.sh`](tools/smoke/helm-kind.sh) | Optional: run manually (needs `kind`, `helm`, `kubectl`, `openssl`, Docker, `pwsh`), not required CI |
-| The pack's own `perfsvc.connect/probe/collect/build_name_map/build_parent_map/build_disk_hardware` (pyVmomi 8.0.3.0.1, pack at the pinned commit) against a running simulator, both metric scopes, label sets equal to the live capture, every object named and parented, second collection identical, verify-on with the simulator's certificate pinned | `tools/mp-harness/harness.py` | Optional: `mp-acceptance` workflow (`gh workflow run mp-acceptance.yml`), not required CI |
-| `mp-test connect` and `mp-test collect` twice through the Operations integration SDK 1.3.1 (builds and runs the pack's adapter container) | `tools/mp-harness/mp_test_run.py` | Optional: `mp-acceptance` workflow, not required CI |
+| The reference pack's own `perfsvc.connect/probe/collect/build_name_map/build_parent_map/build_disk_hardware` against every cluster of a scenario, both metric scopes, label sets equal to the live capture, every object named and parented, second collection identical, verify-on with the simulator's certificate pinned | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow |
+| `mp-test connect` and `mp-test collect` twice through the Operations integration SDK 1.3.1 (builds and runs the pack's adapter container) | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow |
 
-Smoke a simulator you are running yourself (installs VMware.PowerCLI for
-the current user when missing):
+Locally, with govc installed (release binary: https://github.com/vmware/govmomi/releases/tag/v0.56.2):
+
+```sh
+tools/smoke/smoke.sh                                   # the ten-cluster scenario
+tools/smoke/smoke.sh --scenario examples/scenarios/phase1.yaml
+```
+
+Smoke a simulator you are running yourself with PowerCLI (installs
+VMware.PowerCLI for the current user when missing):
 
 ```sh
 pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install
 ```
 
-The management pack checks run locally with the pack checked out at
+The pack harness needs the pack checked out at
 `af976fb9fe97bbac2fd94b666a3f79aa12656f2a` of `sentania-labs/vsanhostmetrics`:
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install pyvmomi==8.0.3.0.1 vmware-aria-operations-integration-sdk==1.3.1
 # Python 3.12: the Operations SDK 1.3.1 does not install on 3.13 or newer
+./vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443 &
 .venv/bin/python tools/mp-harness/harness.py --sim 127.0.0.1:8443 --mp ../vsanhostmetrics \
+    --user administrator@vsphere.local --password 'VMware1!' \
     --fixtures fixtures/live/9.1.1 --ca data/tls/cert.pem
-PATH=.venv/bin:$PATH python3 tools/mp-harness/mp_test_run.py --mp ../vsanhostmetrics --sim-port 8443 --attach false
+PATH=.venv/bin:$PATH python3 tools/mp-harness/mp_test_run.py --mp ../vsanhostmetrics --sim-port 8443 \
+    --user administrator@vsphere.local --password 'VMware1!' --clusters 10 --hosts 82 --vms 446 --attach false
 ```
 
 `mp-test` runs the adapter in a container and reaches the simulator through
@@ -74,8 +126,8 @@ the Docker bridge gateway, so bind the simulator to `0.0.0.0`. It needs a TTY
 and gets a pty from the runner. `attach_to_vcenter` must be off under
 `mp-test`, which has no Operations Suite API to resolve vCenter objects.
 
-Out of scope for this milestone: UI, OSA and non-vSAN storage, more than one
-cluster, and any live vCenter access.
+Out of scope for this milestone: UI, OSA and non-vSAN storage, the REST
+`/api` surface, and any live vCenter access.
 
 ## Running it
 
@@ -92,22 +144,24 @@ credentials (what the compose file and the chart's defaults assume), set it to
 public once under the package's settings on GitHub. To keep it private, give
 the chart an `imagePullSecrets` entry naming a registry pull secret.
 
-Login accepts any user name and password unless `VCSIM_USERNAME` and
-`VCSIM_PASSWORD` (or `-username`/`-password`) are set, in which case only
-that pair logs in. Use placeholders: this is a simulator, never point real
+Login accepts any user name and password unless credentials are
+configured: the scenario's `auth.users`, or `VCSIM_USERNAME` and
+`VCSIM_PASSWORD` (`-username`/`-password`), which add one more user. Then only
+the configured users log in. Use placeholders: this is a simulator, never point real
 credentials at it.
 
 ### docker run
 
 ```sh
-docker run -d --name vcsim -p 8443:8443 -v vcsim-tls:/data/tls \
+docker run -d --name vcsim -p 8443:8443 -v vcsim-data:/data \
   --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
   ghcr.io/sentania-labs/vcenter-api-simulator:main
 curl -sk https://localhost:8443/sdk/vimServiceVersions.xml
 ```
 
-The certificate is created on first start and kept in the volume mounted at
-`/data/tls`, so the fingerprint a management pack pinned survives restarts.
+The identity registry and the certificate are created on first start and kept
+in the volume mounted at `/data`, so identities and the fingerprint a
+management pack pinned survive restarts.
 Add `-tls-names=<hostname>` (as a command argument) to put the name
 collectors use into it, and `--read-only` needs the `/tmp` tmpfs: vcsim keeps
 scratch files there.
@@ -115,13 +169,13 @@ scratch files there.
 ### docker compose
 
 [`docker-compose.yml`](docker-compose.yml) runs the same thing with a named
-volume for the certificate:
+volume for the state directory (registry and certificate):
 
 ```sh
 docker compose up -d                 # pulls :main
 docker compose up -d --build         # builds from this checkout
 VCSIM_USERNAME=operator VCSIM_PASSWORD=placeholder docker compose up -d   # restricted login
-docker compose down -v               # also discards the certificate
+docker compose down -v               # also discards the identities and certificate
 ```
 
 `VCSIM_TAG`, `VCSIM_PORT`, `VCSIM_SEED` and `VCSIM_TLS_NAMES` are the other
@@ -132,7 +186,7 @@ knobs.
 [`charts/vcenter-api-simulator`](charts/vcenter-api-simulator) installs one
 simulated vCenter per release. It creates a Deployment (one replica, non-root,
 read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
-ServiceAccount with no token mounted, a PVC for the certificate, and
+ServiceAccount with no token mounted, a PVC for the state directory (identity registry and certificate), and
 optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
 and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
 outside the cluster until `ingress.enabled` or a LoadBalancer Service asks
@@ -154,9 +208,14 @@ Certificate options, in order of precedence:
   `simulator.tlsNames`) from `tls.certManager.issuerRef`. A renewal changes
   the fingerprint a pack pinned.
 - Neither: a self-signed certificate created on first start, kept in the
-  PVC (`persistence.enabled`, default on; the PVC is annotated to survive
-  `helm uninstall` and Argo CD prune or Application deletion). With
-  persistence off every new pod issues a new certificate.
+  PVC.
+
+The PVC (`persistence.enabled`, default on) is mounted at `/data` in every
+mode: it holds the identity registry and, when no TLS Secret is set, the
+certificate. A Secret is overlaid read-only on `/data/tls`. The PVC is
+annotated to survive `helm uninstall` and Argo CD prune or Application
+deletion. With persistence off every new pod issues new identities (and a new
+certificate when self-signed).
 
 A replaced certificate (a rotated Secret, a cert-manager renewal) is served
 to the next connection without a restart: the simulator re-reads the mounted
@@ -183,6 +242,7 @@ its namespace.
 
 ## Documents
 - [Kickoff specification](docs/SPECIFICATION.md)
+- [Scenario file reference](docs/SCENARIO.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Testing and benchmarks](docs/TESTING.md)

@@ -4,9 +4,10 @@
 #   docker compose up -d --build    # builds the image from this checkout instead
 #   docker compose logs -f
 #
-# The certificate is created on first start and kept in the `tls` volume, so
-# the fingerprint a management pack pinned survives `docker compose restart`.
-# Remove the volume (`docker compose down -v`) to issue a new one.
+# The identity registry and the certificate are created on first start and
+# kept in the `data` volume, so the identities and the fingerprint a management
+# pack pinned survive `docker compose restart`. Remove the volume
+# (`docker compose down -v`) to issue new ones.
 services:
   vcsim:
     image: ghcr.io/sentania-labs/vcenter-api-simulator:${VCSIM_TAG:-main}
@@ -16,7 +17,7 @@ services:
         VERSION: ${VCSIM_TAG:-dev}
     command:
       - -listen=0.0.0.0:8443
-      - -tls-dir=/data/tls
+      - -data=/data
       - -seed=${VCSIM_SEED:-phase1}
       # Extra subject alternative names for the certificate created on first
       # start, for example the hostname collectors use to reach this machine.
@@ -30,7 +31,7 @@ services:
     ports:
       - "${VCSIM_PORT:-8443}:8443"
     volumes:
-      - tls:/data/tls
+      - data:/data
     read_only: true
     tmpfs:
       - /tmp
@@ -43,4 +44,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  tls:
+  data:

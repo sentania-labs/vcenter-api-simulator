@@ -1,0 +1,1074 @@
+[
+ {
+  "_moref": "Datastore:datastore-15154",
+  "props": {
+   "name": "ds-05",
+   "parent": {
+    "_moref": "Folder:group-s11004"
+   },
+   "info": {
+    "_type": "VmfsDatastoreInfo",
+    "name": "ds-05",
+    "url": "ds:///vmfs/volumes/69fd165a-38473b59-7bc3-3805253936dc/",
+    "freeSpace": 360230944768,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-10-24T18:39:21.108313+00:00",
+    "supportedVDiskFormats": [
+     "native_512"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 4096,
+    "maxPhysicalRDMFileSize": 70368744177664,
+    "maxVirtualRDMFileSize": 68169720922112,
+    "vmfs": {
+     "_type": "HostVmfsVolume",
+     "type": "VMFS",
+     "name": "ds-05",
+     "capacity": 362387865600,
+     "blockSizeMb": 1,
+     "blockSize": 1024,
+     "unmapGranularity": 1024,
+     "unmapPriority": "low",
+     "maxBlocks": 63963136,
+     "majorVersion": 6,
+     "version": "6.82",
+     "uuid": "69fd165a-38473b59-7bc3-3805253936dc",
+     "extent": [
+      {
+       "_type": "HostScsiDiskPartition",
+       "diskName": "t10.NVMe____SIM_NVMe_500GB_Model_F____________________9EFB36CF7DD9EA31",
+       "partition": 8
+      }
+     ],
+     "vmfsUpgradable": false,
+     "ssd": true,
+     "local": true
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-15154"
+    },
+    "name": "ds-05",
+    "url": "ds:///vmfs/volumes/69fd165a-38473b59-7bc3-3805253936dc/",
+    "capacity": 362387865600,
+    "freeSpace": 360230944768,
+    "accessible": true,
+    "multipleHostAccess": false,
+    "type": "VMFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true,
+    "clusteredVmdkSupported": false
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-15151"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/69fd165a-38473b59-7bc3-3805253936dc",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-18",
+  "props": {
+   "name": "ds-08",
+   "parent": {
+    "_moref": "Folder:group-s6"
+   },
+   "info": {
+    "_type": "NasDatastoreInfo",
+    "name": "ds-08",
+    "url": "ds:///vmfs/volumes/761bef20-4d1a3984/",
+    "freeSpace": 3061480214528,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-11-01T09:41:31.450583+00:00",
+    "supportedVDiskFormats": [
+     "native_512",
+     "native_4k"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 512,
+    "nas": {
+     "_type": "HostNasVolume",
+     "type": "NFS",
+     "name": "ds-08",
+     "capacity": 3298534883328,
+     "remoteHost": "10.255.75.128",
+     "remotePath": "/export/d0500ff5",
+     "remoteHostNames": [
+      "10.255.75.128"
+     ],
+     "protocolEndpoint": false
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-18"
+    },
+    "name": "ds-08",
+    "url": "ds:///vmfs/volumes/761bef20-4d1a3984/",
+    "capacity": 3298534883328,
+    "freeSpace": 3061480218624,
+    "uncommitted": 15024136192,
+    "accessible": true,
+    "multipleHostAccess": true,
+    "type": "NFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": false,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": true,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6015"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/761bef20-4d1a3984",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true,
+      "vmknicName": "None",
+      "vmknicActive": false,
+      "numTcpConnections": 1
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6011"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/761bef20-4d1a3984",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true,
+      "vmknicName": "None",
+      "vmknicActive": false,
+      "numTcpConnections": 1
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6017"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/761bef20-4d1a3984",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true,
+      "vmknicName": "None",
+      "vmknicActive": false,
+      "numTcpConnections": 1
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-31189"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/761bef20-4d1a3984",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true,
+      "vmknicName": "None",
+      "vmknicActive": false,
+      "numTcpConnections": 1
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-15151"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/761bef20-4d1a3984",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true,
+      "vmknicName": "None",
+      "vmknicActive": false,
+      "numTcpConnections": 1
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-31155"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/761bef20-4d1a3984",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true,
+      "vmknicName": "None",
+      "vmknicActive": false,
+      "numTcpConnections": 1
+     }
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-1040"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-31158",
+  "props": {
+   "name": "ds-07",
+   "parent": {
+    "_moref": "Folder:group-s11004"
+   },
+   "info": {
+    "_type": "VmfsDatastoreInfo",
+    "name": "ds-07",
+    "url": "ds:///vmfs/volumes/69820ce4-5dea0708-dc96-31e949ff6613/",
+    "freeSpace": 731005321216,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-11-06T19:11:55.946068+00:00",
+    "supportedVDiskFormats": [
+     "native_512"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 512,
+    "maxPhysicalRDMFileSize": 70368744177664,
+    "maxVirtualRDMFileSize": 68169720922112,
+    "vmfs": {
+     "_type": "HostVmfsVolume",
+     "type": "VMFS",
+     "name": "ds-07",
+     "capacity": 886642311168,
+     "blockSizeMb": 1,
+     "blockSize": 1024,
+     "unmapGranularity": 1024,
+     "unmapPriority": "low",
+     "maxBlocks": 63963136,
+     "majorVersion": 6,
+     "version": "6.82",
+     "uuid": "69820ce4-5dea0708-dc96-31e949ff6613",
+     "extent": [
+      {
+       "_type": "HostScsiDiskPartition",
+       "diskName": "t10.ATA_____SIM_SATA_SSD_Model_E____________________2E3023CDDC4F6CEAA299",
+       "partition": 8
+      }
+     ],
+     "vmfsUpgradable": false,
+     "ssd": true,
+     "local": true
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-31158"
+    },
+    "name": "ds-07",
+    "url": "ds:///vmfs/volumes/69820ce4-5dea0708-dc96-31e949ff6613/",
+    "capacity": 886642311168,
+    "freeSpace": 731005321216,
+    "uncommitted": 185979559936,
+    "accessible": true,
+    "multipleHostAccess": false,
+    "type": "VMFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true,
+    "clusteredVmdkSupported": false
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-31155"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/69820ce4-5dea0708-dc96-31e949ff6613",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-31163"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31162"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31161"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-31192",
+  "props": {
+   "name": "ds-06",
+   "parent": {
+    "_moref": "Folder:group-s11004"
+   },
+   "info": {
+    "_type": "VmfsDatastoreInfo",
+    "name": "ds-06",
+    "url": "ds:///vmfs/volumes/6a885d5f-d5bb9c04-5199-3805253a02fc/",
+    "freeSpace": 1909179023360,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-10-24T18:39:20.545692+00:00",
+    "supportedVDiskFormats": [
+     "native_512"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 4096,
+    "maxPhysicalRDMFileSize": 70368744177664,
+    "maxVirtualRDMFileSize": 68169720922112,
+    "vmfs": {
+     "_type": "HostVmfsVolume",
+     "type": "VMFS",
+     "name": "ds-06",
+     "capacity": 1910723575808,
+     "blockSizeMb": 1,
+     "blockSize": 1024,
+     "unmapGranularity": 1024,
+     "unmapPriority": "low",
+     "maxBlocks": 63963136,
+     "majorVersion": 6,
+     "version": "6.82",
+     "uuid": "6a885d5f-d5bb9c04-5199-3805253a02fc",
+     "extent": [
+      {
+       "_type": "HostScsiDiskPartition",
+       "diskName": "t10.NVMe____SIM_NVMe_2TB_Model_D____________________0ED46F72B8EABD79",
+       "partition": 8
+      }
+     ],
+     "vmfsUpgradable": false,
+     "ssd": true,
+     "local": true
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-31192"
+    },
+    "name": "ds-06",
+    "url": "ds:///vmfs/volumes/6a885d5f-d5bb9c04-5199-3805253a02fc/",
+    "capacity": 1910723575808,
+    "freeSpace": 1909179023360,
+    "accessible": true,
+    "multipleHostAccess": false,
+    "type": "VMFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true,
+    "clusteredVmdkSupported": false
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-31189"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/6a885d5f-d5bb9c04-5199-3805253a02fc",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-6012",
+  "props": {
+   "name": "ds-04",
+   "parent": {
+    "_moref": "Folder:group-s11004"
+   },
+   "info": {
+    "_type": "VmfsDatastoreInfo",
+    "name": "ds-04",
+    "url": "ds:///vmfs/volumes/698059e9-b0a4afe5-4c15-38052534e318/",
+    "freeSpace": 360868478976,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-10-24T18:39:26.752256+00:00",
+    "supportedVDiskFormats": [
+     "native_512"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 4096,
+    "maxPhysicalRDMFileSize": 70368744177664,
+    "maxVirtualRDMFileSize": 68169720922112,
+    "vmfs": {
+     "_type": "HostVmfsVolume",
+     "type": "VMFS",
+     "name": "ds-04",
+     "capacity": 362387865600,
+     "blockSizeMb": 1,
+     "blockSize": 1024,
+     "unmapGranularity": 1024,
+     "unmapPriority": "low",
+     "maxBlocks": 63963136,
+     "majorVersion": 6,
+     "version": "6.82",
+     "uuid": "698059e9-b0a4afe5-4c15-38052534e318",
+     "extent": [
+      {
+       "_type": "HostScsiDiskPartition",
+       "diskName": "t10.NVMe____SIM_NVMe_500GB_Model_B___________________5F3A6CF4991F0CA3",
+       "partition": 8
+      }
+     ],
+     "vmfsUpgradable": false,
+     "ssd": true,
+     "local": true
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-6012"
+    },
+    "name": "ds-04",
+    "url": "ds:///vmfs/volumes/698059e9-b0a4afe5-4c15-38052534e318/",
+    "capacity": 362387865600,
+    "freeSpace": 360868478976,
+    "accessible": true,
+    "multipleHostAccess": false,
+    "type": "VMFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true,
+    "clusteredVmdkSupported": false
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6011"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/698059e9-b0a4afe5-4c15-38052534e318",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-6016",
+  "props": {
+   "name": "ds-03",
+   "parent": {
+    "_moref": "Folder:group-s11004"
+   },
+   "info": {
+    "_type": "VmfsDatastoreInfo",
+    "name": "ds-03",
+    "url": "ds:///vmfs/volumes/698055e5-3a141f5b-4991-38052534ded0/",
+    "freeSpace": 360868478976,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-10-24T18:39:20.819151+00:00",
+    "supportedVDiskFormats": [
+     "native_512"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 4096,
+    "maxPhysicalRDMFileSize": 70368744177664,
+    "maxVirtualRDMFileSize": 68169720922112,
+    "vmfs": {
+     "_type": "HostVmfsVolume",
+     "type": "VMFS",
+     "name": "ds-03",
+     "capacity": 362387865600,
+     "blockSizeMb": 1,
+     "blockSize": 1024,
+     "unmapGranularity": 1024,
+     "unmapPriority": "low",
+     "maxBlocks": 63963136,
+     "majorVersion": 6,
+     "version": "6.82",
+     "uuid": "698055e5-3a141f5b-4991-38052534ded0",
+     "extent": [
+      {
+       "_type": "HostScsiDiskPartition",
+       "diskName": "t10.NVMe____SIM_NVMe_500GB_Model_B___________________2E4D3EFFA9912714",
+       "partition": 8
+      }
+     ],
+     "vmfsUpgradable": false,
+     "ssd": true,
+     "local": true
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-6016"
+    },
+    "name": "ds-03",
+    "url": "ds:///vmfs/volumes/698055e5-3a141f5b-4991-38052534ded0/",
+    "capacity": 362387865600,
+    "freeSpace": 360868478976,
+    "accessible": true,
+    "multipleHostAccess": false,
+    "type": "VMFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true,
+    "clusteredVmdkSupported": false
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6015"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/698055e5-3a141f5b-4991-38052534ded0",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-6018",
+  "props": {
+   "name": "ds-02",
+   "parent": {
+    "_moref": "Folder:group-s11004"
+   },
+   "info": {
+    "_type": "VmfsDatastoreInfo",
+    "name": "ds-02",
+    "url": "ds:///vmfs/volumes/698050de-bf82fe0c-725d-38052534dfcc/",
+    "freeSpace": 360226750464,
+    "maxFileSize": 70368744177664,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 70368744177664,
+    "timestamp": "2026-10-24T18:39:23.859647+00:00",
+    "supportedVDiskFormats": [
+     "native_512"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 4096,
+    "maxPhysicalRDMFileSize": 70368744177664,
+    "maxVirtualRDMFileSize": 68169720922112,
+    "vmfs": {
+     "_type": "HostVmfsVolume",
+     "type": "VMFS",
+     "name": "ds-02",
+     "capacity": 362387865600,
+     "blockSizeMb": 1,
+     "blockSize": 1024,
+     "unmapGranularity": 1024,
+     "unmapPriority": "low",
+     "maxBlocks": 63963136,
+     "majorVersion": 6,
+     "version": "6.82",
+     "uuid": "698050de-bf82fe0c-725d-38052534dfcc",
+     "extent": [
+      {
+       "_type": "HostScsiDiskPartition",
+       "diskName": "t10.NVMe____SIM_NVMe_500GB_Model_B___________________AB80C900BFC3E229",
+       "partition": 8
+      }
+     ],
+     "vmfsUpgradable": false,
+     "ssd": true,
+     "local": true
+    }
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-6018"
+    },
+    "name": "ds-02",
+    "url": "ds:///vmfs/volumes/698050de-bf82fe0c-725d-38052534dfcc/",
+    "capacity": 362387865600,
+    "freeSpace": 360226750464,
+    "accessible": true,
+    "multipleHostAccess": false,
+    "type": "VMFS",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": false,
+    "topLevelDirectoryCreateSupported": true,
+    "seSparseSupported": true,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": false,
+    "vmdkExpandSupported": true,
+    "clusteredVmdkSupported": false
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6017"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/698050de-bf82fe0c-725d-38052534dfcc",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "Datastore:datastore-7001",
+  "props": {
+   "name": "ds-01",
+   "parent": {
+    "_moref": "Folder:group-s6"
+   },
+   "info": {
+    "_type": "VsanDatastoreInfo",
+    "name": "ds-01",
+    "url": "ds:///vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a/",
+    "freeSpace": 10360825438026,
+    "maxFileSize": 140737488355328,
+    "maxVirtualDiskCapacity": 68169720922112,
+    "maxMemoryFileSize": 9223372036854775807,
+    "timestamp": "2026-11-07T00:09:30.894016+00:00",
+    "containerId": "90d067b8007711f1-af60000c297e270a",
+    "aliasOf": "90d067b8007711f1-af60000c297e270a",
+    "supportedVDiskFormats": [
+     "native_512",
+     "native_4k"
+    ],
+    "logicalSectorSize": 512,
+    "physicalSectorSize": 0,
+    "membershipUuid": "c45890ea-83b8-5e72-baca-46c4c64925d9",
+    "accessGenNo": 9947
+   },
+   "summary": {
+    "_type": "DatastoreSummary",
+    "datastore": {
+     "_moref": "Datastore:datastore-7001"
+    },
+    "name": "ds-01",
+    "url": "ds:///vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a/",
+    "capacity": 20003574251520,
+    "freeSpace": 10360825438026,
+    "uncommitted": 13052093608247,
+    "accessible": true,
+    "multipleHostAccess": true,
+    "type": "vsan",
+    "maintenanceMode": "normal"
+   },
+   "capability": {
+    "_type": "DatastoreCapability",
+    "directoryHierarchySupported": true,
+    "rawDiskMappingsSupported": true,
+    "perFileThinProvisioningSupported": true,
+    "storageIORMSupported": false,
+    "nativeSnapshotSupported": true,
+    "topLevelDirectoryCreateSupported": false,
+    "seSparseSupported": false,
+    "vmfsSparseSupported": false,
+    "vsanSparseSupported": true,
+    "vmdkExpandSupported": true
+   },
+   "iormConfiguration": {
+    "_type": "StorageIORMInfo",
+    "enabled": false,
+    "congestionThresholdMode": "automatic",
+    "congestionThreshold": 30,
+    "percentOfPeakThroughput": 90,
+    "statsCollectionEnabled": false,
+    "reservationEnabled": true,
+    "statsAggregationDisabled": true
+   },
+   "host": [
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-15151"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6017"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6015"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-31189"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    },
+    {
+     "_type": "DatastoreHostMount",
+     "key": {
+      "_moref": "HostSystem:host-6011"
+     },
+     "mountInfo": {
+      "_type": "HostMountInfo",
+      "path": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a",
+      "accessMode": "readWrite",
+      "mounted": true,
+      "accessible": true
+     }
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-39043"
+    },
+    {
+     "_moref": "VirtualMachine:vm-39042"
+    },
+    {
+     "_moref": "VirtualMachine:vm-39030"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31164"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31212"
+    },
+    {
+     "_moref": "VirtualMachine:vm-27130"
+    },
+    {
+     "_moref": "VirtualMachine:vm-35135"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1010"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1036"
+    },
+    {
+     "_moref": "VirtualMachine:vm-25096"
+    },
+    {
+     "_moref": "VirtualMachine:vm-20"
+    },
+    {
+     "_moref": "VirtualMachine:vm-25097"
+    },
+    {
+     "_moref": "VirtualMachine:vm-2001"
+    },
+    {
+     "_moref": "VirtualMachine:vm-26019"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37012"
+    },
+    {
+     "_moref": "VirtualMachine:vm-23208"
+    },
+    {
+     "_moref": "VirtualMachine:vm-39031"
+    },
+    {
+     "_moref": "VirtualMachine:vm-18001"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31326"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1011"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31211"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37011"
+    },
+    {
+     "_moref": "VirtualMachine:vm-35088"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37014"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31213"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1023"
+    },
+    {
+     "_moref": "VirtualMachine:vm-23209"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37015"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31210"
+    },
+    {
+     "_moref": "VirtualMachine:vm-34"
+    },
+    {
+     "_moref": "VirtualMachine:vm-27022"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31452"
+    },
+    {
+     "_moref": "VirtualMachine:vm-17001"
+    },
+    {
+     "_moref": "VirtualMachine:vm-25098"
+    },
+    {
+     "_moref": "VirtualMachine:vm-13101"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37013"
+    },
+    {
+     "_moref": "VirtualMachine:vm-18040"
+    },
+    {
+     "_moref": "VirtualMachine:vm-29007"
+    },
+    {
+     "_moref": "VirtualMachine:vm-21"
+    },
+    {
+     "_moref": "VirtualMachine:vm-34002"
+    },
+    {
+     "_moref": "VirtualMachine:vm-2002"
+    }
+   ]
+  }
+ }
+]

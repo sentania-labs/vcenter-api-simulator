@@ -1,0 +1,1901 @@
+[
+ {
+  "_moref": "VmwareDistributedVirtualSwitch:dvs-6006",
+  "props": {
+   "name": "vds-01",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "VMwareDVSConfigInfo",
+    "uuid": "34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89",
+    "name": "vds-01",
+    "numStandalonePorts": 0,
+    "numPorts": 156,
+    "maxPorts": 2147483647,
+    "uplinkPortPolicy": {
+     "_type": "DVSNameArrayUplinkPortPolicy",
+     "uplinkPortName": [
+      "uplink2",
+      "uplink1"
+     ]
+    },
+    "uplinkPortgroup": [
+     {
+      "_moref": "DistributedVirtualPortgroup:dvportgroup-6007"
+     }
+    ],
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": false,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": false,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": false
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": false,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": false
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 0
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": false,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": false,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": false,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": false,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": false,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": false,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": false,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": false,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": false,
+      "value": 0
+     }
+    },
+    "host": [
+     {
+      "_type": "DistributedVirtualSwitchHostMember",
+      "runtimeState": {
+       "_type": "DistributedVirtualSwitchHostMemberRuntimeState",
+       "currentMaxProxySwitchPorts": 6400
+      },
+      "config": {
+       "_type": "DistributedVirtualSwitchHostMemberConfigInfo",
+       "host": {
+        "_moref": "HostSystem:host-6011"
+       },
+       "maxProxySwitchPorts": 512,
+       "vendorSpecificConfig": [
+        {
+         "_type": "DistributedVirtualSwitchKeyedOpaqueBlob",
+         "key": "com.vmware.net.feature.cap.supportVmotionFromOpaqueNetwork",
+         "opaqueData": "1"
+        }
+       ],
+       "backing": {
+        "_type": "DistributedVirtualSwitchHostMemberPnicBacking",
+        "pnicSpec": [
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic1",
+          "uplinkPortKey": "17",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1719829083
+         },
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic2",
+          "uplinkPortKey": "16",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1683500748
+         }
+        ]
+       },
+       "nsxSwitch": true,
+       "ensEnabled": true,
+       "ensInterruptEnabled": true,
+       "transportZones": [
+        {
+         "_type": "DistributedVirtualSwitchHostMemberTransportZoneInfo",
+         "uuid": "67bfdf1b-e45e-563c-a714-dbf70f10448e",
+         "type": "overlay"
+        }
+       ],
+       "nsxtUsedUplinkNames": [
+        "uplink2",
+        "uplink1"
+       ],
+       "networkOffloadingEnabled": false
+      },
+      "uplinkPortKey": [
+       "16",
+       "17"
+      ],
+      "status": "up"
+     },
+     {
+      "_type": "DistributedVirtualSwitchHostMember",
+      "runtimeState": {
+       "_type": "DistributedVirtualSwitchHostMemberRuntimeState",
+       "currentMaxProxySwitchPorts": 6400
+      },
+      "config": {
+       "_type": "DistributedVirtualSwitchHostMemberConfigInfo",
+       "host": {
+        "_moref": "HostSystem:host-15151"
+       },
+       "maxProxySwitchPorts": 512,
+       "vendorSpecificConfig": [
+        {
+         "_type": "DistributedVirtualSwitchKeyedOpaqueBlob",
+         "key": "com.vmware.net.feature.cap.supportVmotionFromOpaqueNetwork",
+         "opaqueData": "1"
+        }
+       ],
+       "backing": {
+        "_type": "DistributedVirtualSwitchHostMemberPnicBacking",
+        "pnicSpec": [
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic1",
+          "uplinkPortKey": "61",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1418894905
+         },
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic2",
+          "uplinkPortKey": "62",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1411209769
+         }
+        ]
+       },
+       "nsxSwitch": true,
+       "ensEnabled": true,
+       "ensInterruptEnabled": true,
+       "transportZones": [
+        {
+         "_type": "DistributedVirtualSwitchHostMemberTransportZoneInfo",
+         "uuid": "67bfdf1b-e45e-563c-a714-dbf70f10448e",
+         "type": "overlay"
+        }
+       ],
+       "nsxtUsedUplinkNames": [
+        "uplink2",
+        "uplink1"
+       ],
+       "networkOffloadingEnabled": false
+      },
+      "uplinkPortKey": [
+       "61",
+       "62"
+      ],
+      "status": "up"
+     },
+     {
+      "_type": "DistributedVirtualSwitchHostMember",
+      "runtimeState": {
+       "_type": "DistributedVirtualSwitchHostMemberRuntimeState",
+       "currentMaxProxySwitchPorts": 6400
+      },
+      "config": {
+       "_type": "DistributedVirtualSwitchHostMemberConfigInfo",
+       "host": {
+        "_moref": "HostSystem:host-6015"
+       },
+       "maxProxySwitchPorts": 512,
+       "vendorSpecificConfig": [
+        {
+         "_type": "DistributedVirtualSwitchKeyedOpaqueBlob",
+         "key": "com.vmware.net.feature.cap.supportVmotionFromOpaqueNetwork",
+         "opaqueData": "1"
+        }
+       ],
+       "backing": {
+        "_type": "DistributedVirtualSwitchHostMemberPnicBacking",
+        "pnicSpec": [
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic1",
+          "uplinkPortKey": "19",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1720310396
+         },
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic2",
+          "uplinkPortKey": "18",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1685603654
+         }
+        ]
+       },
+       "nsxSwitch": true,
+       "ensEnabled": true,
+       "ensInterruptEnabled": true,
+       "transportZones": [
+        {
+         "_type": "DistributedVirtualSwitchHostMemberTransportZoneInfo",
+         "uuid": "67bfdf1b-e45e-563c-a714-dbf70f10448e",
+         "type": "overlay"
+        }
+       ],
+       "nsxtUsedUplinkNames": [
+        "uplink2",
+        "uplink1"
+       ],
+       "networkOffloadingEnabled": false
+      },
+      "uplinkPortKey": [
+       "18",
+       "19"
+      ],
+      "status": "up"
+     },
+     {
+      "_type": "DistributedVirtualSwitchHostMember",
+      "runtimeState": {
+       "_type": "DistributedVirtualSwitchHostMemberRuntimeState",
+       "currentMaxProxySwitchPorts": 6400
+      },
+      "config": {
+       "_type": "DistributedVirtualSwitchHostMemberConfigInfo",
+       "host": {
+        "_moref": "HostSystem:host-6017"
+       },
+       "maxProxySwitchPorts": 512,
+       "vendorSpecificConfig": [
+        {
+         "_type": "DistributedVirtualSwitchKeyedOpaqueBlob",
+         "key": "com.vmware.net.feature.cap.supportVmotionFromOpaqueNetwork",
+         "opaqueData": "1"
+        }
+       ],
+       "backing": {
+        "_type": "DistributedVirtualSwitchHostMemberPnicBacking",
+        "pnicSpec": [
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic1",
+          "uplinkPortKey": "21",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1720826068
+         },
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic2",
+          "uplinkPortKey": "20",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1687725975
+         }
+        ]
+       },
+       "nsxSwitch": true,
+       "ensEnabled": true,
+       "ensInterruptEnabled": true,
+       "transportZones": [
+        {
+         "_type": "DistributedVirtualSwitchHostMemberTransportZoneInfo",
+         "uuid": "67bfdf1b-e45e-563c-a714-dbf70f10448e",
+         "type": "overlay"
+        }
+       ],
+       "nsxtUsedUplinkNames": [
+        "uplink2",
+        "uplink1"
+       ],
+       "networkOffloadingEnabled": false
+      },
+      "uplinkPortKey": [
+       "20",
+       "21"
+      ],
+      "status": "up"
+     },
+     {
+      "_type": "DistributedVirtualSwitchHostMember",
+      "runtimeState": {
+       "_type": "DistributedVirtualSwitchHostMemberRuntimeState",
+       "currentMaxProxySwitchPorts": 6400
+      },
+      "config": {
+       "_type": "DistributedVirtualSwitchHostMemberConfigInfo",
+       "host": {
+        "_moref": "HostSystem:host-31189"
+       },
+       "maxProxySwitchPorts": 512,
+       "vendorSpecificConfig": [
+        {
+         "_type": "DistributedVirtualSwitchKeyedOpaqueBlob",
+         "key": "com.vmware.net.feature.cap.supportVmotionFromOpaqueNetwork",
+         "opaqueData": "1"
+        }
+       ],
+       "backing": {
+        "_type": "DistributedVirtualSwitchHostMemberPnicBacking",
+        "pnicSpec": [
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic1",
+          "uplinkPortKey": "136",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1608251013
+         },
+         {
+          "_type": "DistributedVirtualSwitchHostMemberPnicSpec",
+          "pnicDevice": "vmnic2",
+          "uplinkPortKey": "137",
+          "uplinkPortgroupKey": "dvportgroup-6007",
+          "connectionCookie": 1594020739
+         }
+        ]
+       },
+       "nsxSwitch": true,
+       "ensEnabled": true,
+       "ensInterruptEnabled": true,
+       "transportZones": [
+        {
+         "_type": "DistributedVirtualSwitchHostMemberTransportZoneInfo",
+         "uuid": "67bfdf1b-e45e-563c-a714-dbf70f10448e",
+         "type": "overlay"
+        }
+       ],
+       "nsxtUsedUplinkNames": [
+        "uplink2",
+        "uplink1"
+       ],
+       "networkOffloadingEnabled": false
+      },
+      "uplinkPortKey": [
+       "136",
+       "137"
+      ],
+      "status": "up"
+     }
+    ],
+    "productInfo": {
+     "_type": "DistributedVirtualSwitchProductSpec",
+     "name": "DVS",
+     "vendor": "VMware, Inc.",
+     "version": "9.0.0",
+     "build": "00000",
+     "forwardingClass": "cswitch"
+    },
+    "vendorSpecificConfig": [
+     {
+      "_type": "DistributedVirtualSwitchKeyedOpaqueBlob",
+      "key": "com.vmware.vrdma.uuid",
+      "opaqueData": "3f 11 7c ab 71 7e f9 92-27 46 eb b8 d0 b0 8d e7"
+     }
+    ],
+    "policy": {
+     "_type": "DVSPolicy",
+     "autoPreInstallAllowed": true,
+     "autoUpgradeAllowed": true,
+     "partialUpgradeAllowed": true
+    },
+    "configVersion": "11",
+    "contact": {
+     "_type": "DVSContactInfo"
+    },
+    "createTime": "2026-02-02T20:42:19.179999+00:00",
+    "networkResourceManagementEnabled": true,
+    "defaultProxySwitchMaxNumPorts": 512,
+    "healthCheckConfig": [
+     {
+      "_type": "VMwareDVSVlanMtuHealthCheckConfig",
+      "enable": true,
+      "interval": 1
+     },
+     {
+      "_type": "VMwareDVSTeamingHealthCheckConfig",
+      "enable": false,
+      "interval": 0
+     }
+    ],
+    "infrastructureTrafficResourceConfig": [
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "management",
+      "description": "Management Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 50,
+        "level": "normal"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "faultTolerance",
+      "description": "Fault Tolerance (FT) Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 25,
+        "level": "low"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "vmotion",
+      "description": "vMotion Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 25,
+        "level": "low"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "virtualMachine",
+      "description": "Virtual Machine Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 100,
+        "level": "high"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "iSCSI",
+      "description": "iSCSI Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 25,
+        "level": "low"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "nfs",
+      "description": "NFS Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 25,
+        "level": "low"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "hbr",
+      "description": "vSphere Replication (VR) Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 25,
+        "level": "low"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "vsan",
+      "description": "vSAN Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 100,
+        "level": "high"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "vdp",
+      "description": "vSphere Data Protection Backup Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 25,
+        "level": "low"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "backupNfc",
+      "description": "vSphere Backup NFC Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 50,
+        "level": "normal"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "nvmetcp",
+      "description": "vSphere nvmetcp Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 50,
+        "level": "normal"
+       },
+       "reservation": 0
+      }
+     },
+     {
+      "_type": "DvsHostInfrastructureTrafficResource",
+      "key": "provisioning",
+      "description": "vSphere Provisioning Traffic Type",
+      "allocationInfo": {
+       "_type": "DvsHostInfrastructureTrafficResourceAllocation",
+       "limit": -1,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 50,
+        "level": "normal"
+       },
+       "reservation": 0
+      }
+     }
+    ],
+    "networkResourceControlVersion": "version3",
+    "pnicCapacityRatioForReservation": 75,
+    "maxMtu": 9000,
+    "linkDiscoveryProtocolConfig": {
+     "_type": "LinkDiscoveryProtocolConfig",
+     "protocol": "lldp",
+     "operation": "both"
+    },
+    "ipfixConfig": {
+     "_type": "VMwareIpfixConfig",
+     "collectorPort": 0,
+     "observationDomainId": 0,
+     "activeFlowTimeout": 60,
+     "idleFlowTimeout": 15,
+     "samplingRate": 4096,
+     "internalFlowsOnly": false
+    },
+    "lacpApiVersion": "multipleLag",
+    "multicastFilteringMode": "snooping",
+    "networkOffloadSpecId": "None",
+    "realTimeConfig": {
+     "_type": "VmwareDistributedVirtualSwitchRealTimeConfig",
+     "allowed": false
+    }
+   },
+   "summary": {
+    "_type": "DVSSummary",
+    "name": "vds-01",
+    "uuid": "34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89",
+    "numPorts": 157,
+    "productInfo": {
+     "_type": "DistributedVirtualSwitchProductSpec",
+     "name": "DVS",
+     "vendor": "VMware, Inc.",
+     "version": "9.0.0",
+     "build": "00000",
+     "forwardingClass": "cswitch"
+    },
+    "hostMember": [
+     {
+      "_moref": "HostSystem:host-6011"
+     },
+     {
+      "_moref": "HostSystem:host-15151"
+     },
+     {
+      "_moref": "HostSystem:host-6015"
+     },
+     {
+      "_moref": "HostSystem:host-6017"
+     },
+     {
+      "_moref": "HostSystem:host-31189"
+     }
+    ],
+    "vm": [
+     {
+      "_moref": "VirtualMachine:vm-39043"
+     },
+     {
+      "_moref": "VirtualMachine:vm-39042"
+     },
+     {
+      "_moref": "VirtualMachine:vm-39031"
+     },
+     {
+      "_moref": "VirtualMachine:vm-39030"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31164"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31212"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31210"
+     },
+     {
+      "_moref": "VirtualMachine:vm-29007"
+     },
+     {
+      "_moref": "VirtualMachine:vm-27130"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31211"
+     },
+     {
+      "_moref": "VirtualMachine:vm-27022"
+     },
+     {
+      "_moref": "VirtualMachine:vm-26019"
+     },
+     {
+      "_moref": "VirtualMachine:vm-25098"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31213"
+     },
+     {
+      "_moref": "VirtualMachine:vm-25097"
+     },
+     {
+      "_moref": "VirtualMachine:vm-37015"
+     },
+     {
+      "_moref": "VirtualMachine:vm-23209"
+     },
+     {
+      "_moref": "VirtualMachine:vm-17001"
+     },
+     {
+      "_moref": "VirtualMachine:vm-37012"
+     },
+     {
+      "_moref": "VirtualMachine:vm-35088"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31326"
+     },
+     {
+      "_moref": "VirtualMachine:vm-35135"
+     },
+     {
+      "_moref": "VirtualMachine:vm-31452"
+     },
+     {
+      "_moref": "VirtualMachine:vm-37013"
+     },
+     {
+      "_moref": "VirtualMachine:vm-1023"
+     },
+     {
+      "_moref": "VirtualMachine:vm-20"
+     },
+     {
+      "_moref": "VirtualMachine:vm-37011"
+     },
+     {
+      "_moref": "VirtualMachine:vm-34002"
+     },
+     {
+      "_moref": "VirtualMachine:vm-34"
+     },
+     {
+      "_moref": "VirtualMachine:vm-1010"
+     },
+     {
+      "_moref": "VirtualMachine:vm-2001"
+     },
+     {
+      "_moref": "VirtualMachine:vm-1011"
+     },
+     {
+      "_moref": "VirtualMachine:vm-2002"
+     },
+     {
+      "_moref": "VirtualMachine:vm-1036"
+     },
+     {
+      "_moref": "VirtualMachine:vm-25096"
+     },
+     {
+      "_moref": "VirtualMachine:vm-37014"
+     },
+     {
+      "_moref": "VirtualMachine:vm-23208"
+     },
+     {
+      "_moref": "VirtualMachine:vm-21"
+     },
+     {
+      "_moref": "VirtualMachine:vm-18001"
+     },
+     {
+      "_moref": "VirtualMachine:vm-13101"
+     },
+     {
+      "_moref": "VirtualMachine:vm-18040"
+     }
+    ],
+    "portgroupName": [
+     "pg-15",
+     "pg-09",
+     "pg-10",
+     "pg-06",
+     "pg-14",
+     "pg-05",
+     "pg-08",
+     "pg-04",
+     "pg-13",
+     "pg-12",
+     "pg-07",
+     "pg-11"
+    ],
+    "contact": {
+     "_type": "DVSContactInfo"
+    },
+    "numHosts": 5
+   },
+   "runtime": {
+    "_type": "DVSRuntimeInfo",
+    "hostMemberRuntime": [
+     {
+      "_type": "HostMemberRuntimeInfo",
+      "host": {
+       "_moref": "HostSystem:host-6011"
+      },
+      "status": "up",
+      "statusDetail": "Status:green",
+      "nsxtStatus": "up",
+      "nsxtStatusDetail": "",
+      "healthCheckResult": [
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "16",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "16",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "17",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "17",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "_type": "HostMemberRuntimeInfo",
+      "host": {
+       "_moref": "HostSystem:host-15151"
+      },
+      "status": "up",
+      "statusDetail": "Status:green",
+      "nsxtStatus": "up",
+      "nsxtStatusDetail": "",
+      "healthCheckResult": [
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "62",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "62",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "61",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "61",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "_type": "HostMemberRuntimeInfo",
+      "host": {
+       "_moref": "HostSystem:host-6015"
+      },
+      "status": "up",
+      "statusDetail": "Status:green",
+      "nsxtStatus": "up",
+      "nsxtStatusDetail": "",
+      "healthCheckResult": [
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "19",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "19",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "18",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "18",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "_type": "HostMemberRuntimeInfo",
+      "host": {
+       "_moref": "HostSystem:host-6017"
+      },
+      "status": "up",
+      "statusDetail": "Status:green",
+      "nsxtStatus": "up",
+      "nsxtStatusDetail": "",
+      "healthCheckResult": [
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "21",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "21",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "20",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "20",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "_type": "HostMemberRuntimeInfo",
+      "host": {
+       "_moref": "HostSystem:host-31189"
+      },
+      "status": "up",
+      "statusDetail": "Status:green",
+      "nsxtStatus": "up",
+      "nsxtStatusDetail": "",
+      "healthCheckResult": [
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "136",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "136",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSMtuHealthCheckResult",
+        "uplinkPortKey": "137",
+        "mtuMismatch": false,
+        "vlanSupportSwitchMtu": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       },
+       {
+        "_type": "VMwareDVSVlanHealthCheckResult",
+        "uplinkPortKey": "137",
+        "trunkedVlan": [
+         {
+          "_type": "NumericRange",
+          "start": 13,
+          "end": 13
+         },
+         {
+          "_type": "NumericRange",
+          "start": 16,
+          "end": 19
+         },
+         {
+          "_type": "NumericRange",
+          "start": 110,
+          "end": 110
+         },
+         {
+          "_type": "NumericRange",
+          "start": 120,
+          "end": 120
+         },
+         {
+          "_type": "NumericRange",
+          "start": 130,
+          "end": 130
+         },
+         {
+          "_type": "NumericRange",
+          "start": 180,
+          "end": 180
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "resourceRuntimeInfo": {
+     "_type": "DvsResourceRuntimeInfo",
+     "capacity": 0,
+     "usage": 0,
+     "available": 0
+    }
+   },
+   "capability": {
+    "_type": "DVSCapability",
+    "dvsOperationSupported": true,
+    "dvPortGroupOperationSupported": true,
+    "dvPortOperationSupported": true,
+    "compatibleHostComponentProductInfo": [
+     {
+      "_type": "DistributedVirtualSwitchHostProductSpec",
+      "productLineId": "embeddedEsx",
+      "version": "e.x.p"
+     },
+     {
+      "_type": "DistributedVirtualSwitchHostProductSpec",
+      "productLineId": "embeddedEsx",
+      "version": "9.0<"
+     }
+    ],
+    "featuresSupported": {
+     "_type": "VMwareDVSFeatureCapability",
+     "networkResourceManagementSupported": true,
+     "vmDirectPathGen2Supported": true,
+     "nicTeamingPolicy": [
+      "loadbalance_ip",
+      "loadbalance_srcmac",
+      "loadbalance_srcid",
+      "failover_explicit",
+      "loadbalance_loadbased"
+     ],
+     "networkResourcePoolHighShareValue": 100,
+     "networkResourceManagementCapability": {
+      "_type": "DVSNetworkResourceManagementCapability",
+      "networkResourceManagementSupported": true,
+      "networkResourcePoolHighShareValue": 100,
+      "qosSupported": true,
+      "userDefinedNetworkResourcePoolsSupported": true,
+      "networkResourceControlVersion3Supported": true,
+      "userDefinedInfraTrafficPoolSupported": true
+     },
+     "healthCheckCapability": {
+      "_type": "VMwareDVSHealthCheckCapability",
+      "vlanMtuSupported": true,
+      "teamingSupported": true
+     },
+     "rollbackCapability": {
+      "_type": "DVSRollbackCapability",
+      "rollbackSupported": true
+     },
+     "backupRestoreCapability": {
+      "_type": "DVSBackupRestoreCapability",
+      "backupRestoreSupported": true
+     },
+     "networkFilterSupported": true,
+     "macLearningSupported": true,
+     "vspanSupported": true,
+     "lldpSupported": true,
+     "ipfixSupported": true,
+     "ipfixCapability": {
+      "_type": "VMwareDvsIpfixCapability",
+      "ipfixSupported": true,
+      "ipv6ForIpfixSupported": true,
+      "observationDomainIdSupported": true
+     },
+     "multicastSnoopingSupported": true,
+     "vspanCapability": {
+      "_type": "VMwareDVSVspanCapability",
+      "mixedDestSupported": true,
+      "dvportSupported": true,
+      "remoteSourceSupported": true,
+      "remoteDestSupported": true,
+      "encapRemoteSourceSupported": true,
+      "erspanProtocolSupported": true,
+      "mirrorNetstackSupported": true
+     },
+     "lacpCapability": {
+      "_type": "VMwareDvsLacpCapability",
+      "lacpSupported": true,
+      "multiLacpGroupSupported": true,
+      "lacpFastModeSupported": true
+     },
+     "dpuCapability": {
+      "_type": "VMwareDvsDpuCapability",
+      "networkOffloadSupported": true,
+      "activeStandbyModeSupported": true
+     },
+     "nsxSupported": true,
+     "mtuCapability": {
+      "_type": "VMwareDvsMtuCapability",
+      "minMtuSupported": 1280,
+      "maxMtuSupported": 9190
+     },
+     "realTimeConfigSupported": false
+    }
+   },
+   "portgroup": [
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6024"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-31209"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-31208"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-9001"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6023"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6008"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6010"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6007"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6022"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-35121"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6009"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-35120"
+    }
+   ],
+   "uuid": "34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89"
+  }
+ }
+]

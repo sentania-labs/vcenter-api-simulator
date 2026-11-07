@@ -18,6 +18,7 @@ every request here against the simulator.
 | `healthsummary-*` | VsanQueryVcClusterHealthSummary(fields=[hclInfo]) |
 | `postlogout-*`, `nocookie-*` | fault shapes after Logout and with no session cookie |
 | `summary.json`, `families-digest.json` | the probe's inventory summary and per-family digest |
+| [`inventory/`](inventory/README.md) | a trimmed JSON slice of the management vCenter's `/sdk` inventory (cluster, hosts, datastores, VMs, vDS), the reference for the simulator's inventory realism |
 
 ## Sanitization
 

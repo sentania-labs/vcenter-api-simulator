@@ -128,3 +128,26 @@ func TestLoadOrCreateCertificatePersists(t *testing.T) {
 		t.Fatal("half a pair was accepted")
 	}
 }
+
+// A provided pair is loaded as is and a rotated pair is picked up, with
+// Interval zero checking on every call.
+func TestLoadCertificateFiles(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Now().Add(-time.Hour)
+	first := rotate(t, dir, base)
+	c, err := LoadCertificateFiles(filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Interval = 0
+	if got := c.Current().Leaf.SerialNumber; got.Cmp(first) != 0 {
+		t.Fatalf("serial %v, want %v", got, first)
+	}
+	second := rotate(t, dir, base.Add(time.Minute))
+	if got := c.Current().Leaf.SerialNumber; got.Cmp(second) != 0 {
+		t.Fatalf("after rotation serial %v, want %v", got, second)
+	}
+	if _, err := LoadCertificateFiles(filepath.Join(dir, "missing.pem"), filepath.Join(dir, "key.pem")); err == nil {
+		t.Fatal("a missing certificate file must be an error")
+	}
+}

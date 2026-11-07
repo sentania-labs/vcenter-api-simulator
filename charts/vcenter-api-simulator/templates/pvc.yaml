@@ -1,4 +1,4 @@
-{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) (not (include "vcsim.tlsSecretName" .)) }}
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -6,9 +6,10 @@ metadata:
   labels:
     {{- include "vcsim.labels" . | nindent 4 }}
   annotations:
-    # Keep the certificate (the identity a management pack pinned) when the
-    # release is uninstalled, pruned, or its Argo CD Application is deleted;
-    # delete the claim deliberately to rotate it.
+    # Keep the state volume (registry of object identities, and the generated
+    # certificate a management pack pinned) when the release is uninstalled,
+    # pruned, or its Argo CD Application is deleted; delete the claim
+    # deliberately to reset it.
     helm.sh/resource-policy: keep
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
     {{- with .Values.persistence.annotations }}

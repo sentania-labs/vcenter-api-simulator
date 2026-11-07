@@ -47,7 +47,7 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           args:
             - -listen=0.0.0.0:{{ .Values.simulator.port }}
-            - -tls-dir=/data/tls
+            - -data=/data
             - -seed={{ .Values.simulator.seed }}
             - -tls-names={{ include "vcsim.tlsNames" . }}
             {{- range .Values.simulator.extraArgs }}
@@ -106,16 +106,25 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            - name: data
+              mountPath: /data
+            {{- if include "vcsim.tlsSecretName" . }}
             - name: tls
               mountPath: /data/tls
-              {{- if include "vcsim.tlsSecretName" . }}
               readOnly: true
-              {{- end }}
+            {{- end }}
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (include "vcsim.fullname" .) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if include "vcsim.tlsSecretName" . }}
         - name: tls
-          {{- if include "vcsim.tlsSecretName" . }}
           secret:
             secretName: {{ include "vcsim.tlsSecretName" . }}
             items:
@@ -123,12 +132,7 @@ spec:
                 path: cert.pem
               - key: tls.key
                 path: key.pem
-          {{- else if .Values.persistence.enabled }}
-          persistentVolumeClaim:
-            claimName: {{ default (include "vcsim.fullname" .) .Values.persistence.existingClaim }}
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
+        {{- end }}
         - name: tmp
           emptyDir: {}
       {{- with .Values.nodeSelector }}
