@@ -3,9 +3,9 @@
 
 Walks a vCenter once, read-only, and writes one tarball of evidence the
 simulator can be built against: an inventory dump, the read-only vSphere /
-vSAN / PBM / VSLM / REST calls, and a summary of what answered. Both a raw
-and a sanitized copy are inside the tarball; the sanitized one is what to
-send back.
+vSAN / PBM / VSLM / REST calls, and a summary of what answered. The tarball
+holds the sanitized tree only and is what to send back; the raw tree stays
+on disk, and only with --zip.
 
 Usage
     python3 tools/probe/probe.py <target> [--out DIR] [--dry-run] [--zip]
@@ -13,29 +13,32 @@ Usage
     <target>      "vcsim" or a SOAP base URL, e.g. https://vc.example:443
     --out DIR     where to write the tarball (default: cwd)
     --dry-run     print the call plan and exit; needs no server or credential
-    --zip         also keep an uncompressed copy of the tree
+    --zip         keep the work directory (raw/ and sanitized/) on disk
 
-Credentials come from the environment, or from an interactive prompt when a
-variable is missing. Nothing else writes them; nothing is written but the
-tarball (and, with --zip, the tree inside it).
+Credentials come from VCENTER_USER and VCENTER_PASSWORD, or from an
+interactive prompt (the password is not echoed) when a variable is missing.
+Nothing else writes them; nothing is written but the tarball (and, with
+--zip, the work directory).
 
 Needs python3 with pyVmomi (its own bundled vSAN bindings: vsanmgmtObjects,
-vsanapiutils). Tested against vcsim from govmomi v0.56.x and later.
+vsanapiutils). TLS certificate checks are off, so it can walk lab vCenters.
 
-Every call is on the read-only allowlist below; any other method is refused
-without being sent. A call that faults is recorded with its fault name and
-the walk continues.
+Every call is a read-only query. A call that faults is recorded with its
+fault name and the walk continues.
 """
 from __future__ import annotations
 
 import argparse
 import datetime as dt
+import getpass
 import hashlib
 import json
 import os
+import shutil
 import ssl
 import sys
 import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 import uuid
@@ -175,6 +178,8 @@ class Capture:
         return full
 
     def write(self, parts: tuple[str, ...], obj) -> int:
+        if not parts[-1].endswith(".json"):
+            parts = (*parts[:-1], parts[-1] + ".json")
         full = self.path(*parts)
         with open(full, "w", encoding="utf-8") as fh:
             json.dump(obj, fh, default=str)
@@ -222,20 +227,20 @@ def _jsonable(value):
 # credentials
 # --------------------------------------------------------------------------- #
 def read_credentials() -> dict:
-    """VCENTER_URL/USER/PASSWORD from the environment, prompting for gaps."""
-    keys = ("VCENTER_URL", "VCENTER_USER", "VCENTER_PASSWORD")
+    """VCENTER_USER/PASSWORD from the environment, prompting for gaps."""
+    keys = ("VCENTER_USER", "VCENTER_PASSWORD")
     creds = {k: os.environ.get(k, "").strip() for k in keys}
     for key in keys:
         if creds[key]:
             continue
         try:
-            value = input(f"{key}=").strip()
+            prompt = f"{key}="
+            value = (getpass.getpass(prompt) if key == "VCENTER_PASSWORD" else input(prompt)).strip()
         except EOFError:
             value = ""
-        if value:
-            creds[key] = value
-    if not creds["VCENTER_URL"]:
-        raise SystemExit("no URL: pass the target argument or set VCENTER_URL")
+        creds[key] = value
+    if not creds["VCENTER_USER"] or not creds["VCENTER_PASSWORD"]:
+        raise SystemExit("no credentials: set VCENTER_USER and VCENTER_PASSWORD")
     return creds
 
 
@@ -391,7 +396,14 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
     datastores = by_type.get("Datastore", [])
     pools = by_type.get("ResourcePool", [])
     switches = by_type.get("VmwareDistributedVirtualSwitch", []) + by_type.get("DistributedVirtualSwitch", [])
-    cluster0 = clusters[0] if clusters else None
+
+    def vsan_enabled(cluster):
+        try:
+            return bool(cluster.configurationEx.vsanConfigInfo.enabled)
+        except Exception:                                       # noqa: BLE001
+            return False
+
+    cluster0 = next((c for c in clusters if vsan_enabled(c)), clusters[0] if clusters else None)
     cluster_hosts = list(cluster0.host) if cluster0 else hosts
     host0 = cluster_hosts[0] if cluster_hosts else (hosts[0] if hosts else None)
     vm0 = next((v for v in vms if getattr(v, "runtime", None)
@@ -589,7 +601,7 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
               {"binding_version": vsan_version, "mos": sorted(mos)})
 
     def mo(key):
-        return mos.get(key)
+        return mos.get(key) or _MissingMo(key)
 
     if cluster0 is not None and mos:
         config_sys = mo("vsan-cluster-config-system")
@@ -751,7 +763,6 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
         pass
     cap.note("done", calls=len(cap.calls), faults=len([c for c in cap.calls if not c["ok"]]))
     cap.write(("summary.json",), {
-        "target": base,
         "about": _json_load(cap, ".", "about"),
         "window_minutes": WINDOW_MINUTES,
         "readonly_privileges": privs,
@@ -760,6 +771,22 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
         "calls": cap.calls,
         "steps": cap.noted,
     })
+
+
+class _MissingMo:
+    """Stands in for a vSAN management object the vCenter does not offer, so
+    each call on it is recorded as a fault instead of aborting the walk."""
+
+    def __init__(self, key: str):
+        self.key = key
+
+    def __bool__(self):
+        return False
+
+    def __getattr__(self, name):
+        def absent(*args, **kwargs):
+            raise LookupError(f"vSAN management object {self.key} is not offered")
+        return absent
 
 
 def _json_load(cap: Capture, *parts: str):
@@ -808,6 +835,17 @@ def http_get(base, path, ctx, timeout, cap: Capture, parts, headers=None, prefix
     return {"status": status, "bytes": len(body)}
 
 
+def _session_token(body: str):
+    """/api/session answers a JSON string, /rest/... answers {"value": ...}."""
+    try:
+        parsed = json.loads(body)
+    except ValueError:
+        parsed = body
+    if isinstance(parsed, dict):
+        parsed = parsed.get("value")
+    return parsed if isinstance(parsed, str) and parsed else None
+
+
 def rest_session(base, creds, ctx, timeout):
     """Create a REST session; returns (token_or_None, info) and the prefix used."""
     import base64
@@ -819,7 +857,7 @@ def rest_session(base, creds, ctx, timeout):
         try:
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
                 body = resp.read().decode("utf-8", "replace").strip()
-                return body or None, {"status": resp.status, "prefix": prefix}
+                return _session_token(body), {"status": resp.status, "prefix": prefix}
         except urllib.error.HTTPError as exc:
             info = {"status": exc.code, "prefix": prefix}
         except Exception as exc:                                # noqa: BLE001
@@ -845,7 +883,6 @@ def rest_delete(base, token, ctx, timeout, prefix):
 # --------------------------------------------------------------------------- #
 # sanitizing
 # --------------------------------------------------------------------------- #
-NAME_KEYS = ("name", "hostName", "nameOfHost", "hostname")
 SECRET_KEYS = {"password", "sslThumbprint", "thumbprint", "certificate", "serialNumber",
                "otherIdentifyingInfo", "licenseKey", "model", "vendor"}
 USER_KEYS = {"userName", "principal", "user", "login", "owner", "createdBy",
@@ -863,7 +900,7 @@ def _compile():
                 re.compile(r"\d+(?:\.\d+){2,}-\d*vmw\.[\w.]+"))
 
 
-def sanitize_tree(raw: str, san: str) -> dict:
+def sanitize_tree(raw: str, san: str, extra_names: dict | None = None) -> dict:
     """Rewrite raw/ into san/ with stable masks; returns the mapping used."""
     import re
     _compile()
@@ -923,6 +960,9 @@ def sanitize_tree(raw: str, san: str) -> dict:
             mapping[value] = f"{prefixes[group]}{index:02d}"
     if not mapping:
         mapping = {"vcenter": "vcenter.lab.invalid"}
+    for name, mask in (extra_names or {}).items():
+        if len(name) >= 3 and not IPV4.fullmatch(name):
+            mapping.setdefault(name, mask)
     salt = uuid.uuid4()
 
     def digest(text: str, size: int = 8) -> str:
@@ -938,8 +978,6 @@ def sanitize_tree(raw: str, san: str) -> dict:
     thumb_re = re.compile(r"\b(?:[0-9A-Fa-f]{2}:){19,63}[0-9A-Fa-f]{2}\b")
     license_re = re.compile(r"\b[A-Z0-9]{5}(?:-[A-Z0-9]{5}){4}\b")
     hex_id_re = re.compile(r"^[0-9a-fA-F]{32,}$")
-    model_re = re.compile(r"^(?:Micron|MTFDHA|SAMSUNG|INTEL|Cisco|Dell)[\w.\-]*$|"
-                         r"(?:VMware)?Virtual|Virtual Disk|Physical disk")
 
     def text(value: str) -> str:
         holes: list[str] = []
@@ -953,8 +991,8 @@ def sanitize_tree(raw: str, san: str) -> dict:
         value = mac_re.sub(lambda m: "02:00:00:" + ":".join(
             digest(m.group(0), 6)[k:k + 2] for k in (0, 2, 4)), value)
         value = IPV4.sub(lambda m: m.group(0) if m.group(0).startswith(("127.", "0.0.0.0", "255."))
-                         else "10.255." + ".".join(str(int(digest(m.group(0), 4)[k:k + 2], 16))
-                                                   for k in (0, 2)), value)
+                         else "10." + ".".join(str(int(digest(m.group(0), 6)[k:k + 2], 16))
+                                                for k in (0, 2, 4)), value)
         if name_re:
             value = name_re.sub(lambda m: mapping[m.group(1)], value)
         return re.sub(r"\x00(\d+)\x00", lambda m: holes[int(m.group(1))], value)
@@ -974,8 +1012,6 @@ def sanitize_tree(raw: str, san: str) -> dict:
             if value in mapping:
                 return mapping[value]
             return f"user-{digest(value, 6)}"
-        if model_re.match(value):
-            return f"<model-{digest(value)}>"
         return text(value)
 
     count = 0
@@ -1001,7 +1037,7 @@ def sanitize_tree(raw: str, san: str) -> dict:
             with open(dst, "w", encoding="utf-8") as fh:
                 fh.write(text(body))
             count += 1
-    info = {"files": count, "names": len(mapping), "salt": str(salt)}
+    info = {"files": count, "names": len(mapping)}
     with open(os.path.join(san, "SANITIZE-INFO.json"), "w", encoding="utf-8") as fh:
         json.dump(info, fh)
         fh.write("\n")
@@ -1052,8 +1088,9 @@ def call_plan() -> list[str]:
         f"QueryVsanManagedDisks, QueryDiskMappings and VSANVcIsWitnessHost per host; "
         f"VsanMassCollector.VsanRetrieveProperties",
         "step 6  Logout and DELETE /api/session",
-        "output  one tarball: raw/ (verbatim), sanitized/ (names, uuids, ips, users, hardware "
-        "models masked consistently), summary.json, summary of what answered",
+        "output  one tarball of the sanitized tree (names, uuids, ips, users, hardware "
+        "models masked consistently) with summary.json, what answered; raw/ stays on disk "
+        "only with --zip",
     ]
     return plan
 
@@ -1066,7 +1103,7 @@ def main() -> int:
     ap.add_argument("target", nargs="?", help="'vcsim' or a base URL such as https://host:443")
     ap.add_argument("--out", default=".", help="directory for the tarball (default: cwd)")
     ap.add_argument("--dry-run", action="store_true", help="print the call plan and exit")
-    ap.add_argument("--zip", action="store_true", help="also keep the uncompressed tree")
+    ap.add_argument("--zip", action="store_true", help="keep the work directory (raw/ and sanitized/) on disk")
     args = ap.parse_args()
 
     if args.dry_run:
@@ -1082,34 +1119,26 @@ def main() -> int:
     if "//" not in base:
         base = f"https://{base}"
     creds = read_credentials()
-    if not creds.get("VCENTER_URL"):
-        creds["VCENTER_URL"] = base
 
     os.makedirs(args.out, exist_ok=True)
-    work = os.path.join(args.out, f"vcs-walk-{dt.datetime.now(dt.timezone.utc):%Y%m%dT%H%M%SZ}")
+    work = tempfile.mkdtemp(prefix=f"vcs-walk-{dt.datetime.now(dt.timezone.utc):%Y%m%dT%H%M%SZ}-",
+                            dir=args.out)
     raw = os.path.join(work, "raw")
     san = os.path.join(work, "sanitized")
-    os.makedirs(raw, exist_ok=True)
-    os.chmod(work, 0o700)
+    os.makedirs(raw)
     cap = Capture(raw)
     import time
     cap.t0 = time.time()
     try:
         walk(base, creds, cap)
     finally:
-        info = sanitize_tree(raw, san)
+        info = sanitize_tree(raw, san, {urlsplit(base).hostname or "": "vcenter.lab.invalid",
+                                        creds["VCENTER_USER"]: "login-user"})
         tar = os.path.join(args.out, os.path.basename(work) + ".tar.gz")
         with tarfile.open(tar, "w:gz") as tf:
-            tf.add(work, arcname=os.path.basename(work))
+            tf.add(san, arcname=os.path.basename(work))
         if not args.zip:
-            for root, files in os.walk(work):
-                for fname in files:
-                    os.remove(os.path.join(root, fname))
-            for root in sorted((r for r, _f, _d in os.walk(work)), reverse=True):
-                try:
-                    os.rmdir(root)
-                except OSError:
-                    pass
+            shutil.rmtree(work)
         print(json.dumps({"tarball": tar, "sanitized": info,
                           "calls": len(cap.calls),
                           "faults": len([c for c in cap.calls if not c["ok"]])}, indent=1))

@@ -1,34 +1,42 @@
 #!/usr/bin/env python3
 """Offline check for tools/probe/probe.py against the built simulator.
 
-    python3 tools/probe/test_probe.py
+    python3 tools/probe/test_probe.py [work-dir]
 
-Builds the simulator, starts it on a free port with the `phase1` scenario, runs
-the walk twice (the second time to prove the same shape is reproducible), and
-asserts the tree is complete:
+Builds the simulator, starts it on an ephemeral port with the `phase1`
+scenario, and runs the walk three times (twice with --zip, once without). It
+asserts:
 
   * the inventory holds the expected managed types with the scenario's counts
-  * every `/vsanHealth` family answered with a `VsanPerfEntityMetricCSV`, or a
-    fault record with a fault name
-  * the call log records one entry per call, with the fault name and message
-  * the sanitized copy carries masked names and no credential anywhere
-  * the two walks agree on the set of call names
+  * every `/vsanHealth` family answered with a `VsanPerfEntityMetricCSV`
+  * every call record is a `.json` file and every fault in the call log is
+    backed by a `_fault` record of the same name on disk
+  * the sanitized copy keeps managed-object type names, masks host names, the
+    login user, hardware identifiers and credentials, and remaps UUIDs
+  * the tarball holds the sanitized tree only, and a run without --zip leaves
+    nothing but the tarball
+  * two walks agree on the set of call names
 
 Exit status is non-zero on any failure. No live system is contacted.
 """
 from __future__ import annotations
 
+import io
 import json
 import os
+import re
+import socket
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-PORT = 18443
-BASE = f"https://127.0.0.1:{PORT}"
-CREDS = {"VCENTER_URL": BASE, "VCENTER_USER": "ro-user", "VCENTER_PASSWORD": "VMware1-sim"}
+USER, PASSWORD = "ro-user", "VMware1-sim"
+MASKED_KEYS = ("serialNumber", "model", "vendor")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 FAILURES: list[str] = []
 
@@ -40,52 +48,97 @@ def check(name: str, ok, detail="") -> None:
         FAILURES.append(f"{name}: {detail}")
 
 
+def free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
 def build() -> str:
     binary = os.path.join(ROOT, "vcsimulator")
     subprocess.run(["go", "build", "-o", binary, "./cmd/vcsimulator"], cwd=ROOT, check=True)
     return binary
 
 
-def start(binary: str, out_dir: str):
+def start(binary: str, out_dir: str, port: int):
     log = open(os.path.join(out_dir, "simulator.log"), "w")
     proc = subprocess.Popen(
         [binary, "-scenario", os.path.join(ROOT, "examples/scenarios/phase1.yaml"),
-         "-data", os.path.join(out_dir, "data"), "-listen", f"127.0.0.1:{PORT}"],
+         "-data", os.path.join(out_dir, "data"), "-listen", f"127.0.0.1:{port}"],
         cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
     for _ in range(60):
         try:
-            import socket
-            with socket.create_connection(("127.0.0.1", PORT), timeout=1):
+            with socket.create_connection(("127.0.0.1", port), timeout=1):
                 return proc, log
         except OSError:
             time.sleep(0.25)
+    proc.kill()
     raise SystemExit("simulator did not start")
 
 
-def run_walk(out_dir: str) -> dict:
-    env = dict(os.environ, **CREDS)
-    result = subprocess.run(
-        [sys.executable, os.path.join(HERE, "probe.py"), BASE, "--out", out_dir, "--zip"],
-        env=env, capture_output=True, text=True, check=True)
+def run_walk(base: str, out_dir: str, keep: bool) -> dict:
+    env = dict(os.environ, VCENTER_USER=USER, VCENTER_PASSWORD=PASSWORD)
+    cmd = [sys.executable, os.path.join(HERE, "probe.py"), base, "--out", out_dir]
+    if keep:
+        cmd.append("--zip")
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
 
 
+def work_dir(info: dict) -> str:
+    return info["tarball"][: -len(".tar.gz")]
+
+
+def load(*parts: str):
+    with open(os.path.join(*parts), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def pairs(node, key=None):
+    """Every (key, string value) in a JSON document."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            yield from pairs(v, k)
+    elif isinstance(node, list):
+        for v in node:
+            yield from pairs(v, key)
+    elif isinstance(node, str):
+        yield key, node
+
+
+def tree_files(root: str):
+    for dirpath, _d, files in os.walk(root):
+        for fname in files:
+            yield os.path.join(dirpath, fname)
+
+
+def tarball_files(path: str) -> dict:
+    out = {}
+    with tarfile.open(path) as tf:
+        for member in tf.getmembers():
+            if member.isfile():
+                out[member.name] = tf.extractfile(member).read().decode("utf-8", "replace")
+    return out
+
+
 def main() -> int:
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="probe-test-")
     os.makedirs(out_dir, exist_ok=True)
+    port = free_port()
+    base = f"https://127.0.0.1:{port}"
     binary = build()
-    proc, log = start(binary, out_dir)
+    proc, log = start(binary, out_dir, port)
     try:
         plan = subprocess.run([sys.executable, os.path.join(HERE, "probe.py"), "--dry-run"],
                               capture_output=True, text=True, check=True).stdout
         check("--dry-run prints a plan without a server", "step 0" in plan and "disk-group" in plan,
               plan[:120])
-        info = run_walk(out_dir)
-        work = os.path.dirname(info["tarball"].replace(".tar.gz", "")) or out_dir
-        work = os.path.join(out_dir, os.path.basename(info["tarball"])[: -len(".tar.gz")])
+        walks = os.path.join(out_dir, "walks")
+        info = run_walk(base, walks, keep=True)
+        work = work_dir(info)
         raw, san = os.path.join(work, "raw"), os.path.join(work, "sanitized")
 
-        summary = json.load(open(os.path.join(raw, "summary.json"), encoding="utf-8"))
+        summary = load(raw, "summary.json")
         check("about.apiVersion 9.1.1.0",
               summary["about"]["about"].get("apiVersion") == "9.1.1.0",
               summary["about"]["about"].get("apiVersion"))
@@ -96,23 +149,20 @@ def main() -> int:
         check("inventory: one cluster, four hosts, four VMs, five datastores",
               counts.get("ClusterComputeResource") == 1 and counts.get("HostSystem") == 4
               and counts.get("VirtualMachine") == 4 and counts.get("Datastore") == 5, counts)
-        inv = json.load(open(os.path.join(raw, "inv", "HostSystem.json"), encoding="utf-8"))
+        inv = load(raw, "inv", "HostSystem.json")
         check("inv/HostSystem.json: one record per host with props",
               len(inv) == 4 and all(isinstance(r, dict) and r.get("props") for r in inv),
               [list(r) for r in inv[:1]])
-        check("inv records are plain JSON objects, not strings",
-              isinstance(inv[0]["props"], dict) and "name" in inv[0]["props"], inv[0]["props"])
-        hosts = [r["props"]["name"] for r in inv]
         check("every host reports a vsanHostConfig with vsanEsaEnabled",
               all(r["props"].get("config", {}).get("vsanHostConfig", {}).get("vsanEsaEnabled")
                   is True for r in inv),
               [r["props"].get("config", {}).get("vsanHostConfig") for r in inv][:1])
+        hosts = [r["props"]["name"] for r in inv]
 
         families = {}
         for fname in sorted(os.listdir(os.path.join(raw, "vsan"))):
             if fname.startswith("VsanPerfQueryPerf-"):
-                families[fname[len("VsanPerfQueryPerf-"):].replace(".json", "")] = \
-                    json.load(open(os.path.join(raw, "vsan", fname), encoding="utf-8"))
+                families[fname[len("VsanPerfQueryPerf-"):-len(".json")]] = load(raw, "vsan", fname)
         wanted = ("cluster-domclient", "host-domclient", "virtual-machine", "vsan-cpu", "host-cpu",
                   "vsan-pnic-net", "disk-group", "cache-disk", "capacity-disk", "lsom-world-cpu",
                   "vsan-esa-disk-layer")
@@ -128,40 +178,79 @@ def main() -> int:
         check("empty families echo the wildcard ref with no samples",
               all(len(families[f]) == 1 and families[f][0].get("entityRefId", "").endswith(":*")
                   for f in empty), empty)
-        faulted = [c["name"] for c in summary["calls"] if not c["ok"]]
-        check("fault records carry a fault name",
-              all(any(x["name"] == n and x.get("fault") for x in summary["calls"])
-                  for n in faulted[:5]), faulted[:3])
 
+        bare = [os.path.relpath(f, raw) for f in tree_files(raw) if not f.endswith(".json")]
+        check("every raw record is a .json file", not bare, bare[:3])
+        unbacked = []
+        for call in summary["calls"]:
+            if call["ok"]:
+                continue
+            record = load(raw, *(call["name"] + ".json").split("/"))
+            if not call.get("fault") or record.get("_fault", {}).get("fault") != call["fault"]:
+                unbacked.append(call["name"])
+        check("every faulted call is backed by a _fault record of the same name",
+              any(not c["ok"] for c in summary["calls"]) and not unbacked, unbacked[:3])
         check("the OSA disk mapping call is recorded (empty on ESA)",
               any(x["name"].startswith("vsan/QueryDiskMappings-") for x in summary["calls"]))
         check("unsupported methods are recorded as MethodNotFound, not skipped",
               any(x.get("fault", "").endswith("MethodNotFound") for x in summary["calls"]))
 
-        san_index = json.load(open(os.path.join(san, "inv", "HostSystem.json"), encoding="utf-8"))
+        raw_types = {v for k, v in pairs(load(raw, "inv", "VirtualMachine.json")) if k == "_type"}
+        san_types = {v for k, v in pairs(load(san, "inv", "VirtualMachine.json")) if k == "_type"}
+        check("sanitized: VM records keep their managed-object type names",
+              "VirtualMachineConfigInfo" in raw_types and san_types == raw_types,
+              sorted(san_types ^ raw_types)[:3])
+        san_hosts = load(san, "inv", "HostSystem.json")
         check("sanitized: host names masked",
-              san_index[0]["props"]["name"] != hosts[0]
-              and san_index[0]["props"]["name"].startswith("esx"),
-              (san_index[0]["props"]["name"], hosts[0]))
-        blob = "".join(open(os.path.join(root, f), encoding="utf-8").read()
-                       for root, _d, files in os.walk(san) for f in files)
-        check("sanitized: password absent", CREDS["VCENTER_PASSWORD"] not in blob)
-        check("sanitized: real host name absent", hosts[0] not in blob)
+              san_hosts[0]["props"]["name"] != hosts[0] and san_hosts[0]["props"]["name"].startswith("esx"),
+              (san_hosts[0]["props"]["name"], hosts[0]))
+
+        raw_secret = unmasked = 0
+        for f in tree_files(raw):
+            raw_secret += sum(1 for k, v in pairs(load(f)) if k in MASKED_KEYS and len(v) > 3)
+        for f in tree_files(san):
+            unmasked += sum(1 for k, v in pairs(load(f))
+                            if k in MASKED_KEYS and len(v) > 3 and not v.startswith("<"))
+        check("sanitized: serial numbers, models and vendors masked in every record",
+              raw_secret > 0 and unmasked == 0, (raw_secret, unmasked))
+        blob = "".join(open(f, encoding="utf-8").read() for f in tree_files(san))
+        check("sanitized: password, login user and real host names absent",
+              PASSWORD not in blob and USER not in blob and not any(h in blob for h in hosts),
+              [t for t in (PASSWORD, USER, *hosts) if t in blob])
+        raw_uuid = summary["about"]["about"].get("instanceUuid")
+        san_uuid = load(san, "about.json")["about"].get("instanceUuid")
         check("sanitized: a uuid is remapped, not dropped",
-              str(summary["about"]["about"].get("instanceUuid")) not in blob
-              or "uuid5" or True)
+              bool(raw_uuid) and san_uuid != raw_uuid and bool(UUID_RE.match(str(san_uuid))),
+              (raw_uuid, san_uuid))
+        check("sanitized: no salt is shipped",
+              "salt" not in load(san, "SANITIZE-INFO.json"))
+
+        tar_files = tarball_files(info["tarball"])
+        check("tarball holds the sanitized tree only",
+              tar_files and not any("/raw/" in n or n.endswith("/raw") for n in tar_files)
+              and any(n.endswith("/summary.json") for n in tar_files), sorted(tar_files)[:3])
+        tar_blob = "".join(tar_files.values())
+        check("tarball carries no real host name, login user or password",
+              not any(t in tar_blob for t in (PASSWORD, USER, *hosts)))
 
         names1 = [c["name"] for c in summary["calls"]]
-        info2 = run_walk(out_dir)
-        work2 = os.path.join(out_dir, os.path.basename(info2["tarball"])[: -len(".tar.gz")])
-        summary2 = json.load(open(os.path.join(work2, "raw", "summary.json"), encoding="utf-8"))
+        info2 = run_walk(base, walks, keep=True)
+        summary2 = load(work_dir(info2), "raw", "summary.json")
         check("a second walk reproduces the call set",
               [c["name"] for c in summary2["calls"]] == names1,
               (len(names1), len(summary2["calls"])))
         check("a second walk reproduces the per-type counts",
               summary2["counts"] == summary["counts"], (summary2["counts"], summary["counts"]))
-        check("one tarball per walk",
-              len([f for f in os.listdir(out_dir) if f.endswith(".tar.gz")]) == 2)
+        check("each walk gets its own tarball and work directory",
+              len(os.listdir(walks)) == 4 and info["tarball"] != info2["tarball"],
+              sorted(os.listdir(walks)))
+
+        plain = os.path.join(out_dir, "plain")
+        info3 = run_walk(base, plain, keep=False)
+        check("a run without --zip leaves only the tarball",
+              os.listdir(plain) == [os.path.basename(info3["tarball"])], os.listdir(plain))
+        check("a run without --zip still reports the walk",
+              info3["calls"] == len(summary["calls"]), (info3["calls"], len(summary["calls"])))
     finally:
         proc.terminate()
         try:
