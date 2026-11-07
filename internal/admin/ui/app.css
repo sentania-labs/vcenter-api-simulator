@@ -143,9 +143,7 @@ kbd { font-family: var(--font-mono); font-size: 10.5px; border: 1px solid var(--
 .lat-pill { font-size: 11.5px; padding: 1px 8px; white-space: nowrap; }
 .lat-badge { white-space: nowrap; }
 
-/* Rev 2 local workarounds for Lattice dark-theme contrast (R1-09), pending the principal's
-   decision on fixing Lattice upstream: links use accent-ink (7.54:1 instead of 4.08:1), and the
-   danger button uses on-accent text (4.8:1 instead of 3.88:1). */
+/* Interim until the vendored Lattice tokens include the contrast fix; remove then. */
 [data-theme="dark"] a { color: var(--accent-ink); }
 [data-theme="dark"] .lat-btn--danger { color: var(--on-accent); }
 
