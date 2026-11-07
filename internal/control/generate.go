@@ -118,7 +118,11 @@ func (c *Controller) replaceDraft(sc *scenario.Scenario, origin string) DraftVie
 			note = fmt.Sprintf("The pending draft (%s %s %s → %s, %d change(s)) is discarded.", first.Object, first.Field, first.Before, first.After, len(rv.Changes))
 		}
 	}
-	c.draft = &Draft{Scenario: sc, Scope: c.scope, BasedOn: r.version, Origin: origin, Discarded: note, Created: c.now()}
+	scope := c.scope
+	if c.draft != nil {
+		scope = c.draft.Scope // the operator's pending scope choice survives a replacement
+	}
+	c.draft = &Draft{Scenario: sc, Scope: scope, BasedOn: r.version, Origin: origin, Discarded: note, Created: c.now()}
 	return c.draftView()
 }
 
@@ -239,7 +243,13 @@ func (c *Controller) ApplyPreset(name string) (DraftView, error) {
 		return DraftView{}, err
 	}
 	var sc *scenario.Scenario
+	// a preset builds on the pending draft when there is one, so loading it
+	// never throws away edits the operator has not applied yet
+	cur := c.draft
 	base := c.applied().sc
+	if cur != nil {
+		base = cur.Scenario
+	}
 	if p.Kind == "topology" {
 		sc = ps
 		sc.Auth, sc.TLS = base.Auth, base.TLS
@@ -257,6 +267,13 @@ func (c *Controller) ApplyPreset(name string) (DraftView, error) {
 	}
 	if err := sc.Validate(); err != nil {
 		return DraftView{}, &Invalid{err.Error()}
+	}
+	if cur != nil && p.Kind == "telemetry" {
+		// pending topology edits, regeneration markers and the scope stay;
+		// only the faults and latency change
+		cur.Scenario = sc
+		c.settle()
+		return c.draftView(), nil
 	}
 	return c.replaceDraft(sc, "preset:"+name), nil
 }

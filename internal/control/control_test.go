@@ -746,3 +746,60 @@ func TestDeleteClusterDropsItsScopedFaultRules(t *testing.T) {
 		t.Fatalf("faults after delete = %+v; the rule scoped only to the deleted cluster must go, not widen to all clusters", got)
 	}
 }
+
+// Loading a telemetry preset must not discard what is already pending.
+func TestTelemetryPresetKeepsThePendingDraft(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
+	e := editable(t, c)
+	setHosts(e, "dc-01/cluster-02", 9)
+	put(t, c, e)
+	if _, err := c.Regenerate("dc-01/cluster-04"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SetDraft(mustJSON(t, Strip(c.draft.Scenario)), ScopeDashboard); err != nil {
+		t.Fatal(err)
+	}
+	v, err := c.ApplyPreset("brown-out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hosts int
+	for _, o := range v.Scenario.Clusters {
+		if o.Key == "dc-01/cluster-02" {
+			hosts = o.Hosts
+		}
+	}
+	if hosts != 9 {
+		t.Errorf("the pending host edit was discarded: %+v", v.Scenario.Clusters)
+	}
+	if len(v.Regenerate) != 1 || v.Regenerate[0] != "dc-01/cluster-04" {
+		t.Errorf("regeneration marker lost: %v", v.Regenerate)
+	}
+	if v.Scope != ScopeDashboard {
+		t.Errorf("scope %q", v.Scope)
+	}
+	if len(v.Scenario.Faults) != 1 || v.Scenario.Faults[0].Family != "host-domowner" || v.Scenario.Latency.PerfQuery == nil || v.Scenario.Latency.PerfQuery.FixedMs != 300 {
+		t.Errorf("preset not applied: %+v %+v", v.Scenario.Faults, v.Scenario.Latency)
+	}
+	if rv, _ := c.Review(); rv.TopologyCount == 0 || rv.TelemetryCount == 0 {
+		t.Errorf("review must show both: %+v", rv)
+	}
+
+	// a topology preset replaces the topology but keeps the pending scope
+	v, err = c.ApplyPreset("phase1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Scope != ScopeDashboard {
+		t.Errorf("topology preset reset the scope to %q", v.Scope)
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}

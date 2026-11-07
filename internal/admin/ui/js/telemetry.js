@@ -39,12 +39,20 @@ const chgText = (c) => (c.after === 'added' || c.after === 'removed' ? `${c.obje
 // 24 h UTC text: "YYYY-MM-DD HH:MM" (a T works too); the Z is implied
 const utc = (v) => { const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})$/.exec((v || '').trim()); return m ? `${m[1]}T${m[2].padStart(2, '0')}:${m[3]}:00Z` : undefined; };
 
-async function save(ctx, data, mutate, scope) {
-  const sc = clone(data.draft.scenario);
-  mutate(sc);
-  const r = await ctx.run(() => api('/draft', { method: 'PUT', body: { scenario: sc, scope: scope ?? data.draft.scope } }));
-  await ctx.refresh();
-  return r;
+// Saves run one at a time, and each applies its change to the latest saved
+// draft, not to the copy the screen drew: two fields edited in quick
+// succession must both land.
+let saveChain = Promise.resolve();
+export function save(ctx, data, mutate, scope) {
+  const run = () => ctx.run(async () => {
+    const cur = await api('/draft');
+    const sc = clone(cur.scenario);
+    mutate(sc);
+    return api('/draft', { method: 'PUT', body: { scenario: sc, scope: scope ?? cur.scope } });
+  });
+  const p = saveChain.then(run, run);
+  saveChain = p.catch(() => {});
+  return p.then(async (r) => { await ctx.refresh(); return r; });
 }
 
 // ---- cards ---------------------------------------------------------------------

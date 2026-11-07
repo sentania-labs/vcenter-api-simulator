@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -173,5 +174,18 @@ func TestHostHeaderIsValidated(t *testing.T) {
 		if code := host("POST", "/api/pause", j, `{"paused":false}`, h); code != 200 {
 			t.Errorf("write with Host %q: %d, want 200", h, code)
 		}
+	}
+}
+
+// The console's draft-save behaviour is tested in JavaScript against a fake
+// admin API; this runs it with node when node is installed.
+func TestConsoleScriptTests(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	cmd := exec.Command(node, "--test", "ui/js/telemetry.test.mjs")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("node --test: %v\n%s", err, out)
 	}
 }
