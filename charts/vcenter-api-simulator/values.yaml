@@ -1,0 +1,166 @@
+# Default values for vcenter-api-simulator.
+# One Helm release is one simulated vCenter endpoint. The chart creates no
+# RBAC, mounts no ServiceAccount token and asks for no privilege: the pod only
+# serves HTTPS and writes its own certificate.
+
+image:
+  repository: ghcr.io/sentania-labs/vcenter-api-simulator
+  # Defaults to the chart's appVersion. Pin this in a deployment repository.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Public name of this simulated vCenter: the Ingress host, a certificate
+# subject alternative name, and the hostname operators enter in a collector.
+# Empty means in-cluster access by Service name only.
+hostname: ""
+
+simulator:
+  # Identity seed. The same seed reproduces every MoRef, UUID and metric
+  # value, so changing it changes the inventory a collector already knows.
+  seed: phase1
+  # Container port the simulator listens on (the Service maps its own port
+  # to it, so 443 outside needs no privilege inside).
+  port: 8443
+  # Extra DNS names or IPs for the certificate the simulator creates on first
+  # start, beyond hostname and the Service's cluster-local names. Ignored once
+  # a certificate exists, and ignored for tls.existingSecret / cert-manager.
+  tlsNames: []
+  # Additional command-line arguments passed to vcsimulator.
+  extraArgs: []
+
+credentials:
+  # When false, any user name and password log in (vcsim's default).
+  # When true, only the pair in the Secret below logs in.
+  enabled: false
+  # Name of an existing Secret with keys `username` and `password`. Preferred.
+  existingSecret: ""
+  # Placeholders used to create a Secret when existingSecret is empty. Never
+  # real vCenter credentials: this is a simulator.
+  username: simulator
+  password: change-me
+
+tls:
+  # Name of an existing kubernetes.io/tls Secret (tls.crt, tls.key) to serve.
+  # Takes precedence over certManager and over the generated certificate.
+  existingSecret: ""
+  certManager:
+    # Request a certificate from cert-manager for hostname (+ tlsNames) and
+    # serve it. Requires cert-manager in the cluster and an issuer. Note that
+    # a renewed certificate changes the fingerprint a management pack pinned.
+    enabled: false
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+      group: cert-manager.io
+    duration: 87600h
+    renewBefore: 720h
+    secretName: ""
+  # Without either of the above the simulator creates a self-signed
+  # certificate on first start and keeps it in the persistent volume.
+
+persistence:
+  # Keep the generated certificate (and future inventory state) across pod
+  # restarts. With it off, an emptyDir is used and every new pod issues a new
+  # certificate, which breaks a management pack's certificate pin.
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 100Mi
+  annotations: {}
+
+service:
+  type: ClusterIP
+  # Port collectors connect to. The 1.4.7 line of the reference pack ignores
+  # any port in its configuration and uses 443.
+  port: 443
+  # Only for type NodePort.
+  nodePort: null
+  annotations: {}
+  # Only for type LoadBalancer.
+  loadBalancerIP: ""
+  loadBalancerClass: ""
+  externalTrafficPolicy: ""
+
+ingress:
+  # Off by default: nothing is exposed outside the cluster until asked.
+  enabled: false
+  className: ""
+  # The backend speaks HTTPS; most controllers need to be told. For
+  # ingress-nginx:
+  #   nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+  # For Traefik, use a ServersTransport with insecureSkipVerify or the CA.
+  annotations: {}
+  # Only /sdk and /vsanHealth are served today; nothing else is exposed.
+  paths:
+    - /sdk
+    - /vsanHealth
+  pathType: Prefix
+  tls:
+    # Terminate TLS at the ingress with this Secret (cert-manager annotations
+    # on the Ingress work too). The collector then pins the ingress
+    # certificate, not the simulator's.
+    enabled: false
+    secretName: ""
+
+probes:
+  # The service version document the SDK fetches first; HTTPS without
+  # verification, as kubelet does.
+  path: /sdk/vimServiceVersions.xml
+  startup:
+    enabled: true
+    periodSeconds: 2
+    failureThreshold: 30
+  readiness:
+    enabled: true
+    periodSeconds: 10
+    timeoutSeconds: 3
+  liveness:
+    enabled: true
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # The simulator never talks to the Kubernetes API.
+  automountServiceAccountToken: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+extraEnv: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+terminationGracePeriodSeconds: 10

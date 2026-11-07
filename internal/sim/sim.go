@@ -29,6 +29,9 @@ type Options struct {
 	Topology *topology.Topology
 	// Now is the clock the Performance Service uses; nil means time.Now.
 	Now func() time.Time
+	// Username and Password, when Username is set, are the only credentials
+	// Login accepts. Empty keeps vcsim's default: any non-empty pair logs in.
+	Username, Password string
 }
 
 // Simulator is a running in-process vCenter.
@@ -83,6 +86,11 @@ func New(opts Options) (*Simulator, error) {
 
 	m.Service.RegisterEndpoints = true
 	m.Service.Listen = &url.URL{Host: "127.0.0.1:0"}
+	if opts.Username != "" {
+		// vcsim's SessionManager.Authenticate compares Login against the
+		// user info on the listen URL when one is set.
+		m.Service.Listen.User = url.UserPassword(opts.Username, opts.Password)
+	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
 	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat}

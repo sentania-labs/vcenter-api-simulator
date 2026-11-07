@@ -1,0 +1,17 @@
+{{ .Chart.Name }} {{ .Chart.Version }} ({{ include "vcsim.image" . }}) is installed as release {{ .Release.Name }}.
+
+Simulated vCenter endpoints (seed {{ .Values.simulator.seed | quote }}):
+  in-cluster:  https://{{ include "vcsim.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/sdk  and  /vsanHealth
+{{- if .Values.ingress.enabled }}
+  ingress:     https://{{ .Values.hostname }}/sdk  and  /vsanHealth
+{{- else if .Values.hostname }}
+  hostname:    {{ .Values.hostname }} (no Ingress; expose the Service or set ingress.enabled)
+{{- end }}
+
+Login: {{ if .Values.credentials.enabled }}only the username/password in Secret {{ include "vcsim.credentialsSecretName" . }}{{ else }}any user name and password{{ end }}.
+
+Certificate: {{ if .Values.tls.existingSecret }}served from Secret {{ .Values.tls.existingSecret }}{{ else if .Values.tls.certManager.enabled }}issued by cert-manager into Secret {{ include "vcsim.tlsSecretName" . }}{{ else if .Values.persistence.enabled }}self-signed on first start, kept in PVC {{ default (include "vcsim.fullname" .) .Values.persistence.existingClaim }} across restarts{{ else }}self-signed and REGENERATED on every pod start (persistence.enabled=false); a management pack's certificate pin will not survive a restart{{ end }}.
+
+Try it from your workstation:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "vcsim.fullname" . }} 8443:{{ .Values.service.port }}
+  curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml

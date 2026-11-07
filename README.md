@@ -44,12 +44,22 @@ once and kept, so the 2.0.0 pack's certificate pin survives restarts.
 
 | Check | How | Where it runs |
 |---|---|---|
-| Contract: every captured request replayed, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization | `go test ./...` | CI `go` job |
-| The pack's own `perfsvc.connect/probe/collect/build_name_map/build_parent_map/build_disk_hardware` (pyVmomi 8.0.3.0.1, pack at the pinned commit) against a running simulator, both metric scopes, label sets equal to the live capture, every object named and parented, second collection identical, verify-on with the simulator's certificate pinned | `tools/mp-harness/harness.py` | CI `mp-collector` job |
-| `mp-test connect` and `mp-test collect` twice through the Operations integration SDK 1.3.1 (builds and runs the pack's adapter container) | `tools/mp-harness/mp_test_run.py` | CI `mp-test` job (Docker) |
+| Contract: every captured request replayed, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `ci` workflow, `go` job |
+| Chart: `helm lint --strict` with every `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template` and `kubeconform` of the rendered manifests and the Argo CD example | `.github/workflows/package.yml` | CI `package` workflow, `chart` job |
+| Image: build, OCI label and non-root check, `docker compose` boot, then a vSphere client smoke ([`tools/smoke/smoke.ps1`](tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, expected hosts and VMs back, wrong password refused | PowerCLI on `pwsh` | CI `package` workflow, `image` job |
+| Chart install: the chart in a disposable kind cluster with default values, the same smoke through the Service, the certificate unchanged across a pod restart, an upgrade to `tls.existingSecret` and restricted login that verifies against the issuing CA | [`tools/smoke/helm-kind.sh`](tools/smoke/helm-kind.sh) | CI `package` workflow, `image` job, before any push |
+| The pack's own `perfsvc.connect/probe/collect/build_name_map/build_parent_map/build_disk_hardware` (pyVmomi 8.0.3.0.1, pack at the pinned commit) against a running simulator, both metric scopes, label sets equal to the live capture, every object named and parented, second collection identical, verify-on with the simulator's certificate pinned | `tools/mp-harness/harness.py` | Optional: `mp-acceptance` workflow (`gh workflow run mp-acceptance.yml`), not required CI |
+| `mp-test connect` and `mp-test collect` twice through the Operations integration SDK 1.3.1 (builds and runs the pack's adapter container) | `tools/mp-harness/mp_test_run.py` | Optional: `mp-acceptance` workflow, not required CI |
 
-Locally, with the pack checked out at `af976fb9fe97bbac2fd94b666a3f79aa12656f2a`
-of `sentania-labs/vsanhostmetrics`:
+Smoke a simulator you are running yourself (installs VMware.PowerCLI for
+the current user when missing):
+
+```sh
+pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install
+```
+
+The management pack checks run locally with the pack checked out at
+`af976fb9fe97bbac2fd94b666a3f79aa12656f2a` of `sentania-labs/vsanhostmetrics`:
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install pyvmomi==8.0.3.0.1 vmware-aria-operations-integration-sdk==1.3.1
@@ -64,8 +74,102 @@ the Docker bridge gateway, so bind the simulator to `0.0.0.0`. It needs a TTY
 and gets a pty from the runner. `attach_to_vcenter` must be off under
 `mp-test`, which has no Operations Suite API to resolve vCenter objects.
 
-Out of scope for this milestone: UI, Docker and Helm packaging, OSA and
-non-vSAN storage, more than one cluster, and any live vCenter access.
+Out of scope for this milestone: UI, OSA and non-vSAN storage, more than one
+cluster, and any live vCenter access.
+
+## Running it
+
+The image is `ghcr.io/sentania-labs/vcenter-api-simulator`, built from
+[`Dockerfile`](Dockerfile) on every push to `main` (tags `main` and
+`sha-<commit>`) and on every `vMAJOR.MINOR.PATCH` tag (that tag, plus
+`latest` for the highest version). It is a static binary on a distroless
+non-root base, labeled with the source commit
+(`org.opencontainers.image.revision`) and version. Pull requests build and
+test the image without publishing it.
+
+Login accepts any user name and password unless `VCSIM_USERNAME` and
+`VCSIM_PASSWORD` (or `-username`/`-password`) are set, in which case only
+that pair logs in. Use placeholders: this is a simulator, never point real
+credentials at it.
+
+### docker run
+
+```sh
+docker run -d --name vcsim -p 8443:8443 -v vcsim-tls:/data/tls \
+  --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+  ghcr.io/sentania-labs/vcenter-api-simulator:main
+curl -sk https://localhost:8443/sdk/vimServiceVersions.xml
+```
+
+The certificate is created on first start and kept in the volume mounted at
+`/data/tls`, so the fingerprint a management pack pinned survives restarts.
+Add `-tls-names=<hostname>` (as a command argument) to put the name
+collectors use into it, and `--read-only` needs the `/tmp` tmpfs: vcsim keeps
+scratch files there.
+
+### docker compose
+
+[`docker-compose.yml`](docker-compose.yml) runs the same thing with a named
+volume for the certificate:
+
+```sh
+docker compose up -d                 # pulls :main
+docker compose up -d --build         # builds from this checkout
+VCSIM_USERNAME=operator VCSIM_PASSWORD=placeholder docker compose up -d   # restricted login
+docker compose down -v               # also discards the certificate
+```
+
+`VCSIM_TAG`, `VCSIM_PORT`, `VCSIM_SEED` and `VCSIM_TLS_NAMES` are the other
+knobs.
+
+### Helm
+
+[`charts/vcenter-api-simulator`](charts/vcenter-api-simulator) installs one
+simulated vCenter per release. It creates a Deployment (one replica, non-root,
+read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
+ServiceAccount with no token mounted, a PVC for the certificate, and
+optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
+and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
+outside the cluster until `ingress.enabled` or a LoadBalancer Service asks
+for it.
+
+```sh
+helm install vcsim-01 charts/vcenter-api-simulator \
+  --set hostname=vcsim-01.example.test \
+  --set credentials.enabled=true --set credentials.existingSecret=vcsim-01-login \
+  --set ingress.enabled=true --set ingress.className=nginx \
+  --set-string 'ingress.annotations.nginx\.ingress\.kubernetes\.io/backend-protocol=HTTPS' \
+  --set ingress.tls.enabled=true --set ingress.tls.secretName=vcsim-01-ingress-tls
+```
+
+Certificate options, in order of precedence:
+
+- `tls.existingSecret`: a `kubernetes.io/tls` Secret to serve as is.
+- `tls.certManager.enabled`: a cert-manager Certificate for `hostname` (and
+  `simulator.tlsNames`) from `tls.certManager.issuerRef`. A renewal changes
+  the fingerprint a pack pinned.
+- Neither: a self-signed certificate created on first start, kept in the
+  PVC (`persistence.enabled`, default on; the PVC is kept on uninstall).
+  With persistence off every new pod issues a new certificate.
+
+The Ingress backend is HTTPS; tell the controller
+(`nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"` for ingress-nginx).
+When the Ingress terminates TLS, collectors pin the ingress certificate, not
+the simulator's.
+
+[`charts/vcenter-api-simulator/ci`](charts/vcenter-api-simulator/ci) holds
+example values for the Ingress, an existing TLS Secret, cert-manager, and no
+persistence; `helm lint` runs each of them.
+
+### Argo CD
+
+[`examples/argocd-application.yaml`](examples/argocd-application.yaml) is
+one Application per simulated vCenter, pointing at the chart in this
+repository with the hostname, seed, credentials Secret name and Ingress in
+`valuesObject`. Copy it, change the name, hostname and seed, and it is
+another endpoint. The chart needs nothing cluster-wide, so the Application
+fits any project that may create a Deployment, Service, PVC and Ingress in
+its namespace.
 
 ## Documents
 - [Kickoff specification](docs/SPECIFICATION.md)

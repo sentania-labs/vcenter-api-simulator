@@ -1,0 +1,56 @@
+# One Argo CD Application per simulated vCenter. Copy, rename, change the
+# hostname and seed, and the release becomes another endpoint. The chart
+# needs no cluster-wide RBAC and no privileges, so the Application can live in
+# any project that may create a Deployment, Service, PVC and Ingress in the
+# target namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vcsim-01
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sentania-labs/vcenter-api-simulator.git
+    # Pin to a tag or commit in a real deployment repository.
+    targetRevision: main
+    path: charts/vcenter-api-simulator
+    helm:
+      releaseName: vcsim-01
+      valuesObject:
+        hostname: vcsim-01.example.test
+        image:
+          tag: main
+        simulator:
+          seed: vcsim-01
+        credentials:
+          enabled: true
+          # A Secret with keys `username` and `password`, created out of band
+          # (sealed-secrets, external-secrets, ...). Placeholder name.
+          existingSecret: vcsim-01-login
+        ingress:
+          enabled: true
+          className: nginx
+          annotations:
+            nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+            # Or let cert-manager issue the ingress certificate:
+            # cert-manager.io/cluster-issuer: lab-ca
+          tls:
+            enabled: true
+            secretName: vcsim-01-ingress-tls
+        persistence:
+          enabled: true
+          # storageClass: longhorn
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vcsim-01
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The PVC keeps the pinned certificate; do not let a prune delete it.
+      - PruneLast=true

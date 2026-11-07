@@ -1,0 +1,6 @@
+# Only what the Go build needs reaches the builder.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
