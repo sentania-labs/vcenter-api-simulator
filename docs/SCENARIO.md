@@ -23,7 +23,7 @@ serial it was first given. Serials are never reused.
 | You do | uuids | MoRefs |
 |---|---|---|
 | restart on the same data directory | unchanged | unchanged |
-| add clusters, hosts or VMs | existing ones unchanged; new ones get new serials | existing ones unchanged; new objects are created last |
+| add clusters, hosts or VMs | existing ones unchanged; new ones get new serials | existing ones unchanged; new objects are created last (VMs that rebalance onto a new host keep their MoRef: they are created in their own order and moved afterwards) |
 | add devices to an existing host | existing ones unchanged | the host's new local datastore is created inside the host's step, so objects created after that host renumber |
 | remove entities | the rest unchanged; the removed serials stay retired | objects created after the removed one renumber |
 | change `seed` | refused at start unless `-regenerate` is given; then every identity changes | all change |

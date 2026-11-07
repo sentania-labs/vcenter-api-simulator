@@ -96,8 +96,13 @@ jobs:
           curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml | grep -q '<version>9.1.1.0</version>' || { echo "simulator did not start"; exit 1; }
       - name: mp-test connect, then collect twice, and compare
         run: |
+          # the expected object counts come from the scenario itself
+          read -r clusters hosts vms < <("$RUNNER_TEMP/vcsimulator" -scenario "$SCENARIO" -describe \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["clusters"], d["hosts"], d["vms"])')
+          echo "scenario: $clusters clusters, $hosts hosts, $vms VMs"
           python3 tools/mp-harness/mp_test_run.py --mp "$RUNNER_TEMP/mp" --sim-port 8443 \
             --user administrator@vsphere.local --password 'VMware1!' \
+            --clusters "$clusters" --hosts "$hosts" --vms "$vms" \
             --scope dashboard --attach false --report "$RUNNER_TEMP/mp-test.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

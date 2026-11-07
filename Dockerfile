@@ -47,8 +47,9 @@ COPY --from=build --chown=65532:65532 /out/data /data
 VOLUME ["/data"]
 WORKDIR /data
 # vcsim keeps per-datastore scratch under TMPDIR; give it a tmpfs or emptyDir
-# when the root filesystem is read-only.
-ENV TMPDIR=/tmp
+# when the root filesystem is read-only. VCSIM_DATA is the -data default, so
+# a command line without -data still keeps its registry on the volume.
+ENV TMPDIR=/tmp VCSIM_DATA=/data
 USER nonroot:nonroot
 EXPOSE 8443
 ENTRYPOINT ["/vcsimulator"]

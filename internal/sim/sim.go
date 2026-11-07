@@ -208,14 +208,12 @@ func (s *Simulator) build() error {
 			}
 			for _, vm := range cl.VMs {
 				vm := vm
-				// a VM is created after the host it is placed on: after a
-				// scenario edit that adds hosts, an old VM may land on a
-				// new host with a higher serial
-				key := vm.Serial
-				if hs := cl.Hosts[vm.Host].Serial; hs > key {
-					key = hs
-				}
-				steps = append(steps, step{key, func() error { return s.createVM(ctx, refs, vm) }})
+				// VMs are created in their own serial order on whichever of
+				// the cluster's hosts exist at that point, so adding hosts
+				// never reorders VM creation (and so never changes a VM's
+				// MoRef); finishCluster then moves each VM to the host the
+				// topology places it on
+				steps = append(steps, step{vm.Serial, func() error { return s.createVM(ctx, refs, vm) }})
 			}
 		}
 	}
@@ -521,7 +519,12 @@ func (s *Simulator) createVM(ctx *simulator.Context, refs *ClusterRefs, vm *topo
 	dc := s.dcs[cl.Datacenter]
 	ccr := ctx.Map.Get(refs.Ref).(*simulator.ClusterComputeResource)
 	pool := *ccr.ResourcePool
-	hostRef := refs.Hosts[vm.Host]
+	if len(refs.Hosts) == 0 {
+		return fmt.Errorf("sim: create %s: cluster %s has no host yet", vm.Name, cl.Key)
+	}
+	// provisional placement on a host that already exists; the final host
+	// is set in finishCluster
+	hostRef := refs.Hosts[vm.Host%len(refs.Hosts)]
 	config := types.VirtualMachineConfigSpec{
 		Name:    vm.Name,
 		GuestId: string(types.VirtualMachineGuestOsIdentifierOtherGuest),
@@ -591,10 +594,32 @@ func (s *Simulator) finishCluster(ctx *simulator.Context, refs *ClusterRefs) {
 		shapeHostProduct(hs, s.Catalog)
 		shapeHostRuntime(hs, cl, h, s.Env.Now)
 	}
+	for i, vref := range refs.VMs {
+		relocateVM(ctx, vref, refs.Hosts[cl.VMs[i].Host])
+	}
 	shapeClusterSummary(obj, cl, refs)
 	ds := ctx.Map.Get(refs.Datastore).(*simulator.Datastore)
 	ds.Summary.Url = fmt.Sprintf("ds:///vmfs/volumes/vsan:%s/", cl.ContainerID)
 	shapeDatastoreSummary(ds, cl, refs)
+}
+
+// relocateVM moves a VM to its final host: runtime.host and the two hosts'
+// vm lists. Creation order, and so the VM's MoRef, is unaffected.
+func relocateVM(ctx *simulator.Context, vref, hostRef types.ManagedObjectReference) {
+	vm := ctx.Map.Get(vref).(*simulator.VirtualMachine)
+	if vm.Runtime.Host != nil && *vm.Runtime.Host == hostRef {
+		return
+	}
+	if vm.Runtime.Host != nil {
+		if old, ok := ctx.Map.Get(*vm.Runtime.Host).(*simulator.HostSystem); ok {
+			ctx.Map.RemoveReference(ctx, old, &old.Vm, vref)
+		}
+	}
+	host := ctx.Map.Get(hostRef).(*simulator.HostSystem)
+	ctx.Map.AppendReference(ctx, host, &host.Vm, vref)
+	ref := hostRef
+	vm.Runtime.Host = &ref
+	vm.Summary.Runtime.Host = &ref
 }
 
 // handler serves the service version documents from the capture and

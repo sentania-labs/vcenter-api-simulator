@@ -155,6 +155,32 @@ jobs:
           fi
           echo "wrong password refused"
 
+      # The identity registry must live on the state volume: with the root
+      # filesystem read-only a registry anywhere else fails the first start,
+      # and one that is not persisted changes every identity on a restart.
+      - name: registry persisted on the volume and identities stable across a container restart
+        env:
+          VCSIM_TAG: ci
+          VCSIM_USERNAME: operator
+          VCSIM_PASSWORD: placeholder-only
+        run: |
+          docker compose cp vcsim:/data/registry.json "$RUNNER_TEMP/registry-1.json"
+          test -s "$RUNNER_TEMP/registry-1.json"
+          grep -q '"entries"' "$RUNNER_TEMP/registry-1.json"
+          before=$(docker compose logs --no-log-prefix vcsim | grep -o 'instanceUuid=[0-9a-f-]*' | tail -1)
+          test -n "$before"
+          docker compose restart vcsim
+          for _ in $(seq 1 60); do
+            curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml >/dev/null 2>&1 && break
+            sleep 1
+          done
+          pwsh -NoLogo -File tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -User operator -Password placeholder-only
+          docker compose cp vcsim:/data/registry.json "$RUNNER_TEMP/registry-2.json"
+          cmp "$RUNNER_TEMP/registry-1.json" "$RUNNER_TEMP/registry-2.json"
+          after=$(docker compose logs --no-log-prefix vcsim | grep -o 'instanceUuid=[0-9a-f-]*' | tail -1)
+          test "$before" = "$after"
+          echo "registry on /data unchanged across restart; $after"
+
       - name: container logs and stop
         if: always()
         env:

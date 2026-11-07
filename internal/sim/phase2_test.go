@@ -572,7 +572,18 @@ defaults: {hosts: 3, vms: {perHost: 2}}
 		if strings.Contains(k, "/") && !strings.Contains(k, "vsanHealth") || strings.HasSuffix(k, "domclient") {
 			continue // cluster lines carry hosts lists and metric bodies that legitimately change
 		}
-		if nv, ok := after[k]; ok && uuidOf(nv) != uuidOf(v) {
+		nv, ok := after[k]
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(k, "cluster-01-vm-") {
+			// an addition-only edit keeps a VM's MoRef as well as its uuids
+			if nv != v {
+				t.Errorf("edit changed VM %s (MoRef included):\n before %s\n after  %s", k, v, nv)
+			}
+			continue
+		}
+		if uuidOf(nv) != uuidOf(v) {
 			t.Errorf("edit changed %s:\n before %s\n after  %s", k, v, nv)
 		}
 	}
@@ -676,5 +687,88 @@ func TestFaultWindowRounding(t *testing.T) {
 	}
 	if status, _ := e2.postPerf(e2.cl().Ref, "vsan-cpu"); status != 200 {
 		t.Fatalf("a window in the previous bucket must be over: %d", status)
+	}
+}
+
+// Adding hosts to a cluster with several VMs per host keeps every existing
+// VM's MoRef (VMs are created in their own order, then moved to the host
+// the topology places them on), and the VMs that move land on the new host.
+func TestAddingHostsKeepsVMMoRefs(t *testing.T) {
+	sc, err := scenario.Parse([]byte(`
+seed: grow-hosts
+datacenters: [{name: dc-01, clusters: 1}]
+defaults: {hosts: 4, vms: {perHost: 2}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r1, _ := registry.Open(path, sc.Seed, false)
+	e1 := startWith(t, topology.Generate(sc, r1), sim.Options{})
+	if err := r1.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := e1.login("a", "b"); err != nil {
+		t.Fatal(err)
+	}
+	before := identities(t, e1)
+	e1.srv.Close()
+	e1.sim.Close()
+
+	sc.Defaults.Hosts = 5
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	r2, _ := registry.Open(path, sc.Seed, false)
+	topo := topology.Generate(sc, r2)
+	e2 := startWith(t, topo, sim.Options{})
+	if err := e2.login("a", "b"); err != nil {
+		t.Fatal(err)
+	}
+	after := identities(t, e2)
+	cl := topo.Clusters()[0]
+	if len(cl.Hosts) != 5 || len(cl.VMs) != 10 { // two VMs per host: the fifth host brings two new VMs
+		t.Fatalf("hosts %d vms %d", len(cl.Hosts), len(cl.VMs))
+	}
+	for _, vm := range cl.VMs[:8] { // the eight VMs that existed before the edit
+		if before[vm.Name] == "" || before[vm.Name] != after[vm.Name] {
+			t.Errorf("%s changed:\n before %s\n after  %s", vm.Name, before[vm.Name], after[vm.Name])
+		}
+	}
+	// VMs placed on the new host really are there, and the old hosts' MoRefs held
+	refs := e2.cl()
+	pc := property.DefaultCollector(e2.client)
+	moved := 0
+	for i, vref := range refs.VMs {
+		var mvm mo.VirtualMachine
+		if err := pc.RetrieveOne(context.Background(), vref, []string{"runtime.host"}, &mvm); err != nil {
+			t.Fatal(err)
+		}
+		want := refs.Hosts[cl.VMs[i].Host]
+		if mvm.Runtime.Host == nil || *mvm.Runtime.Host != want {
+			t.Errorf("%s: runtime.host %v, want %s", cl.VMs[i].Name, mvm.Runtime.Host, want)
+		}
+		if cl.VMs[i].Host == 4 {
+			moved++
+			var hs mo.HostSystem
+			if err := pc.RetrieveOne(context.Background(), want, []string{"vm"}, &hs); err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, v := range hs.Vm {
+				found = found || v == vref
+			}
+			if !found {
+				t.Errorf("%s not in the new host's vm list", cl.VMs[i].Name)
+			}
+		}
+	}
+	if moved == 0 {
+		t.Error("no VM was placed on the new host")
+	}
+	for i := 0; i < 4; i++ {
+		if before[cl.Hosts[i].Name] != after[cl.Hosts[i].Name] {
+			t.Errorf("host %s changed", cl.Hosts[i].Name)
+		}
 	}
 }

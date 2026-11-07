@@ -18,6 +18,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -50,7 +51,7 @@ func main() {
 	var listen multi
 	flag.Var(&listen, "listen", "address to serve HTTPS on (repeatable; default 0.0.0.0:8443)")
 	scenarioPath := flag.String("scenario", "", "scenario file (YAML); default: the built-in one-cluster scenario")
-	dataDir := flag.String("data", "data", "directory for the identity registry and the self-signed certificate")
+	dataDir := flag.String("data", "", "directory for the identity registry and the self-signed certificate (env VCSIM_DATA; default data)")
 	seed := flag.String("seed", "phase1", "identity seed for the built-in scenario (ignored with -scenario)")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
 	tlsDir := flag.String("tls-dir", "", "directory holding the persisted self-signed certificate (default <data>/tls)")
@@ -60,6 +61,7 @@ func main() {
 	username := flag.String("username", "", "only user name Login accepts; empty accepts any (env VCSIM_USERNAME)")
 	password := flag.String("password", "", "password for -username (env VCSIM_PASSWORD)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	describe := flag.Bool("describe", false, "print the scenario's cardinality as JSON (clusters, hosts, VMs, devices, per cluster) and exit without serving; needs no data directory")
 	sessionTimeout := flag.Duration("session-timeout", 0, "idle session timeout (0: sessions never expire)")
 	flag.Parse()
 	if *username == "" {
@@ -67,6 +69,14 @@ func main() {
 	}
 	if *password == "" {
 		*password = os.Getenv("VCSIM_PASSWORD")
+	}
+	if *dataDir == "" {
+		// the container image sets VCSIM_DATA to its state volume so a
+		// custom command line without -data still lands on writable storage
+		*dataDir = os.Getenv("VCSIM_DATA")
+	}
+	if *dataDir == "" {
+		*dataDir = "data"
 	}
 	if *showVersion {
 		fmt.Printf("vcsimulator %s (%s)\n", version, commit)
@@ -86,6 +96,14 @@ func main() {
 		sc = scenario.Phase1(*seed)
 	}
 
+	if *describe {
+		// the cardinality the scenario materializes, for scripts that need
+		// the expected counts (the acceptance harness, projections)
+		if err := json.NewEncoder(os.Stdout).Encode(describeTopology(topology.Generate(sc, registry.InMemory(sc.Seed)))); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	reg, err := registry.Open(filepath.Join(*dataDir, "registry.json"), sc.Seed, *regenerate)
 	if err != nil {
 		log.Fatal(err)
@@ -182,4 +200,44 @@ func certificate(sc *scenario.Scenario, dataDir, tlsDir, certFile, keyFile, name
 		}
 	}
 	return serve.LoadOrCreateCertificate(tlsDir, san)
+}
+
+// description is what -describe prints.
+type description struct {
+	Seed     string               `json:"seed"`
+	Clusters int                  `json:"clusters"`
+	Hosts    int                  `json:"hosts"`
+	VMs      int                  `json:"vms"`
+	Devices  int                  `json:"devices"`
+	Per      []clusterDescription `json:"perCluster"`
+}
+
+type clusterDescription struct {
+	Key            string `json:"key"`
+	Hosts          int    `json:"hosts"`
+	VMs            int    `json:"vms"`
+	ClaimedDevices int    `json:"claimedDevices"`
+	Threads        int    `json:"threads"`
+	DomWorlds      int    `json:"domWorlds"`
+	VsanPnics      int    `json:"vsanPnics"`
+	Dedup          bool   `json:"dedup"`
+}
+
+func describeTopology(topo *topology.Topology) description {
+	d := description{Seed: topo.Seed}
+	d.Clusters, d.Hosts, d.VMs, d.Devices = topo.Counts()
+	for _, c := range topo.Clusters() {
+		claimed := 0
+		for _, dev := range c.Hosts[0].Devices {
+			if dev.Claimed {
+				claimed++
+			}
+		}
+		d.Per = append(d.Per, clusterDescription{
+			Key: c.Key, Hosts: len(c.Hosts), VMs: len(c.VMs), ClaimedDevices: claimed,
+			Threads: c.Spec.Host.Threads, DomWorlds: scenario.Int(c.Spec.Host.DomWorlds),
+			VsanPnics: c.Spec.Host.VsanPnics, Dedup: c.Dedup,
+		})
+	}
+	return d
 }
