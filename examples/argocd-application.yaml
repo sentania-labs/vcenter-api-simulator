@@ -52,5 +52,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # The PVC keeps the pinned certificate; do not let a prune delete it.
-      - PruneLast=true
+  # The certificate PVC carries argocd.argoproj.io/sync-options
+  # Prune=false,Delete=false (and helm.sh/resource-policy: keep), so neither
+  # a prune nor deleting this Application removes the identity a collector
+  # pinned. Delete the claim deliberately to rotate it.

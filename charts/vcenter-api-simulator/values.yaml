@@ -49,8 +49,9 @@ tls:
   existingSecret: ""
   certManager:
     # Request a certificate from cert-manager for hostname (+ tlsNames) and
-    # serve it. Requires cert-manager in the cluster and an issuer. Note that
-    # a renewed certificate changes the fingerprint a management pack pinned.
+    # serve it. Requires cert-manager in the cluster and an issuer. A renewed
+    # certificate is served within seconds without a restart; note that it
+    # changes the fingerprint a management pack pinned.
     enabled: false
     issuerRef:
       name: ""
@@ -65,7 +66,8 @@ tls:
 persistence:
   # Keep the generated certificate (and future inventory state) across pod
   # restarts. With it off, an emptyDir is used and every new pod issues a new
-  # certificate, which breaks a management pack's certificate pin.
+  # certificate, which breaks a management pack's certificate pin. The claim
+  # is annotated to survive helm uninstall and Argo CD prune or delete.
   enabled: true
   existingClaim: ""
   storageClass: ""

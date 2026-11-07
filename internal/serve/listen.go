@@ -17,8 +17,10 @@ type Listeners struct {
 }
 
 // Listen binds every address and starts serving. Binding is synchronous so a
-// port in use is reported before the simulator claims to be up.
-func Listen(addrs []string, handler http.Handler, cert tls.Certificate) (*Listeners, error) {
+// port in use is reported before the simulator claims to be up. Each
+// handshake takes the certificate from cert, so a rotated pair is served
+// without a restart.
+func Listen(addrs []string, handler http.Handler, cert *Certificate) (*Listeners, error) {
 	l := &Listeners{}
 	for _, addr := range addrs {
 		ln, err := net.Listen("tcp", addr)
@@ -28,7 +30,7 @@ func Listen(addrs []string, handler http.Handler, cert tls.Certificate) (*Listen
 		}
 		srv := &http.Server{
 			Handler:           handler,
-			TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+			TLSConfig:         &tls.Config{GetCertificate: cert.GetCertificate, MinVersion: tls.VersionTLS12},
 			ReadHeaderTimeout: 30 * time.Second,
 		}
 		l.servers = append(l.servers, srv)

@@ -7,8 +7,10 @@ metadata:
     {{- include "vcsim.labels" . | nindent 4 }}
   annotations:
     # Keep the certificate (the identity a management pack pinned) when the
-    # release is uninstalled; delete the claim deliberately to rotate it.
+    # release is uninstalled, pruned, or its Argo CD Application is deleted;
+    # delete the claim deliberately to rotate it.
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
     {{- with .Values.persistence.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
