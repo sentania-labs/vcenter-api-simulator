@@ -146,6 +146,12 @@ def unit_checks(work: str) -> None:
         "inv/HostSystem.json": [{"_moref": "HostSystem:host-1", "props": {"name": "esx-real-1"}}],
         "about.json": {"about": {"apiVersion": "9.1.1.0", "version": "9.1.1",
                                  "fullName": "VMware vCenter Server 9.1.1.0 build-24000000"}},
+        "methods/Options.json": {"hardware": {"systemInfo": {"otherIdentifyingInfo": [
+            {"identifierValue": "SVCTAG9988", "identifierType": {"key": "ServiceTag"}}]}},
+            "setting": [{"_type": "OptionValue", "key": "snmp.receiver.1.community",
+                         "value": "s3cretcomm"},
+                        {"_type": "OptionValue", "key": "guestinfo.userdata", "value": "cloudinit-xyz"},
+                        {"_type": "OptionValue", "key": "config.log.level", "value": "verbose"}]},
         "methods/Events.json": [{"fullFormattedMessage": "Host 10.1.2.3. down; peer 10.4.5.6, mac "
                                                          "AA:BB:CC:DD:EE:FF; driver 1.2.3.4.5"}],
     }
@@ -158,6 +164,10 @@ def unit_checks(work: str) -> None:
     about = load(san, "about.json")["about"]
     check("sanitizer masks an IPv4 followed by a period or comma, and a MAC",
           not any(t in message for t in ("10.1.2.3", "10.4.5.6", "AA:BB:CC:DD:EE:FF")), message)
+    options = json.dumps(load(san, "methods", "Options.json"))
+    check("sanitizer masks hardware identifier tags and secret-looking option values",
+          not any(t in options for t in ("SVCTAG9988", "s3cretcomm", "cloudinit-xyz")), options)
+    check("sanitizer keeps ordinary option values", '"verbose"' in options, options)
     check("sanitizer keeps a five-part version", "driver 1.2.3.4.5" in message, message)
     check("sanitizer keeps the about version strings",
           about == docs["about.json"]["about"], about)

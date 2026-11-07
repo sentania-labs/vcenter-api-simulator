@@ -896,9 +896,11 @@ def rest_delete(base, token, ctx, timeout, prefix):
 # sanitizing
 # --------------------------------------------------------------------------- #
 SECRET_KEYS = {"password", "sslThumbprint", "thumbprint", "certificate", "serialNumber",
-               "otherIdentifyingInfo", "licenseKey", "model", "vendor"}
+               "identifierValue", "licenseKey", "model", "vendor"}
 USER_KEYS = {"userName", "principal", "user", "login", "owner", "createdBy",
              "lastModifiedUser", "userAgent"}
+SENSITIVE_OPTION = re.compile(r"community|passw|secret|token|credential|guestinfo|user-?data",
+                              re.IGNORECASE)
 STRUCTURAL_KEYS = {"_type", "_moref", "type"}
 VERSION_KEY = re.compile(r"(?:[vV]ersion|^build)$")
 IPV4 = None  # compiled below
@@ -1015,7 +1017,11 @@ def sanitize_tree(raw: str, san: str, extra_names: dict | None = None) -> dict:
 
     def walk_json(value, key=None):
         if isinstance(value, dict):
-            return {k: walk_json(v, k) for k, v in value.items()}
+            out = {k: walk_json(v, k) for k, v in value.items()}
+            option, setting = value.get("key"), value.get("value")
+            if isinstance(option, str) and isinstance(setting, str) and SENSITIVE_OPTION.search(option):
+                out["value"] = f"<option-{digest(setting)}>"
+            return out
         if isinstance(value, list):
             return [walk_json(v, key) for v in value]
         if not isinstance(value, str):

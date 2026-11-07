@@ -71,8 +71,11 @@ SANITIZE-INFO.json
 ```
 
 Inventory names, the login user and the vCenter host name from the target,
-UUIDs, IPv4 and MAC addresses, thumbprints, serial numbers, models and vendors
-are masked consistently (one mapping per run). Other DNS names and IPv6
+UUIDs, IPv4 and MAC addresses, thumbprints, serial numbers, hardware
+identifier tags, models and vendors are masked consistently (one mapping per
+run). The value of an advanced-setting or VM option pair (`key`/`value`) is
+masked when its key names a community string, password, secret, token,
+credential, `guestinfo` or user data; other free-form option values are not. Other DNS names and IPv6
 addresses are not masked, so skim the tree before sending it from a sensitive
 environment. With `--zip` the work directory also holds `raw/`, the same tree
 verbatim, with real host names, addresses, users and the vSphere session key.
