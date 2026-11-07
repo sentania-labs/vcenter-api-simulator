@@ -21,6 +21,8 @@ Exit status is non-zero on any failure. No live system is contacted.
 """
 from __future__ import annotations
 
+import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -121,9 +123,81 @@ def tarball_files(path: str) -> dict:
     return out
 
 
+def load_probe():
+    spec = importlib.util.spec_from_file_location("probe", os.path.join(HERE, "probe.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def unit_checks(work: str) -> None:
+    """In-process checks of behaviour the simulator cannot exercise."""
+    probe = load_probe()
+
+    forms = {'"abc123"': "abc123", '{"value": "abc123"}': "abc123", "": None, "{}": None}
+    check("REST session token: JSON string and {value} forms parse to the bare token",
+          all(probe._session_token(body) == want for body, want in forms.items()),
+          {b: probe._session_token(b) for b in forms})
+
+    raw = os.path.join(work, "unit-raw")
+    os.makedirs(os.path.join(raw, "methods"))
+    os.makedirs(os.path.join(raw, "inv"))
+    docs = {
+        "inv/HostSystem.json": [{"_moref": "HostSystem:host-1", "props": {"name": "esx-real-1"}}],
+        "about.json": {"about": {"apiVersion": "9.1.1.0", "version": "9.1.1",
+                                 "fullName": "VMware vCenter Server 9.1.1.0 build-24000000"}},
+        "methods/Events.json": [{"fullFormattedMessage": "Host 10.1.2.3. down; peer 10.4.5.6, mac "
+                                                         "AA:BB:CC:DD:EE:FF; driver 1.2.3.4.5"}],
+    }
+    for rel, doc in docs.items():
+        with open(os.path.join(raw, rel), "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+    san = os.path.join(work, "unit-san")
+    probe.sanitize_tree(raw, san)
+    message = load(san, "methods", "Events.json")[0]["fullFormattedMessage"]
+    about = load(san, "about.json")["about"]
+    check("sanitizer masks an IPv4 followed by a period or comma, and a MAC",
+          not any(t in message for t in ("10.1.2.3", "10.4.5.6", "AA:BB:CC:DD:EE:FF")), message)
+    check("sanitizer keeps a five-part version", "driver 1.2.3.4.5" in message, message)
+    check("sanitizer keeps the about version strings",
+          about == docs["about.json"]["about"], about)
+    check("sanitizer masks inventory host names",
+          "esx-real-1" not in json.dumps(load(san, "inv", "HostSystem.json")))
+
+    cap = probe.Capture(os.path.join(work, "unit-cap"))
+    result = cap.call(("methods", "Absent"), probe._MissingMo("vsanSystem").QueryHostStatus)
+    check("a missing management object is recorded as a fault and the walk goes on",
+          result is None and len(cap.calls) == 1 and not cap.calls[0]["ok"]
+          and os.path.exists(os.path.join(work, "unit-cap", "methods", "Absent.json")), cap.calls)
+
+    out = os.path.join(work, "unit-main")
+    os.makedirs(out)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("sanitize failed")
+
+    saved = (probe.walk, probe.sanitize_tree, sys.argv, dict(os.environ))
+    probe.walk, probe.sanitize_tree = (lambda *a, **k: None), boom
+    sys.argv = ["probe.py", "https://127.0.0.1:1", "--out", out]
+    os.environ.update(VCENTER_USER=USER, VCENTER_PASSWORD=PASSWORD)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            probe.main()
+        failed = False
+    except RuntimeError:
+        failed = True
+    finally:
+        probe.walk, probe.sanitize_tree, sys.argv = saved[:3]
+        os.environ.clear()
+        os.environ.update(saved[3])
+    check("a failed sanitize still removes the raw work directory",
+          failed and os.listdir(out) == [], os.listdir(out))
+
+
 def main() -> int:
     out_dir = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="probe-test-")
     os.makedirs(out_dir, exist_ok=True)
+    unit_checks(out_dir)
     port = free_port()
     base = f"https://127.0.0.1:{port}"
     binary = build()

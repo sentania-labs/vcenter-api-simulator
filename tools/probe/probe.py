@@ -249,8 +249,21 @@ def read_credentials() -> dict:
 # the walk
 # --------------------------------------------------------------------------- #
 def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
+    from pyVim.connect import Disconnect
+    sessions: list = []
+    try:
+        _walk(base, creds, cap, timeout, sessions)
+    finally:
+        for si in sessions:
+            try:
+                Disconnect(si)
+            except Exception:                                   # noqa: BLE001
+                pass
+
+
+def _walk(base: str, creds: dict, cap: Capture, timeout: int, sessions: list):
     from pyVmomi import SoapStubAdapter, VmomiSupport, pbm, sms, vim, vmodl, vslm, eam
-    from pyVim.connect import Disconnect, SmartConnect
+    from pyVim.connect import SmartConnect
     import vsanapiutils
 
     global _SER
@@ -262,6 +275,7 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
     # Step 0: connect, about, read-only confirmation.
     si = SmartConnect(host=host, port=port, user=creds["VCENTER_USER"],
                       pwd=creds["VCENTER_PASSWORD"], disableSslCertValidation=True)
+    sessions.append(si)
     content = si.RetrieveContent()
     cap.write(("about.json",), {"about": _jsonable(_SER(content.about))})
     cookie = si._stub.cookie
@@ -447,13 +461,13 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
         for name, method in (("HostVsanSystem.QueryDisksForVsan", "QueryDisksForVsan"),
                              ("HostVsanSystem.QueryHostStatus", "QueryHostStatus")):
             try:
-                mgr = host.configManager.vsanSystem
+                mgr = host.configManager.vsanSystem or _MissingMo("vsanSystem")
             except Exception as exc:                            # noqa: BLE001
                 cap.write(("methods", f"{name}-{mo_id}.json"), {"_fault": fault_info(exc)})
                 continue
             cap.call(("methods", f"{name}-{mo_id}"), getattr(mgr, method))
         try:
-            vis = host.configManager.vsanInternalSystem
+            vis = host.configManager.vsanInternalSystem or _MissingMo("vsanInternalSystem")
             cap.call(("methods", f"HostVsanInternalSystem.QueryPhysicalVsanDisks-{mo_id}"),
                      vis.QueryPhysicalVsanDisks, [])
             cap.call(("methods", f"HostVsanInternalSystem.QueryVsanObjectUuidsByFilter-{mo_id}"),
@@ -467,7 +481,7 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
         cap.call(("methods", "ClusterComputeResource.RetrieveDasAdvancedRuntimeInfo"),
                  cluster0.RetrieveDasAdvancedRuntimeInfo)
         try:
-            browser = cluster0.environmentBrowser
+            browser = cluster0.environmentBrowser or _MissingMo("environmentBrowser")
             cap.call(("methods", "EnvironmentBrowser.QueryConfigOptionDescriptor-cluster"),
                      browser.QueryConfigOptionDescriptor)
             cap.call(("methods", "EnvironmentBrowser.QueryConfigTarget-cluster"),
@@ -476,7 +490,7 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
             cap.write(("methods", "EnvironmentBrowser-cluster.json"), {"_fault": fault_info(exc)})
     if vm0 is not None:
         try:
-            browser = vm0.environmentBrowser
+            browser = vm0.environmentBrowser or _MissingMo("environmentBrowser")
             cap.call(("methods", "EnvironmentBrowser.QueryConfigOptionDescriptor-vm"),
                      browser.QueryConfigOptionDescriptor)
             cap.call(("methods", "EnvironmentBrowser.QueryConfigOptionEx-vm"),
@@ -757,11 +771,6 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
                 cap.call(("vsan", f"VSANVcIsWitnessHost-{host._moId}"), stretch_sys.VSANVcIsWitnessHost,
                          host)
 
-    # Step 6: logout.
-    try:
-        Disconnect(si)
-    except Exception:                                           # noqa: BLE001
-        pass
     cap.note("done", calls=len(cap.calls), faults=len([c for c in cap.calls if not c["ok"]]))
     cap.write(("summary.json",), {
         "about": _json_load(cap, ".", "about"),
@@ -899,7 +908,7 @@ PRESERVE = None
 def _compile():
     import re
     global IPV4, PRESERVE
-    IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])")
+    IPV4 = re.compile(r"(?<!\w)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\w)(?!\.\d)")
     PRESERVE = (re.compile(r"urn:(?:vsan|vim25|pbm|sms|vslm|eam)/\d+(?:\.\d+)+"),
                 re.compile(r'versionId="[^"]+"'),
                 re.compile(r"\d+(?:\.\d+){2,}-\d*vmw\.[\w.]+"),
@@ -1093,7 +1102,8 @@ def call_plan() -> list[str]:
         f"known plus any advertised): {', '.join(PERF_FAMILIES)}; health system 12 readers with "
         f"VsanQueryVcClusterHealthSummary(fetchFromCache=true); space report 3; object system 4; "
         f"capability 2; upgrade 2; stretched cluster 4; power 1; iSCSI target 5; file service 2; "
-        f"VUM 1; remote datastore 2; resource check 1; diagnostics 3; disk management 2 plus "
+        f"PhoneHome VsanQueryObjectSnapshotsInfo, VsanQueryNvmeCriticalWarningStats, "
+        f"VsanQueryZdomScrubberData, VsanQueryLSOMwbsize; VUM 1; remote datastore 2; resource check 1; diagnostics 3; disk management 2 plus "
         f"QueryVsanManagedDisks, QueryDiskMappings and VSANVcIsWitnessHost per host; "
         f"VsanMassCollector.VsanRetrieveProperties",
         "step 6  Logout and DELETE /api/session",

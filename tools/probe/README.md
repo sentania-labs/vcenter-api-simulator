@@ -46,8 +46,10 @@ Point it only at a vCenter you trust.
 
 ## What is called
 
-Only the read-only allowlist: `Retrieve*`, `Query*`, `Get*`, `Fetch*`,
-`RetrieveContent`, the plain HTTP `GET`s, the vSAN Performance Service queries
+Read queries chosen by hand; nothing enforces at runtime that a call is
+read-only. The only non-`GET` requests are the REST session `POST` and
+`DELETE`. The calls are `Retrieve*`, `Query*`, `Get*` and `Fetch*` style
+reads, the plain HTTP `GET`s, the vSAN Performance Service queries
 for every entity family — including the OSA families `disk-group`,
 `cache-disk`, `capacity-disk`, `lsom-world-cpu`, `ddh-disk`, `clom-disk`,
 `clom-host` — the vSAN cluster config and health readers, PBM and VSLM profile
