@@ -169,13 +169,13 @@ scratch files there.
 ### docker compose
 
 [`docker-compose.yml`](docker-compose.yml) runs the same thing with a named
-volume for the certificate:
+volume for the state directory (registry and certificate):
 
 ```sh
 docker compose up -d                 # pulls :main
 docker compose up -d --build         # builds from this checkout
 VCSIM_USERNAME=operator VCSIM_PASSWORD=placeholder docker compose up -d   # restricted login
-docker compose down -v               # also discards the certificate
+docker compose down -v               # also discards the identities and certificate
 ```
 
 `VCSIM_TAG`, `VCSIM_PORT`, `VCSIM_SEED` and `VCSIM_TLS_NAMES` are the other
@@ -186,7 +186,7 @@ knobs.
 [`charts/vcenter-api-simulator`](charts/vcenter-api-simulator) installs one
 simulated vCenter per release. It creates a Deployment (one replica, non-root,
 read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
-ServiceAccount with no token mounted, a PVC for the certificate, and
+ServiceAccount with no token mounted, a PVC for the state directory (identity registry and certificate), and
 optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
 and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
 outside the cluster until `ingress.enabled` or a LoadBalancer Service asks

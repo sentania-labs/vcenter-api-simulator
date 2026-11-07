@@ -1,7 +1,7 @@
 # Default values for vcenter-api-simulator.
 # One Helm release is one simulated vCenter endpoint. The chart creates no
 # RBAC, mounts no ServiceAccount token and asks for no privilege: the pod only
-# serves HTTPS and writes its own certificate.
+# serves HTTPS and writes its own state (identity registry, certificate).
 
 image:
   repository: ghcr.io/sentania-labs/vcenter-api-simulator
