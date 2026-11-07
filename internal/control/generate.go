@@ -2,7 +2,6 @@ package control
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -49,21 +48,7 @@ func (c *Controller) generated(p GenParams) (*scenario.Scenario, error) {
 	for _, k := range sc.ClusterKeys() {
 		known[k] = true
 	}
-	var faults []scenario.Fault
-	for _, f := range sc.Faults {
-		var keep []string
-		for _, k := range f.Clusters {
-			if known[k] {
-				keep = append(keep, k)
-			}
-		}
-		if len(f.Clusters) > 0 && len(keep) == 0 {
-			continue
-		}
-		f.Clusters = keep
-		faults = append(faults, f)
-	}
-	sc.Faults = faults
+	sc.Faults = retainFaults(sc.Faults, func(k string) bool { return known[k] })
 	if err := sc.Validate(); err != nil {
 		return nil, &Invalid{err.Error()}
 	}
@@ -247,11 +232,6 @@ func (c *Controller) ApplyPreset(name string) (DraftView, error) {
 		}
 	}
 	if p == nil {
-		names := make([]string, len(presets))
-		for i, x := range presets {
-			names[i] = x.Name
-		}
-		sort.Strings(names)
 		return DraftView{}, invalid("unknown preset %q", name)
 	}
 	ps, err := scenario.Parse([]byte(p.yaml))
@@ -270,21 +250,7 @@ func (c *Controller) ApplyPreset(name string) (DraftView, error) {
 		for _, k := range sc.ClusterKeys() {
 			known[k] = true
 		}
-		var faults []scenario.Fault
-		for _, f := range sc.Faults {
-			var keep []string
-			for _, k := range f.Clusters {
-				if known[k] {
-					keep = append(keep, k)
-				}
-			}
-			if len(f.Clusters) > 0 && len(keep) == 0 {
-				continue
-			}
-			f.Clusters = keep
-			faults = append(faults, f)
-		}
-		sc.Faults = faults
+		sc.Faults = retainFaults(sc.Faults, func(k string) bool { return known[k] })
 	} else {
 		sc = clone(base)
 		sc.Faults, sc.Latency = ps.Faults, ps.Latency
@@ -293,4 +259,25 @@ func (c *Controller) ApplyPreset(name string) (DraftView, error) {
 		return DraftView{}, &Invalid{err.Error()}
 	}
 	return c.replaceDraft(sc, "preset:"+name), nil
+}
+
+// retainFaults keeps the cluster selectors that known accepts. A rule whose
+// selector names clusters and is left with none is dropped: an empty selector
+// means every cluster, so keeping it would widen the fault.
+func retainFaults(faults []scenario.Fault, known func(string) bool) []scenario.Fault {
+	var out []scenario.Fault
+	for _, f := range faults {
+		var keep []string
+		for _, k := range f.Clusters {
+			if known(k) {
+				keep = append(keep, k)
+			}
+		}
+		if len(f.Clusters) > 0 && len(keep) == 0 {
+			continue
+		}
+		f.Clusters = keep
+		out = append(out, f)
+	}
+	return out
 }

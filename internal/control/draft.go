@@ -138,7 +138,6 @@ func (c *Controller) SetDraft(raw []byte, scope string) (DraftView, error) {
 		}
 		d.Scope = scope
 	}
-	prev := d.Scenario
 	d.Scenario = sc
 	// a cluster that vanished from the scenario no longer needs regenerating
 	keep := d.Regenerate[:0]
@@ -152,7 +151,6 @@ func (c *Controller) SetDraft(raw []byte, scope string) (DraftView, error) {
 		}
 	}
 	d.Regenerate = keep
-	_ = prev
 	c.settle()
 	return c.draftView(), nil
 }
@@ -247,9 +245,7 @@ func (c *Controller) DeleteCluster(key string) (DraftView, error) {
 		}
 	}
 	sc.Clusters = cl
-	for i := range sc.Faults {
-		sc.Faults[i].Clusters = without(sc.Faults[i].Clusters, key)
-	}
+	sc.Faults = retainFaults(sc.Faults, func(k string) bool { return k != key })
 	d.Regenerate = without(d.Regenerate, key)
 	return c.draftView(), nil
 }
@@ -363,29 +359,17 @@ func renumbered(o, n *topology.Topology) Renumbered {
 		key    string
 		serial int
 	}
-	oldIDs, newIDs := map[id]bool{}, map[id]bool{}
-	first := 0
-	collect := func(t *topology.Topology, into map[id]bool) {
-		for _, c := range t.Clusters() {
-			into[id{c.Key, c.Serial}] = true
-			for _, h := range c.Hosts {
-				into[id{h.Key, h.Serial}] = true
-				for _, d := range h.Devices {
-					into[id{d.Key, d.Serial}] = true
-				}
-			}
-			for _, v := range c.VMs {
-				into[id{v.Key, v.Serial}] = true
-			}
+	oldIDs := map[id]bool{}
+	for _, c := range o.Clusters() {
+		oldIDs[id{c.Key, c.Serial}] = true
+		for _, h := range c.Hosts {
+			oldIDs[id{h.Key, h.Serial}] = true
+		}
+		for _, v := range c.VMs {
+			oldIDs[id{v.Key, v.Serial}] = true
 		}
 	}
-	collect(o, oldIDs)
-	collect(n, newIDs)
-	for k := range oldIDs {
-		if !newIDs[k] && (first == 0 || k.serial < first) {
-			first = k.serial
-		}
-	}
+	first := firstRemoved(o, n)
 	var r Renumbered
 	if first == 0 {
 		return r

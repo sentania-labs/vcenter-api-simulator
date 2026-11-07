@@ -299,9 +299,9 @@ func (c *Controller) Tree() *Tree {
 		td := TreeDC{Name: dc.Name}
 		for _, cl := range dc.Clusters {
 			seen[cl.Key] = true
-			tc := c.treeCluster(cl, old[cl.Key], sc, regen[cl.Key])
+			tc := treeCluster(cl, old[cl.Key], sc, regen[cl.Key])
 			tc.Entities = proj.PerCluster[cl.Key].Entities
-			tc.Warnings = len(clusterChecks(cl, tc.Entities, proj.PerCluster[cl.Key]))
+			tc.Warnings = len(clusterChecks(cl, tc.Entities))
 			td.Clusters = append(td.Clusters, tc)
 			td.Hosts += tc.Hosts
 		}
@@ -342,7 +342,7 @@ func (c *Controller) Tree() *Tree {
 	return t
 }
 
-func (c *Controller) treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) TreeCluster {
+func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) TreeCluster {
 	tc := TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name, Hosts: len(cl.Hosts), HostsBefore: -1,
 		VMsPerHost: scenario.Int(cl.Spec.VMs.PerHost), Devices: cl.Spec.Host.ClaimedDevices, Regenerate: regen}
 	_, tc.Override = sc.Override(cl.Key)
@@ -360,7 +360,7 @@ func (c *Controller) treeCluster(cl, old *topology.Cluster, sc *scenario.Scenari
 }
 
 // clusterChecks are the consistency checks of one cluster.
-func clusterChecks(cl *topology.Cluster, entities int, load ClusterLoad) []Warning {
+func clusterChecks(cl *topology.Cluster, entities int) []Warning {
 	var w []Warning
 	if !cl.Dedup {
 		w = append(w, Warning{"warn", "Dedup is off", "The *-esa-dedup-* kinds answer empty for this cluster; the collector still queries them."})
@@ -579,7 +579,7 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 	v.Checks = append(v.Checks,
 		Warning{"ok", "uplinks", fmt.Sprintf("%s uplinks cover %d hosts × %d pNICs", cl.VDS(), len(cl.Hosts), cl.Spec.Host.VsanPnics)},
 		Warning{"ok", "placement", fmt.Sprintf("%d VMs placed on %d hosts", len(cl.VMs), len(cl.Hosts))})
-	v.Checks = append(v.Checks, clusterChecks(cl, v.Entities, proj.PerCluster[key])...)
+	v.Checks = append(v.Checks, clusterChecks(cl, v.Entities)...)
 	return v, nil
 }
 

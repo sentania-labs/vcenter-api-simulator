@@ -728,3 +728,21 @@ func TestFailedApplyIsReportedAndHarmless(t *testing.T) {
 		t.Error("dismiss did not clear the error")
 	}
 }
+
+func TestDeleteClusterDropsItsScopedFaultRules(t *testing.T) {
+	sc := tenClusters(t)
+	const del, other = "dc-01/cluster-03", "dc-01/cluster-04"
+	sc.Faults = []scenario.Fault{
+		{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError, Clusters: []string{del}},
+		{Family: "host-domowner", Fault: scenario.FaultSystemError, Clusters: []string{del, other}},
+	}
+	c := newCtl(t, sc, "", "t")
+	v, err := c.DeleteCluster(del)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := v.Scenario.Faults
+	if len(got) != 1 || got[0].Family != "host-domowner" || len(got[0].Clusters) != 1 || got[0].Clusters[0] != other {
+		t.Fatalf("faults after delete = %+v; the rule scoped only to the deleted cluster must go, not widen to all clusters", got)
+	}
+}
