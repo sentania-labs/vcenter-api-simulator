@@ -208,9 +208,14 @@ Certificate options, in order of precedence:
   `simulator.tlsNames`) from `tls.certManager.issuerRef`. A renewal changes
   the fingerprint a pack pinned.
 - Neither: a self-signed certificate created on first start, kept in the
-  PVC (`persistence.enabled`, default on; the PVC is annotated to survive
-  `helm uninstall` and Argo CD prune or Application deletion). With
-  persistence off every new pod issues a new certificate.
+  PVC.
+
+The PVC (`persistence.enabled`, default on) is mounted at `/data` in every
+mode: it holds the identity registry and, when no TLS Secret is set, the
+certificate. A Secret is overlaid read-only on `/data/tls`. The PVC is
+annotated to survive `helm uninstall` and Argo CD prune or Application
+deletion. With persistence off every new pod issues new identities (and a new
+certificate when self-signed).
 
 A replaced certificate (a rotated Secret, a cert-manager renewal) is served
 to the next connection without a restart: the simulator re-reads the mounted

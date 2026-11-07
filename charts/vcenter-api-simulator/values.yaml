@@ -64,9 +64,10 @@ tls:
   # certificate on first start and keeps it in the persistent volume.
 
 persistence:
-  # Keep the generated certificate (and future inventory state) across pod
-  # restarts. With it off, an emptyDir is used and every new pod issues a new
-  # certificate, which breaks a management pack's certificate pin. The claim
+  # Keep the state volume (/data: the identity registry and, without a TLS
+  # Secret, the generated certificate) across pod restarts. With it off, an
+  # emptyDir is used and every new pod issues new object identities and a new
+  # certificate, which breaks a management pack's pins. The claim
   # is annotated to survive helm uninstall and Argo CD prune or delete.
   enabled: true
   existingClaim: ""
