@@ -39,6 +39,7 @@ type Cluster struct {
 	Dedup       bool   // ESA dedup/compression: switches the *-esa-dedup-* families on
 	Compression bool
 	VDS         string
+	VDSUUID     string // the vDS uuid on /sdk (summary.uuid, proxy switch dvsUuid, vmkernel NIC switchUuid)
 	Portgroup   string
 	Hosts       []*Host
 	VMs         []*VM
@@ -155,6 +156,7 @@ func Phase1(seed string) *Topology {
 			Dedup:       true,
 			Compression: true,
 			VDS:         "vds-01",
+			VDSUUID:     id.UUID("vds", 1),
 			Portgroup:   "pg-01",
 		},
 	}

@@ -18,7 +18,6 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/types"
-	_ "github.com/vmware/govmomi/vsan/simulator" // registers vcsim's stock /vsanHealth endpoint
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
@@ -127,13 +126,27 @@ func (s *Simulator) shape() error {
 	ccr.Name = cl.Name
 	s.ClusterRef = ccr.Self
 	s.Env.RegisterCluster(ccr.Self, cl)
-	if dvs, ok := ctx.Map.Any("DistributedVirtualSwitch").(*simulator.DistributedVirtualSwitch); ok {
-		dvs.Name = cl.VDS
+	dvs, ok := ctx.Map.Any("DistributedVirtualSwitch").(*simulator.DistributedVirtualSwitch)
+	if !ok {
+		return fmt.Errorf("sim: vcsim created no vDS")
 	}
+	dvs.Name = cl.VDS
+	dvs.Uuid = cl.VDSUUID
+	dvs.Summary.Name = cl.VDS
+	dvs.Summary.Uuid = cl.VDSUUID
+	if cfg, ok := dvs.Config.(*types.VMwareDVSConfigInfo); ok {
+		cfg.Name = cl.VDS
+		cfg.Uuid = cl.VDSUUID
+	}
+	var pg *simulator.DistributedVirtualPortgroup
 	for _, e := range ctx.Map.All("DistributedVirtualPortgroup") {
-		if pg, ok := e.(*simulator.DistributedVirtualPortgroup); ok && !strings.Contains(pg.Name, "DVUplinks") {
-			pg.Name = cl.Portgroup
+		if p, ok := e.(*simulator.DistributedVirtualPortgroup); ok && !strings.Contains(p.Name, "DVUplinks") {
+			p.Name = cl.Portgroup
+			pg = p
 		}
+	}
+	if pg == nil {
+		return fmt.Errorf("sim: vcsim created no distributed portgroup")
 	}
 
 	if len(ccr.Host) != len(cl.Hosts) {
@@ -169,6 +182,8 @@ func (s *Simulator) shape() error {
 		hs.Hardware.SystemInfo.SerialNumber = "SIM" + strings.ToUpper(h.HardwareUUID[:8])
 		hs.Config.Product = esx
 		hs.Summary.Config.Product = &hs.Config.Product
+
+		shapeNetwork(hs, dvs, pg, h)
 
 		sd := storageDevice(h)
 		hs.Config.StorageDevice = sd

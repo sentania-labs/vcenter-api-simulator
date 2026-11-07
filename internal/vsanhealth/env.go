@@ -1,14 +1,16 @@
 // Package vsanhealth serves the /vsanHealth managed objects the reference
-// management pack's collection path calls, merged into govmomi vcsim's stock
-// /vsanHealth registry so one session store covers /sdk and /vsanHealth:
+// management pack's collection path calls, registered on the vcsim service so
+// one session store covers /sdk and /vsanHealth:
 //
 //	VsanPerformanceManager      VsanPerfQueryNodeInformation, VsanPerfGetSupportedEntityTypes, VsanPerfQueryPerf
-//	VsanVcClusterConfigSystem   VsanClusterGetConfig (replaces vcsim's, which invents a second cluster uuid)
+//	VsanVcClusterConfigSystem   VsanClusterGetConfig
 //	VsanVcDiskManagementSystem  QueryVsanManagedDisks
 //	VsanVcClusterHealthSystem   VsanQueryVcClusterHealthSummary (hclInfo)
 //
-// Everything else on /vsanHealth keeps vcsim's behaviour (ManagedObjectNotFound
-// or MethodNotFound). Response shapes follow fixtures/live/9.1.1.
+// Nothing else is registered, so any other managed object on /vsanHealth
+// (vcsim's stock stretched-cluster system included) is ManagedObjectNotFound.
+// vcsim's own vsan/simulator package must stay unimported. Response shapes
+// follow fixtures/live/9.1.1.
 package vsanhealth
 
 import (
@@ -83,9 +85,8 @@ var (
 	HealthSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
 )
 
-// Install merges the handlers into the service's /vsanHealth registry. It must
-// run after Service.NewServer, which is where vcsim registers the stock
-// /vsanHealth endpoint (github.com/vmware/govmomi/vsan/simulator).
+// Install registers the /vsanHealth endpoint on the service. It must run after
+// Service.NewServer, which sets up the service's endpoint table.
 func Install(s *simulator.Service, env *Env) {
 	r := simulator.NewRegistry()
 	r.Namespace = "vsan"

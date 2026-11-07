@@ -55,7 +55,12 @@ type env struct {
 
 func start(t *testing.T, seed string) *env {
 	t.Helper()
-	s, err := sim.New(sim.Options{Topology: topology.Phase1(seed), Now: func() time.Time { return captureTime }})
+	return startTopology(t, topology.Phase1(seed))
+}
+
+func startTopology(t *testing.T, topo *topology.Topology) *env {
+	t.Helper()
+	s, err := sim.New(sim.Options{Topology: topo, Now: func() time.Time { return captureTime }})
 	if err != nil {
 		t.Fatal(err)
 	}
