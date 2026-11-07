@@ -2,7 +2,7 @@
 
 A configurable, deployable vCenter and vSAN ESA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
-> Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack). No production-grade vCenter emulation is claimed.
+> Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack) with the Phase 5 control console. No production-grade vCenter emulation is claimed.
 
 ## Mission
 Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service** to let the real VCF Operations vCenter adapter and custom Tier 2 management packs discover entities, query metrics, and ingest simulated telemetry. The first executable target is [nickfirefoot/vsanhostmetrics](https://github.com/nickfirefoot/vsanhostmetrics), being ported to a VCF Content Factory Tier 2 MP.
@@ -14,7 +14,7 @@ Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service
 - Add vSAN /vsanHealth API handling grounded in live read-only API captures, especially `VsanPerfQueryPerf`, `VsanPerfQueryNodeInformation`, supported entity types, hardware/inventory joins, and correct SOAP fault behavior.
 - Use one Helm release / public hostname per simulated vCenter initially. Many clusters may exist inside each instance; no runtime Kubernetes/ingress administration required.
 - Produce stable inventory UUIDs / MoRefs and deterministic, 5-minute-bucket ESA telemetry. Support scale from a tiny compatibility fixture to 100+ clusters as a **test target**, not a claimed capacity.
-- Build a small **Lattice**-styled operator UI with topology editor, generators, performance controls and API/collector observability. A mockup and independent end-user UX evaluation **precede UI implementation**.
+- A small **Lattice**-styled control console with topology editor, generators, performance controls and API/collector observability (built from owner-approved mockups after an independent end-user UX evaluation).
 
 ## Phase 2: a functional simulator
 
@@ -45,6 +45,7 @@ go build ./cmd/vcsimulator
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
+| `-admin ADDR` | the control console (plain HTTP, no login); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
 
 What the scenario controls, and what the simulator guarantees:
 
@@ -80,6 +81,47 @@ metric labels the live service only ever answered with `None` get generic
 values; no OSA, iSCSI target service, file service, NFS/FC/iSCSI datastores
 or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
 
+### Control console
+
+Open `http://127.0.0.1:9090/` (the `-admin` address). The console is the
+way to change a running simulator without editing YAML: it shows the
+service, projects what a topology costs a collector per five-minute cycle,
+edits clusters and the generator, loads scenario presets, sets latency and
+fault rules, and shows every request the simulator served. It follows the
+Lattice design system, in light and dark.
+
+- **Nothing reaches the API by accident.** Every edit goes into one pending
+  draft. *Review & apply* shows what is kept, added and removed (hosts,
+  disks, VMs, cluster identities) and applies at the next five-minute
+  bucket boundary, or immediately if you ask. Latency and fault edits swap
+  in place: the vCenter, its sessions and its history are untouched. A
+  topology change builds a new vCenter next to the old one and swaps them;
+  sessions end at the swap, as after a vCenter restart.
+- **Identity actions are separate and confirmed.** *Regenerate* gives one
+  cluster new identities under the same seed; *Reset cluster seed* changes
+  every sample of that cluster and no identity; *Delete cluster* removes it
+  (its identities stay retired). The global seed changes only in the
+  generator.
+- **Applied state survives a restart.** The console writes
+  `<data>/console.json`; the next start resumes it unless the scenario file
+  changed, in which case the file wins and the console says so in its
+  timeline.
+- **No login.** The console binds to loopback by default; the container
+  image listens on 9090 inside the container and `docker-compose.yml`
+  publishes it on `127.0.0.1` only; the Helm chart exposes no Service for it
+  (use `kubectl port-forward`). Put your own authentication in front of it
+  before reaching it from anywhere else. It never serves the simulator's API
+  and the API never serves it; state-changing requests must be same-origin
+  JSON.
+- **The request log is redacted.** It keeps method, family, cluster, client
+  address, duration, size and result, plus the request body of a
+  `/vsanHealth` call; never a header, cookie or `/sdk` body (a login carries
+  a password). It holds the last 20,000 calls in memory.
+
+Projections (entities, series, calls and bytes per cycle) are computed from
+the topology and the catalog, labelled as projections, and never presented
+as measured scale.
+
 ### Checks
 
 The first real Operations collection gate passed against the installed vSAN
@@ -90,6 +132,7 @@ Host Metrics 2.0.0 pack; its scope, procedure and measured result are in
 |---|---|---|
 | Contract: every captured request replayed against the Phase 1 shape, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `go` job |
 | Phase 2: the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality, overrides), restart and edit identity stability through the registry, credentials, fault and latency knobs, inventory realism against the trimmed live inventory capture, gauge values inside the live envelopes, `Raw` counters monotonic | `go test ./...` | CI `go` job |
+| Control plane: draft, review and apply keep identities (and rebuild only for topology changes), Delete / Regenerate / Reset seed, saved state across a restart and a changed scenario file, scheduled apply, request log classification of ok / injected / unexpected / refused calls, redaction, admin API guards | `go test ./...` | CI `go` job |
 | Smoke: a plain vSphere client (govc) connects with the scenario's credentials (and is refused with a wrong password), lists clusters, hosts and VMs and compares the counts with what the simulator built, dumps every identity, restarts the simulator on the same data directory and checks the dump is identical | `tools/smoke/smoke.sh` | CI `smoke` job |
 | Chart: `helm lint --strict` with every `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template` and `kubeconform` of the rendered manifests and the Argo CD example | `.github/workflows/package.yml` | CI `package` workflow, `chart` job |
 | Image: build, OCI label and non-root check, `docker compose` boot, then a vSphere client smoke ([`tools/smoke/smoke.ps1`](tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, expected hosts and VMs back, wrong password refused | PowerCLI on `pwsh` | CI `package` workflow, `image` job |
@@ -130,7 +173,7 @@ the Docker bridge gateway, so bind the simulator to `0.0.0.0`. It needs a TTY
 and gets a pty from the runner. `attach_to_vcenter` must be off under
 `mp-test`, which has no Operations Suite API to resolve vCenter objects.
 
-Out of scope for this milestone: UI, OSA and non-vSAN storage, the REST
+Out of scope for this milestone: OSA and non-vSAN storage, the REST
 `/api` surface, and any live vCenter access.
 
 ## Running it

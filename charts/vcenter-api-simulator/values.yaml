@@ -32,6 +32,14 @@ simulator:
   # Additional command-line arguments passed to vcsimulator.
   extraArgs: []
 
+# The control console: topology editor, scenario presets and request log.
+# Plain HTTP and no login, so no Service or Ingress exposes it; reach it with
+# `kubectl port-forward` (see NOTES.txt), or put your own authenticated proxy
+# in front of the pod port.
+admin:
+  enabled: true
+  port: 9090
+
 credentials:
   # When false, any user name and password log in (vcsim's default).
   # When true, only the pair in the Secret below logs in.

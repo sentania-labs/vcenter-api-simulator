@@ -142,7 +142,7 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, delay: opts.Latency.SDK, strictLogin: len(creds) > 0}
+	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0}
 	return s, nil
 }
 
@@ -632,7 +632,6 @@ type handler struct {
 	mux         *http.ServeMux
 	cat         *catalog.Catalog
 	env         *vsanhealth.Env
-	delay       *scenario.Delay
 	strictLogin bool
 }
 
@@ -664,8 +663,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					invalidLogin(w)
 					return
 				}
-				if h.delay != nil {
-					time.Sleep(h.delay.Duration(rand.Float64()))
+				if d := h.env.Knobs.SDKDelay(); d != nil {
+					time.Sleep(d.Duration(rand.Float64()))
 				}
 			default:
 				if hold := h.env.Hold(body); hold > 0 {

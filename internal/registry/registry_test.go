@@ -109,3 +109,36 @@ func TestNamespaceIsSeedDerived(t *testing.T) {
 		t.Fatal("sub seeds alias")
 	}
 }
+
+func TestCloneIsolatedAndRetireNeverReusesSerials(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r, _ := Open(path, "seed", false)
+	r.Serial("cluster/dc-01/cluster-01")
+	r.Serial("host/dc-01/cluster-01/esx01")
+	r.Serial("vm/dc-01/cluster-01/vm001")
+	r.Serial("cluster/dc-01/cluster-02")
+	r.Serial("host/dc-01/cluster-02/esx01")
+	r.Serial("cluster/dc-01/cluster-10")
+
+	c := r.Clone()
+	if n := c.Retire("dc-01/cluster-01"); n != 3 {
+		t.Errorf("retired %d keys, want the cluster, its host and its VM", n)
+	}
+	if !r.Has("host/dc-01/cluster-01/esx01") {
+		t.Error("retiring on a clone changed the original")
+	}
+	if c.Has("cluster/dc-01/cluster-02") == false || c.Has("cluster/dc-01/cluster-10") == false {
+		t.Error("retire matched another cluster (cluster-10 shares a prefix with cluster-1)")
+	}
+	next := c.Serial("cluster/dc-01/cluster-01")
+	if next != 7 {
+		t.Errorf("a retired key got serial %d, want a fresh 7", next)
+	}
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r2, _ := Open(path, "seed", false)
+	if r2.Serial("cluster/dc-01/cluster-01") != 7 {
+		t.Error("the clone's save did not become the registry")
+	}
+}

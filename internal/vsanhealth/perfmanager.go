@@ -181,7 +181,7 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 				st, ok := m.env.Catalog.LabelStats(family, label)
 				vals := make([]string, len(buckets))
 				for i, b := range buckets {
-					vals[i] = perf.Value(m.env.Topo.TelemetrySeed, ref, label, st, ok, unit, b)
+					vals[i] = perf.Value(cl.TelemetrySeed, ref, label, st, ok, unit, b)
 				}
 				e.Value = append(e.Value, vsantypes.VsanPerfMetricSeriesCSV{
 					MetricId: vsantypes.VsanPerfMetricId{Label: label, MetricsCollectInterval: m.env.Catalog.MetricsCollectInt},

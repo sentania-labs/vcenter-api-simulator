@@ -50,7 +50,11 @@ WORKDIR /data
 # when the root filesystem is read-only. VCSIM_DATA is the -data default, so
 # a command line without -data still keeps its registry on the volume.
 ENV TMPDIR=/tmp VCSIM_DATA=/data
+# The control console (plain HTTP, no login) listens on 9090 inside the
+# container; publish it on loopback only, or put your own authentication in
+# front of it. Set VCSIM_ADMIN= (empty) to turn it off.
+ENV VCSIM_ADMIN=0.0.0.0:9090
 USER nonroot:nonroot
-EXPOSE 8443
+EXPOSE 8443 9090
 ENTRYPOINT ["/vcsimulator"]
 CMD ["-listen", "0.0.0.0:8443", "-data", "/data", "-seed", "phase1"]

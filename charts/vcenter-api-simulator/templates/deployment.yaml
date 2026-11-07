@@ -50,6 +50,7 @@ spec:
             - -data=/data
             - -seed={{ .Values.simulator.seed }}
             - -tls-names={{ include "vcsim.tlsNames" . }}
+            - -admin={{ if .Values.admin.enabled }}0.0.0.0:{{ .Values.admin.port }}{{ end }}
             {{- range .Values.simulator.extraArgs }}
             - {{ . | quote }}
             {{- end }}
@@ -75,6 +76,11 @@ spec:
             - name: https
               containerPort: {{ .Values.simulator.port }}
               protocol: TCP
+            {{- if .Values.admin.enabled }}
+            - name: admin
+              containerPort: {{ .Values.admin.port }}
+              protocol: TCP
+            {{- end }}
           {{- if .Values.probes.startup.enabled }}
           startupProbe:
             httpGet:

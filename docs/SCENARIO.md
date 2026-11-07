@@ -2,8 +2,8 @@
 
 The scenario file is the operator's contract with the simulator: one YAML
 file that says what the simulated vCenter contains, who may log in, which
-certificate it serves, and how it misbehaves. There is no UI and no API that
-edits it; change the file and restart. Examples live in
+certificate it serves, and how it misbehaves. Change the file and restart, or
+edit a running simulator in the control console (below). Examples live in
 [`examples/scenarios/`](../examples/scenarios/).
 
 ```sh
@@ -75,6 +75,12 @@ clusters:                   # explicit overrides win over draws and defaults;
     hosts: 16
     dedup: false
     host: {domWorlds: 140}
+    seedEpoch: 0            # above 0: this cluster gets its own telemetry seed
+                            #   (every sample changes, no identity does)
+
+removed:                    # generated clusters left out (the console's Delete);
+  - dc-01/cluster-07        #   the others keep their numbers and the removed
+                            #   cluster's identities stay retired
 
 auth:                       # no users: any non-empty name and password log in
   users:
@@ -155,3 +161,23 @@ Entities per cluster, by family (the fan-out the live capture showed):
 Ten clusters of the example scenario (82 hosts, 446 VMs) build in under a
 second and the process uses tens of megabytes; nothing is stored per metric
 sample.
+
+## Editing a running simulator: the control console
+
+The console (`-admin`, default `http://127.0.0.1:9090/`) edits the same
+model without touching the file. Edits collect in one pending draft and
+apply at the next five-minute bucket boundary (or at once). The applied
+scenario is saved in `<data>/console.json` without the `auth` and `tls`
+sections (those always come from the file, so no password is ever written
+there). On the next start the saved state resumes unless the scenario file
+changed since, in which case the file wins.
+
+| Console action | Scenario effect | Identities |
+|---|---|---|
+| edit a cluster | an entry under `clusters:` | kept; new hosts and VMs get new serials |
+| Add cluster | `datacenters[].clusters` + 1 | existing unchanged |
+| Delete cluster | the key under `removed:` | the cluster's serials are retired |
+| Regenerate | none (an apply-time action) | the cluster's serials are retired and new ones minted, same seed |
+| Reset cluster seed | `seedEpoch` + 1 on the cluster | unchanged; every sample of the cluster changes |
+| generator / new global seed | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new seed replaces every identity |
+| latency, fault rules | `latency:`, `faults:` | none; the running vCenter is not rebuilt |

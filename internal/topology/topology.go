@@ -51,18 +51,21 @@ var Portgroups = []string{"pg-mgmt", "pg-vmotion", "pg-vsan", "pg-vm"}
 
 // Cluster is a vSAN ESA cluster.
 type Cluster struct {
-	Name        string
-	Key         string // "<datacenter>/<cluster>", the scenario's override and fault selector
-	Serial      int
-	Datacenter  *Datacenter
-	VsanUUID    string // configurationEx.vsanConfigInfo.defaultConfig.uuid and every cluster-* entityRefId
-	Dedup       bool   // ESA dedup/compression: switches the *-esa-dedup-* families on
-	Compression bool
-	Datastore   string // the cluster's vSAN datastore name
-	ContainerID string // the vSAN datastore container id (url ds:///vmfs/volumes/vsan:<id>/)
-	Hosts       []*Host
-	VMs         []*VM
-	Spec        scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
+	Name       string
+	Key        string // "<datacenter>/<cluster>", the scenario's override and fault selector
+	Serial     int
+	Datacenter *Datacenter
+	VsanUUID   string // configurationEx.vsanConfigInfo.defaultConfig.uuid and every cluster-* entityRefId
+	// TelemetrySeed feeds this cluster's metric values: the scenario's
+	// telemetry seed, narrowed by the cluster's seed epoch once it was reset.
+	TelemetrySeed string
+	Dedup         bool // ESA dedup/compression: switches the *-esa-dedup-* families on
+	Compression   bool
+	Datastore     string // the cluster's vSAN datastore name
+	ContainerID   string // the vSAN datastore container id (url ds:///vmfs/volumes/vsan:<id>/)
+	Hosts         []*Host
+	VMs           []*VM
+	Spec          scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
 }
 
 // VDS is the datacenter's vDS name; VDSUUID its uuid; Portgroup the VM
@@ -227,7 +230,10 @@ func Generate(s *scenario.Scenario, r *registry.Registry) *Topology {
 		dc := &Datacenter{Name: d.Name, Key: d.Name, Serial: r.Serial("datacenter/" + d.Name), VDS: "vds-01"}
 		dc.VDSUUID = vdsUUID(r.Hex("vds", r.Serial("vds/"+d.Name), 32))
 		for n := 1; n <= d.Clusters; n++ {
-			dc.Clusters = append(dc.Clusters, generateCluster(s, r, dc, n))
+			if s.IsRemoved(scenario.ClusterKey(d.Name, n)) {
+				continue
+			}
+			dc.Clusters = append(dc.Clusters, generateCluster(s, r, dc, t.TelemetrySeed, n))
 		}
 		t.Datacenters = append(t.Datacenters, dc)
 	}
@@ -244,16 +250,20 @@ func vdsUUID(h string) string {
 	return strings.Join(parts[:8], " ") + "-" + strings.Join(parts[8:], " ")
 }
 
-func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter, n int) *Cluster {
+func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter, telemetrySeed string, n int) *Cluster {
 	name := fmt.Sprintf("cluster-%02d", n)
 	key := dc.Name + "/" + name
 	spec := s.Resolve(key, draw(s.Vary, r.Sub(key)))
 	cl := &Cluster{
 		Name: name, Key: key, Datacenter: dc,
-		Serial:      r.Serial("cluster/" + key),
-		Dedup:       *spec.Dedup,
-		Compression: *spec.Compression,
-		Spec:        spec,
+		Serial:        r.Serial("cluster/" + key),
+		TelemetrySeed: telemetrySeed,
+		Dedup:         *spec.Dedup,
+		Compression:   *spec.Compression,
+		Spec:          spec,
+	}
+	if e := s.SeedEpoch(key); e > 0 {
+		cl.TelemetrySeed = fmt.Sprintf("%s/%s#%d", telemetrySeed, key, e)
 	}
 	cl.VsanUUID = r.UUID("vsan-cluster", cl.Serial)
 	cl.ContainerID = r.Hex("vsan-container", cl.Serial, 16) + "-" + r.Hex("vsan-container-tail", cl.Serial, 16)

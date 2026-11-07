@@ -1,0 +1,433 @@
+// Topology: the cluster tree and the cluster editor, plus the three
+// identity-changing confirmations (Regenerate, Reset cluster seed, Delete).
+// The generator and review pages live in topology-flow.js and are mounted
+// under #/topology/generator and #/topology/review.
+import { api, html, raw, join, badge, banner, int, bytes, hm, clone, plural } from './lib.js';
+import flow from './topology-flow.js';
+
+// ---- view state that survives re-renders ------------------------------------
+const ui = { filter: '', pill: 'all', closed: {}, expanded: {}, allHosts: false };
+
+const mode = (ctx) => (['generator', 'review'].includes(ctx.route.parts[0]) ? ctx.route.parts[0] : 'editor');
+const pad = (n) => String(n).padStart(2, '0');
+
+// editable fields: where each lives in an override entry and in an effective spec
+const FIELDS = {
+  hosts: { label: 'Hosts', path: ['hosts'], min: 3, src: 'hosts' },
+  vmsPerHost: { label: 'VMs per host', path: ['vms', 'perHost'], min: 0, src: 'vmsPerHost' },
+  disksPerVM: { label: 'Virtual disks / VM', path: ['vms', 'disksPerVM'], min: 1, src: 'disksPerVM' },
+  threads: { label: 'Logical CPUs', path: ['host', 'threads'], min: 1, src: 'threads', hint: 'host-cpu objects' },
+  domWorlds: { label: 'DOM worlds', path: ['host', 'domWorlds'], min: 0, src: 'domWorlds', hint: 'dom-world-cpu objects' },
+  claimedDevices: { label: 'NVMe devices', path: ['host', 'claimedDevices'], min: 1, src: 'claimedDevices', hint: 'claimed by vSAN ESA' },
+  localDevices: { label: 'Local devices', path: ['host', 'localDevices'], min: 0, src: 'localDevices', hint: 'local VMFS, inventory only' },
+  vsanPnics: { label: 'pNICs (vSAN)', path: ['host', 'vsanPnics'], min: 1, src: 'vsanPnics', hint: 'vsan-pnic-net objects' },
+  dedup: { label: 'Dedup', path: ['dedup'], bool: true, src: 'dedup' },
+  compression: { label: 'Compression', path: ['compression'], bool: true, src: 'compression' },
+};
+
+function getPath(obj, path) {
+  let v = obj;
+  for (const p of path) { if (v == null) return undefined; v = v[p]; }
+  return v;
+}
+function setPath(obj, path, val) {
+  let o = obj;
+  for (const p of path.slice(0, -1)) { o[p] = o[p] || {}; o = o[p]; }
+  o[path[path.length - 1]] = val;
+}
+function unsetPath(obj, path) {
+  const chain = [obj];
+  for (const p of path.slice(0, -1)) { if (!chain[chain.length - 1]?.[p]) return; chain.push(chain[chain.length - 1][p]); }
+  delete chain[chain.length - 1][path[path.length - 1]];
+  for (let i = chain.length - 1; i > 0; i--) if (!Object.keys(chain[i]).length) delete chain[i - 1][path[i - 1]];
+}
+const overrideOf = (scn, key) => (scn.clusters || []).find((c) => c.key === key);
+function mutateOverride(scn, key, fn) {
+  scn.clusters = scn.clusters || [];
+  let o = scn.clusters.find((c) => c.key === key);
+  if (!o) { o = { key }; scn.clusters.push(o); }
+  fn(o);
+  const empty = (x) => Object.keys(x).every((k) => k === 'key' || (typeof x[k] === 'object' && x[k] !== null && !Array.isArray(x[k]) && !Object.keys(x[k]).length));
+  if (empty(o)) scn.clusters = scn.clusters.filter((c) => c !== o);
+}
+
+// ---- data ---------------------------------------------------------------------
+async function loadEditor(ctx) {
+  const [tree, draft] = await Promise.all([api('/tree'), api('/draft')]);
+  const all = tree.datacenters.flatMap((d) => d.clusters);
+  let key = ctx.route.parts.length >= 2 ? `${ctx.route.parts[0]}/${ctx.route.parts[1]}` : '';
+  if (!all.some((c) => c.key === key)) key = '';
+  if (!key) {
+    const pick = all.find((c) => c.state) || all.find((c) => c.override) || all[0];
+    key = pick ? pick.key : '';
+  }
+  const cluster = key ? await api('/clusters/' + key) : null;
+  let review = null;
+  if (draft.pending.exists && !draft.pending.scheduled) { try { review = await api('/review'); } catch (e) { review = null; } }
+  else if (draft.pending.scheduled) { try { review = await api('/review'); } catch (e) { review = null; } }
+  return { tree, draft, key, cluster, review, all };
+}
+
+// ---- left: the tree -----------------------------------------------------------
+function matches(c) {
+  if (ui.filter && !c.name.toLowerCase().includes(ui.filter.toLowerCase()) && !`${c.datacenter}/${c.name}`.toLowerCase().includes(ui.filter.toLowerCase())) return false;
+  if (ui.pill === 'overridden') return c.override;
+  if (ui.pill === 'pending') return !!c.state;
+  if (ui.pill === 'warnings') return c.warnings > 0;
+  return true;
+}
+const isPlain = (c, key) => !c.state && !c.override && !c.regenerate && !c.seedReset && !c.warnings && c.key !== key;
+
+function treeRow(c, key) {
+  const sel = c.key === key;
+  const hosts = c.state === 'removed' ? `${c.hostsBefore}→0` : c.hostsBefore >= 0 && c.hostsBefore !== c.hosts ? `${c.hostsBefore}→${c.hosts}` : String(c.hosts);
+  let b = '';
+  if (c.state === 'removed') b = badge('DELETED', 'bad');
+  else if (c.state === 'new') b = badge('NEW', 'warn');
+  else if (c.state === 'pending') b = badge('PENDING', 'warn');
+  else if (c.regenerate) b = badge('REGEN', 'warn');
+  else if (c.override) b = badge('OVERRIDE');
+  else if (c.warnings) b = badge('WARN', 'warn');
+  return html`<li><a class="lat-row tree-row${sel ? ' is-sel' : ''}${c.state ? ' is-pending' : ''}" href="#/topology/${c.key}" data-k="row:${c.key}" data-key="${c.key}" ${raw(sel ? 'aria-current="true"' : '')}>
+    <span class="ink mono" style="font-size:12px${c.state === 'removed' ? ';text-decoration:line-through' : ''}">${c.name}</span>
+    <span class="num r" style="font-size:12px">${hosts}h</span>
+    <span class="num r subtle" style="font-size:11.5px">${c.devices}×N</span>
+    <span style="text-align:right">${b}</span></a></li>`;
+}
+
+function dcGroup(dc, key) {
+  const open = !ui.closed[dc.name];
+  const filtering = ui.filter || ui.pill !== 'all';
+  const rows = [];
+  let run = [];
+  const flush = (idx) => {
+    if (!run.length) return;
+    if (run.length >= 5 && !ui.expanded[dc.name + ':' + run[0].key]) {
+      rows.push(html`<li><button type="button" class="tree-run" data-act="topo.expand" data-arg="${dc.name}:${run[0].key}" data-k="run:${run[0].key}">${run[0].name} … ${run[run.length - 1].name} · ${run.length} uniform clusters</button></li>`);
+    } else run.forEach((c) => rows.push(treeRow(c, key)));
+    run = [];
+  };
+  for (const c of dc.clusters) {
+    if (!matches(c)) continue;
+    if (!filtering && isPlain(c, key)) run.push(c);
+    else { flush(); rows.push(treeRow(c, key)); }
+  }
+  flush();
+  return html`<div class="lat-group${open ? ' is-open' : ''}"><button type="button" class="lat-group-summary tree-dc" data-act="topo.toggleDC" data-arg="${dc.name}" aria-expanded="${open}" data-k="dc:${dc.name}">${dc.name} <span class="lat-n">${plural(dc.clusters.length, 'cluster')} · ${int(dc.hosts)} hosts</span></button>
+    ${open ? html`<ul class="lat-tree">${rows.length ? rows : html`<li class="more">No cluster matches.</li>`}</ul>` : ''}</div>`;
+}
+
+function treeCard(d) {
+  const t = d.tree;
+  const pill = (id, label, n) => html`<button type="button" class="lat-pill${ui.pill === id ? ' is-on' : ''}" data-act="topo.pill" data-arg="${id}" aria-pressed="${ui.pill === id}" data-k="pill:${id}">${label} <b>${int(n)}</b></button>`;
+  return html`<section class="lat-card tree-card" aria-labelledby="tp-clusters"><h2 class="lat-card-title" id="tp-clusters">Clusters <span class="aside">${int(t.clusters)} · ${int(t.hosts)} hosts</span></h2>
+    <div class="row"><a class="lat-btn lat-btn--sm" href="#/topology/generator" style="text-decoration:none">Quick generator…</a><button type="button" class="lat-btn lat-btn--sm" data-act="topo.add" data-k="add-cluster">Add cluster</button></div>
+    <div class="row"><input class="lat-input grow" value="${ui.filter}" placeholder="Filter, e.g. cluster-1   ( / )" aria-label="Filter clusters" data-k="tree-filter" data-inp="topo.filter" autocomplete="off" spellcheck="false"></div>
+    <div class="pill-row">${pill('all', 'All', t.clusters)}${pill('overridden', 'Overridden', t.overridden)}${pill('pending', 'Pending', t.pendingClusters)}${pill('warnings', 'Warnings', t.warningClusters)}</div>
+    <div class="tree-scroll" data-scroll="tree">${t.datacenters.map((dc) => dcGroup(dc, d.key))}</div></section>`;
+}
+
+// ---- centre: the editor ---------------------------------------------------------
+function fieldValue(v, f) { return f.bool ? !!v : v; }
+
+function input(view, id, locked) {
+  const f = FIELDS[id];
+  const cur = fieldValue(getPath(view.spec, f.path.length === 1 ? f.path : f.path), f);
+  const was = view.applied ? fieldValue(getPath(view.applied, f.path), f) : undefined;
+  const changed = view.applied && cur !== was;
+  const src = (view.sources.find((s) => s.field === f.src) || {}).source || 'default';
+  const marker = src === 'override' ? html` <span title="This cluster overrides the scenario default" role="img" aria-label="override">◆</span>` : '';
+  let hint;
+  if (changed) hint = html`was ${f.bool ? (was ? 'on' : 'off') : was} · <button type="button" class="link" data-act="topo.revert" data-arg="${id}" data-k="revert:${id}">↺ revert</button>`;
+  else if (src === 'override') hint = html`override · <button type="button" class="link" data-act="topo.inherit" data-arg="${id}" data-k="inherit:${id}">↺ inherit</button>`;
+  else hint = src === 'varied' ? 'varied per cluster' : f.hint ? f.hint : 'scenario default';
+  const hid = `h-${id}`;
+  if (f.bool) {
+    return html`<div><span class="lat-label">${f.label}${marker}</span><div style="padding:4px 0"><label class="chk"><input type="checkbox" ${raw(cur ? 'checked' : '')} ${raw(locked ? 'disabled' : '')} data-chg="topo.field" data-f="${id}" data-k="f:${id}" aria-describedby="${hid}"> ${cur ? 'on' : 'off'}</label></div><div class="lat-hint" id="${hid}">${hint}</div></div>`;
+  }
+  return html`<div><label class="lat-label" for="f-${id}">${f.label}${marker}</label><input class="lat-input num${changed ? ' is-changed' : ''}" id="f-${id}" inputmode="numeric" autocomplete="off" value="${cur}" ${raw(locked ? 'disabled' : '')} data-chg="topo.field" data-f="${id}" data-k="f:${id}" aria-describedby="${hid}"><div class="lat-hint" id="${hid}">${hint}</div></div>`;
+}
+
+function hostsTable(view) {
+  const rows = view.hosts;
+  const pending = rows.some((h) => h.identity !== 'unchanged');
+  const badgeFor = (h) => (h.identity === 'unchanged' ? badge('unchanged') : h.identity === 'new' ? badge('new', 'warn') : h.identity === 'renumbered' ? badge('MoRef renumbered', 'warn') : badge('removed', 'bad'));
+  const one = (h) => html`<tr class="${h.identity === 'unchanged' ? '' : 'is-pending'}"><td class="ink mono">${h.name.split('.')[0]}</td><td class="mono${h.moref ? '' : ' subtle'}">${h.moref || '(derived)'}</td><td class="mono${h.moref ? '' : ' subtle'}">${h.nodeUuid}</td><td class="lat-num">${h.nvme}</td><td class="lat-num">${h.lcpu}</td><td class="lat-num">${h.vms}</td><td>${badgeFor(h)}</td></tr>`;
+  const out = [];
+  if (ui.allHosts || rows.length <= 8) rows.forEach((h) => out.push(one(h)));
+  else {
+    let i = 0;
+    while (i < rows.length) {
+      let j = i;
+      while (j < rows.length && rows[j].identity === rows[i].identity) j++;
+      const grp = rows.slice(i, j);
+      const keep = grp[0].identity === 'unchanged' ? 3 : 1;
+      grp.slice(0, keep).forEach((h) => out.push(one(h)));
+      if (grp.length > keep) {
+        const rest = grp.slice(keep);
+        const nm = (h) => h.name.split('.')[0];
+        out.push(html`<tr class="${grp[0].identity === 'unchanged' ? '' : 'is-pending'}"><td colspan="7" class="more">${nm(rest[0])} … ${nm(rest[rest.length - 1])} · ${rest.length} more${grp[0].identity === 'unchanged' ? ', unchanged' : ' ' + grp[0].identity + ' hosts'}</td></tr>`);
+      }
+      i = j;
+    }
+  }
+  return html`<div class="lat-table-scroll"><table class="lat-table"><thead><tr><th>Host</th><th>MoRef</th><th>Host / vSAN node UUID</th><th class="lat-num">NVMe</th><th class="lat-num">lCPU</th><th class="lat-num">VMs</th><th>Identity</th></tr></thead><tbody>${out}</tbody></table></div>
+    ${rows.length > 8 ? html`<div><button type="button" class="link" data-act="topo.allHosts" data-k="all-hosts">${ui.allHosts ? 'Collapse the host list' : `Show all ${rows.length} hosts`}</button></div>` : ''}`;
+}
+
+function changeCount(view, regen) {
+  if (!view.applied) return 0;
+  let n = 0;
+  for (const f of Object.values(FIELDS)) if (fieldValue(getPath(view.spec, f.path), f) !== fieldValue(getPath(view.applied, f.path), f)) n++;
+  if (regen) n++;
+  return n;
+}
+
+function editorCard(ctx, d) {
+  const v = d.cluster;
+  if (!v) return html`<section class="lat-card"><div class="empty">No clusters. Use Quick generator… to create a topology.</div></section>`;
+  const sched = ctx.state.pending && ctx.state.pending.scheduled;
+  const removed = v.state === 'removed';
+  const locked = sched || removed;
+  const regen = d.draft.regenerate.includes(v.key);
+  const n = changeCount(v, regen) + (d.draft.scenario.clusters || []).filter((c) => c.key === v.key && c.seedEpoch > ((overrideOf(d.draft.applied, v.key) || {}).seedEpoch || 0)).length;
+  const stateBadge = removed ? badge('deleted in draft', 'bad') : v.state === 'new' ? badge('new cluster', 'warn') : n ? badge(`${n} unapplied change${n === 1 ? '' : 's'}`, 'warn') : '';
+  const pending = ctx.state.pending && ctx.state.pending.exists;
+  const vsan = v.datastores.find((x) => x.type.startsWith('vSAN'));
+  return html`<section class="lat-card" aria-labelledby="ed-title">
+    <div class="row">
+      <h2 class="page-title mono" id="ed-title" style="font-size:16px;white-space:nowrap;margin:0">${v.name} <span class="muted" style="font-size:12px;font-weight:400">${v.datacenter}</span></h2>
+      ${badge('vSAN ESA')}${stateBadge}${regen ? badge('new identity generation', 'warn') : ''}${v.seedEpoch > 0 ? badge(`seed epoch ${v.seedEpoch}`, 'warn') : ''}
+      <span class="grow"></span><span class="anno" style="white-space:nowrap">${v.moref ? html`MoRef <span class="mono">${v.moref}</span> · ` : ''}${v.vsanUuid ? html`UUID <span class="mono">${v.vsanUuid}</span>` : html`<span class="subtle">identities are derived at apply</span>`}</span>
+    </div>
+    ${sched ? banner('info', html`A change is scheduled. Editing is locked until it lands or you cancel it from the banner above.`) : ''}
+    ${removed ? banner('bad', html`<b>${v.name} is deleted in the draft.</b> Nothing changes until you review and apply. <button type="button" class="link" data-act="topo.undelete" data-k="undelete">Undo delete</button> restores it with its identities.`) : ''}
+    <h2 class="lat-card-title">Cluster <span class="aside">◆ marks a value this cluster overrides; the rest come from the scenario defaults or its per-cluster draws</span></h2>
+    <div class="fields c6">
+      ${input(v, 'hosts', locked)}${input(v, 'vmsPerHost', locked)}${input(v, 'disksPerVM', locked)}
+      ${input(v, 'dedup', locked)}${input(v, 'compression', locked)}
+      <div><span class="lat-label">vDS</span><div class="mono ink" style="padding:5px 0">${v.vds}</div><div class="lat-hint">${v.portgroups} port groups · ${v.datacenter}</div></div>
+    </div>
+    <h2 class="lat-card-title">Storage <span class="aside">vSAN ESA is what the MP collects; the other rows are /sdk inventory only</span></h2>
+    <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>MP Perf Service</th></tr></thead><tbody>
+      ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td class="${s.perfService === 'queried' ? 'ink' : 'muted'}">${s.perfService}</td></tr>`)}</tbody></table>
+    <div class="anno">vSAN ESA is the only architecture the simulator models. OSA, NFS, FC and iSCSI datastores are not editable yet.</div>
+    <h2 class="lat-card-title">Per-host defaults <span class="aside">applies to every host in ${v.name}</span></h2>
+    <div class="fields c6">${['threads', 'domWorlds', 'claimedDevices', 'localDevices', 'vsanPnics'].map((id) => input(v, id, locked))}</div>
+    <h2 class="lat-card-title">Hosts <span class="aside">${v.state === 'removed' ? 0 : v.spec.hosts} after apply · identities derive from seed ${ctx.state.topology.seed} + cluster + host ordinal</span></h2>
+    ${hostsTable(v)}
+    <div class="row" style="margin-top:auto;border-top:1px solid var(--line-soft);padding-top:10px">
+      <button type="button" class="lat-btn" data-act="topo.discard" ${raw(pending ? '' : 'disabled')} data-k="discard">Discard…</button>
+      <a class="lat-btn lat-btn--primary" href="#/topology/review" style="text-decoration:none${pending ? '' : ';opacity:.5;pointer-events:none'}" ${raw(pending ? '' : 'aria-disabled="true" tabindex="-1"')} data-k="review">Review &amp; apply…</a>
+      <span class="grow"></span><span class="anno" style="white-space:nowrap">Changes identities:</span>
+      <button type="button" class="lat-btn" data-act="topo.regenerate" ${raw(locked ? 'disabled' : '')} data-k="regen">Regenerate…</button>
+      <button type="button" class="lat-btn" data-act="topo.resetSeed" ${raw(locked ? 'disabled' : '')} data-k="reset-seed">Reset cluster seed…</button>
+      <button type="button" class="lat-btn lat-btn--danger" style="margin-left:6px" data-act="topo.delete" ${raw(locked ? 'disabled' : '')} data-k="delete">Delete cluster…</button>
+    </div></section>`;
+}
+
+// ---- right: impact -----------------------------------------------------------------
+function impactCard(ctx, d) {
+  const st = ctx.state, v = d.cluster, rv = d.review, pend = st.pending && st.pending.exists;
+  const sel = st.selected;
+  const row = (label, a, b, fmt = int) => html`<tr><td>${label}</td><td class="lat-num">${fmt(a)}</td><td class="lat-num">${pend && rv ? fmt(b) : '—'}</td></tr>`;
+  const approx = (n) => '~' + bytes(n);
+  const others = d.tree.clusters - 1;
+  const pendingOthers = d.tree.pendingClusters - (v && v.state ? 1 : 0);
+  const banners = [];
+  if (v && v.state === 'removed') {
+    banners.push(banner('bad', html`<b>Removes the whole cluster</b> from the next topology: its hosts, VMs, NVMe devices and ${int(v.entities)} perf entities.`));
+  } else if (v && (v.state || d.draft.regenerate.includes(v.key))) {
+    const kept = v.hosts.filter((h) => h.identity === 'unchanged').length;
+    const added = v.hosts.filter((h) => h.identity === 'new').length;
+    const gone = v.hosts.filter((h) => h.identity === 'removed').length;
+    const regen = d.draft.regenerate.includes(v.key);
+    if (regen) banners.push(banner('warn', html`<b>Every identity in ${v.name} is replaced.</b> The cluster UUID, ${v.hosts.length} hosts, their NVMe disks and ${v.vms} VMs get new UUIDs; VCF Operations sees new objects and the old ones go stale.`));
+    else if (kept && rv && rv.renumbered && (rv.renumbered.clusters + rv.renumbered.hosts + rv.renumbered.vms) > 0) banners.push(banner('warn', html`<b>UUIDs kept, MoRefs renumbered.</b> ${kept} host${kept === 1 ? '' : 's'} here keep host, vSAN node, disk and VM UUIDs. ${int(rv.renumbered.clusters)} clusters, ${int(rv.renumbered.hosts)} hosts and ${int(rv.renumbered.vms)} VMs get new MoRefs because something this change removes was created before them.`));
+    else if (kept) banners.push(banner('ok', html`<b>Identities kept.</b> ${kept} host${kept === 1 ? '' : 's'} keep MoRefs, host UUIDs, vSAN node UUIDs, disk UUIDs and VM instanceUuids.${others > 0 ? html` The other ${others - pendingOthers} cluster${others - pendingOthers === 1 ? ' is' : 's are'} untouched.` : ''}`));
+    if (added && !regen) {
+      const one = d.tree.pendingClusters === 1 && rv ? rv.identities : null;
+      const vms = one ? (one.find((r) => r.label.startsWith('VM')) || {}).added : null;
+      const nv = one ? (one.find((r) => r.label.startsWith('NVMe')) || {}).added : null;
+      banners.push(banner('info', html`<b>Adds ${added} host${added === 1 ? '' : 's'}</b> with new derived identities. VCF Operations will discover ${added} host${added === 1 ? '' : 's'}${vms != null ? html`, ${int(vms)} VMs and ${int(nv)} NVMe devices` : ''}.`));
+    }
+    if (gone && !regen) banners.push(banner('warn', html`<b>Removes ${gone} host${gone === 1 ? '' : 's'}.</b> Every object created after a removed one gets a new MoRef (see Review for the count); UUIDs do not change. The vCenter adapter keys on MoRefs, the vSAN pack on UUIDs.`));
+    if (v.seedEpoch > 0 && v.state) banners.push(banner('warn', html`<b>Cluster seed reset.</b> Every synthetic sample of ${v.name}, including its history, changes. Identities do not.`));
+    banners.push(banner('', html`Telemetry history and seeds elsewhere are preserved. ${added ? html`New hosts start reporting at the next bucket, <span class="mono">${hm(st.clock.nextBoundary)}:00Z</span>.` : html`The change lands at the next bucket, <span class="mono">${hm(st.clock.nextBoundary)}:00Z</span>, if you apply at the boundary.`}`));
+  }
+  return html`<section class="lat-card" aria-labelledby="im-t"><h2 class="lat-card-title" id="im-t">Impact of pending edits</h2>
+    <table class="lat-table"><thead><tr><th></th><th class="r">Now</th><th class="r">After</th></tr></thead><tbody>
+      ${row('Hosts', rv ? rv.hostsBefore : st.projection.hosts, rv ? rv.hostsAfter : 0)}
+      ${row('Perf entities', rv ? rv.before.entities : sel.entities, rv ? rv.after.entities : 0)}
+      ${row('Series / cycle', rv ? rv.before.series : sel.series, rv ? rv.after.series : 0)}
+      ${row('PerfQuery calls', rv ? rv.before.calls : sel.calls, rv ? rv.after.calls : 0)}
+      ${row('Bytes / cycle', rv ? rv.before.bytes : sel.bytes, rv ? rv.after.bytes : 0, approx)}</tbody></table>
+    <div class="anno">Whole topology, ${((d.draft && d.draft.scope) || st.scope) === 'dashboard' ? 'dashboard kinds' : 'all modeled kinds'}, projected not measured. Calls scale with clusters × kinds, not hosts; extra load lands in response size.</div>
+    ${pend ? banners : html`<div class="anno">No pending edits. Change a field and the effect on identities appears here.</div>`}
+    <h2 class="lat-card-title" style="margin-top:4px">Consistency checks</h2>
+    <div class="stack" style="font-size:12px">${(v ? v.checks : []).map((c) => html`<div class="row"><span>${badge(c.severity, c.severity === 'info' ? '' : c.severity)}</span><span class="muted">${c.severity === 'ok' ? c.text : html`<b>${c.title}.</b> ${c.text}`}</span></div>`)}</div>
+  </section>`;
+}
+
+// ---- confirmations (mockup 12, real numbers) ---------------------------------------
+function counts(v) {
+  const hosts = v.hosts.filter((h) => h.identity !== 'removed');
+  const nvme = hosts.reduce((s, h) => s + h.nvme, 0);
+  const vdisks = v.vms * (v.spec.vms.disksPerVM || 1);
+  return { hosts: hosts.length, pendingHosts: hosts.filter((h) => h.identity === 'new').length, nvme, vms: v.vms, vdisks, ent: v.entities };
+}
+const joins = html`<li>Joins the pending draft: nothing changes until you review it and apply it at a bucket boundary.</li>`;
+
+async function post(ctx, path, key, ok) {
+  await ctx.run(() => api(path, { body: { cluster: key } }), ok);
+  await ctx.refresh();
+}
+
+const actions = {
+  expand(ctx, el) { ui.expanded[el.dataset.arg] = true; ctx.rerender(); },
+  toggleDC(ctx, el) { ui.closed[el.dataset.arg] = !ui.closed[el.dataset.arg]; ctx.rerender(); },
+  pill(ctx, el) { ui.pill = el.dataset.arg; ctx.rerender(); },
+  filter(ctx, el) { ui.filter = el.value; ctx.rerender(); },
+  allHosts(ctx) { ui.allHosts = !ui.allHosts; ctx.rerender(); },
+
+  async field(ctx, el, ev, data) {
+    const id = el.dataset.f, f = FIELDS[id], key = data.key;
+    let val;
+    if (f.bool) val = el.checked;
+    else {
+      const txt = el.value.trim();
+      if (!/^\d+$/.test(txt) || Number(txt) < f.min) {
+        el.classList.add('is-bad');
+        el.setAttribute('aria-invalid', 'true');
+        ctx.toast(`${f.label} must be a whole number of at least ${f.min}.`, 'bad');
+        return;
+      }
+      val = Number(txt);
+    }
+    const scn = clone(data.draft.scenario);
+    mutateOverride(scn, key, (o) => setPath(o, f.path, val));
+    await save(ctx, scn);
+  },
+  async revert(ctx, el, ev, data) {
+    const f = FIELDS[el.dataset.arg], key = data.key;
+    const was = getPath(overrideOf(data.draft.applied, key) || {}, f.path);
+    const scn = clone(data.draft.scenario);
+    mutateOverride(scn, key, (o) => (was === undefined ? unsetPath(o, f.path) : setPath(o, f.path, was)));
+    await save(ctx, scn);
+  },
+  async inherit(ctx, el, ev, data) {
+    const f = FIELDS[el.dataset.arg];
+    const scn = clone(data.draft.scenario);
+    mutateOverride(scn, data.key, (o) => unsetPath(o, f.path));
+    await save(ctx, scn);
+  },
+  async add(ctx, el, ev, data) {
+    const scn = clone(data.draft.scenario);
+    const cur = data.cluster ? data.cluster.datacenter : (scn.datacenters[0] || {}).name;
+    const dc = scn.datacenters.find((x) => x.name === cur) || scn.datacenters[0];
+    dc.clusters = (dc.clusters || 0) + 1;
+    const key = `${dc.name}/cluster-${pad(dc.clusters)}`;
+    if (await save(ctx, scn)) ctx.go('#/topology/' + key);
+  },
+  async undelete(ctx, el, ev, data) {
+    const scn = clone(data.draft.scenario);
+    scn.removed = (scn.removed || []).filter((k) => k !== data.key);
+    await save(ctx, scn);
+  },
+  async discard(ctx, el, ev, data) {
+    const p = ctx.state.pending || {};
+    const n = (p.topologyChanges || 0) + (p.telemetryChanges || 0);
+    const ok = await ctx.confirm({
+      title: 'Discard the pending draft?',
+      body: html`<ul><li>Drops all ${n || ''} unapplied change${n === 1 ? '' : 's'} in the draft: every cluster${p.telemetryChanges ? ', and the latency and fault edits' : ''}, not only ${data.key.split('/')[1]}.</li>
+        <li>The API is untouched; it keeps serving topology v${ctx.state.topology.version}. A discarded draft cannot be restored.</li></ul>`,
+      confirmLabel: 'Discard draft', danger: true,
+    });
+    if (!ok) return;
+    await ctx.run(() => api('/draft', { method: 'DELETE' }), 'Draft discarded.');
+    await ctx.refresh();
+  },
+  async regenerate(ctx, el, ev, data) {
+    const v = data.cluster, c = counts(v);
+    const ok = await ctx.confirm({
+      title: `Regenerate identities for ${v.key}?`, wide: true,
+      body: html`<ul>
+        <li>New identity generation for this cluster. The seed is unchanged, so sample shapes stay the same.</li>
+        <li><b>Replaced:</b> the cluster UUID · ${int(c.hosts)} host MoRefs, host UUIDs and vSAN node UUIDs · ${int(c.nvme)} NVMe UUIDs · ${int(c.vms)} VMs · ${int(c.vdisks)} virtual disks · ${int(c.ent)} perf entities.</li>
+        <li><b>Kept:</b> the cluster name, datacenter, vDS, every setting in the editor and every seed. VCF Operations sees ${int(c.hosts)} new hosts, and the old ones go stale.</li>
+        ${joins}</ul>`,
+      confirmLabel: 'Add regenerate to draft', danger: true,
+    });
+    if (ok) await post(ctx, '/draft/regenerate', v.key, `Regenerate of ${v.name} added to the draft.`);
+  },
+  async resetSeed(ctx, el, ev, data) {
+    const v = data.cluster;
+    const ok = await ctx.confirm({
+      title: `Give ${v.key} a new cluster seed?`, wide: true,
+      body: html`<ul>
+        <li>Moves ${v.name} to a new telemetry seed epoch (${v.seedEpoch} → ${v.seedEpoch + 1}). The global seed ${ctx.state.topology.seed} and the other clusters are not touched.</li>
+        <li><b>Replaced:</b> every synthetic sample for ${v.name}, including its 24 h of history. <b>Kept:</b> every identity: UUIDs and MoRefs do not change.</li>
+        <li>Earlier runs on ${v.name} can no longer be replayed bit-for-bit.</li>
+        ${joins}</ul>`,
+      confirmLabel: 'Add seed reset to draft', danger: true,
+    });
+    if (ok) await post(ctx, '/draft/reset-seed', v.key, `Seed reset of ${v.name} added to the draft.`);
+  },
+  async delete(ctx, el, ev, data) {
+    const v = data.cluster, c = counts(v), st = ctx.state;
+    const kinds = st.selected.kinds, nc = data.tree.clusters;
+    const ok = await ctx.confirm({
+      title: `Delete ${v.key} and everything in it?`, wide: true, typed: v.key,
+      body: html`<ul>
+        <li><b>Removed:</b> ${int(c.hosts)} hosts${v.applied && v.hostsApplied !== c.hosts ? ` (${v.hostsApplied} applied, ${c.hosts} in the draft)` : ''}, ${int(c.vms)} VMs, ${int(c.nvme)} NVMe devices and ${int(c.ent)} perf entities. ${v.datastores[0].name} is deleted with it, and the local VMFS datastores of its hosts.</li>
+        <li>Per cycle: ${nc} → ${nc - 1} clusters, and PerfQuery calls drop from ${int(kinds * nc)} to ${int(kinds * (nc - 1))}.</li>
+        <li>The other clusters keep their names and UUIDs. Every cluster, host and VM created after the deleted one gets a new MoRef (the review gives the count); the VCF Operations vCenter adapter keys on MoRefs and sees those as new objects.</li>
+        ${joins}<li>Until you apply, <b>Undo delete</b> on this cluster, or Discard, brings it back as it is applied now; its pending edits are dropped.</li></ul>`,
+      confirmLabel: `Delete ${v.key}`, danger: true,
+    });
+    if (ok) await post(ctx, '/draft/delete', v.key, `Delete of ${v.name} added to the draft.`);
+  },
+};
+
+async function save(ctx, scn) {
+  try {
+    await api('/draft', { method: 'PUT', body: { scenario: scn } });
+    await ctx.refresh();
+    return true;
+  } catch (e) {
+    ctx.toast(e.message, 'bad');
+    await ctx.reload();
+    return false;
+  }
+}
+
+// ---- screen --------------------------------------------------------------------------
+let current = 'editor';
+const flowActions = Object.assign({}, flow.generator.actions, flow.review.actions);
+
+export default {
+  id: 'topology',
+  title: 'Topology',
+  get pollMs() { return current === 'editor' ? 6000 : (flow[current] && flow[current].pollMs) || 0; },
+  async load(ctx) {
+    current = mode(ctx);
+    return current === 'editor' ? loadEditor(ctx) : flow[current].load(ctx);
+  },
+  render(ctx, data) {
+    current = mode(ctx);
+    if (current !== 'editor') return flow[current].render(ctx, data);
+    return html`<div class="topo-grid">${treeCard(data)}${editorCard(ctx, data)}${impactCard(ctx, data)}</div>`;
+  },
+  mounted(ctx, data, page) { if (current !== 'editor' && flow[current].mounted) flow[current].mounted(ctx, data, page); },
+  actions: Object.assign({}, flowActions, Object.fromEntries(Object.entries(actions).map(([k, f]) => ['topo.' + k, f]))),
+  keys(ctx, ev, data, typing) {
+    if (current !== 'editor') { if (flow[current].keys) flow[current].keys(ctx, ev, data, typing); return; }
+    if (ev.key === '/' && !typing) { ev.preventDefault(); document.querySelector('[data-k="tree-filter"]')?.focus(); return; }
+    if (ev.key === 'Escape' && ev.target.matches('[data-k="tree-filter"]')) { ui.filter = ''; ctx.rerender(); return; }
+    if ((ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && ev.target.matches('.tree-row, .tree-run, .tree-dc')) {
+      const rows = [...document.querySelectorAll('.tree-row, .tree-run, .tree-dc')];
+      const i = rows.indexOf(ev.target) + (ev.key === 'ArrowDown' ? 1 : -1);
+      if (rows[i]) { ev.preventDefault(); rows[i].focus(); }
+    }
+  },
+};
