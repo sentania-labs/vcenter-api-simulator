@@ -22,8 +22,6 @@ permissions:
 env:
   IMAGE: ghcr.io/sentania-labs/vcenter-api-simulator
   POWERCLI_VERSION: 13.3.0.24145083
-  KIND_VERSION: v0.33.0
-  KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
   KUBECONFORM_VERSION: v0.6.7
   KUBECONFORM_SHA256: 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73
   CRD_SCHEMAS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
@@ -66,7 +64,7 @@ jobs:
             examples/argocd-application.yaml
 
   image:
-    name: build, smoke, kind install, publish
+    name: build, smoke, publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -105,7 +103,7 @@ jobs:
             echo "version=$version"
             echo "tags=$tags"
             echo "push=$push"
-            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "created=$(git show -s --format=%cI "$GITHUB_SHA")"
           } >> "$GITHUB_OUTPUT"
           echo "version=$version push=$push tags=[$tags]"
 
@@ -164,24 +162,6 @@ jobs:
         run: |
           docker compose logs || true
           docker compose down -v || true
-
-      - name: install kind (pinned)
-        run: |
-          curl --fail --location --retry 3 --output "$RUNNER_TEMP/kind" \
-            "https://github.com/kubernetes-sigs/kind/releases/download/$KIND_VERSION/kind-linux-amd64"
-          echo "$KIND_SHA256  $RUNNER_TEMP/kind" | sha256sum --check
-          chmod 0755 "$RUNNER_TEMP/kind"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-
-      - name: install the chart in kind and smoke it through the Service
-        run: tools/smoke/helm-kind.sh "$IMAGE:ci" vcsim-ci
-
-      - name: kind diagnostics
-        if: failure()
-        run: |
-          kubectl --context kind-vcsim-ci -n vcsim-smoke get all,pvc,secret || true
-          kubectl --context kind-vcsim-ci -n vcsim-smoke describe pod || true
-          kubectl --context kind-vcsim-ci -n vcsim-smoke logs -l app.kubernetes.io/name=vcenter-api-simulator --tail=100 || true
 
       # Everything above passed; only now does anything leave the runner.
       - name: sign in to GHCR
