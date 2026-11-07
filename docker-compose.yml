@@ -7,9 +7,9 @@
 # The control console is on http://localhost:9090/ (loopback only).
 #
 # The identity registry, the certificate and the console's applied scenario
-# are created on first start and kept in the `data` volume, so the identities and the fingerprint a management
-# pack pinned survive `docker compose restart`. Remove the volume
-# (`docker compose down -v`) to issue new ones.
+# are created on first start and kept in the `data` volume, so the identities
+# and the fingerprint a management pack pinned survive `docker compose restart`.
+# Remove the volume (`docker compose down -v`) to issue new ones.
 services:
   vcsim:
     image: ghcr.io/sentania-labs/vcenter-api-simulator:${VCSIM_TAG:-main}

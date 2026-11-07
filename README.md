@@ -205,13 +205,15 @@ credentials at it.
 ### docker run
 
 ```sh
-docker run -d --name vcsim -p 8443:8443 -v vcsim-data:/data \
+docker run -d --name vcsim -p 8443:8443 -p 127.0.0.1:9090:9090 -v vcsim-data:/data \
   --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
   ghcr.io/sentania-labs/vcenter-api-simulator:main
 curl -sk https://localhost:8443/sdk/vimServiceVersions.xml
 ```
 
-The identity registry and the certificate are created on first start and kept
+The second `-p` publishes the control console on loopback only (it has no
+login). The identity registry, the certificate and the console's applied
+scenario are created on first start and kept
 in the volume mounted at `/data`, so identities and the fingerprint a
 management pack pinned survive restarts.
 Add `-tls-names=<hostname>` (as a command argument) to put the name
@@ -221,7 +223,7 @@ scratch files there.
 ### docker compose
 
 [`docker-compose.yml`](docker-compose.yml) runs the same thing with a named
-volume for the state directory (registry and certificate):
+volume for the state directory (registry, certificate and console state):
 
 ```sh
 docker compose up -d                 # pulls :main
@@ -230,15 +232,15 @@ VCSIM_USERNAME=operator VCSIM_PASSWORD=placeholder docker compose up -d   # rest
 docker compose down -v               # also discards the identities and certificate
 ```
 
-`VCSIM_TAG`, `VCSIM_PORT`, `VCSIM_SEED` and `VCSIM_TLS_NAMES` are the other
-knobs.
+`VCSIM_TAG`, `VCSIM_PORT`, `VCSIM_ADMIN_PORT` (the console's loopback port),
+`VCSIM_SEED` and `VCSIM_TLS_NAMES` are the other knobs.
 
 ### Helm
 
 [`charts/vcenter-api-simulator`](charts/vcenter-api-simulator) installs one
 simulated vCenter per release. It creates a Deployment (one replica, non-root,
 read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
-ServiceAccount with no token mounted, a PVC for the state directory (identity registry and certificate), and
+ServiceAccount with no token mounted, a PVC for the state directory (identity registry, certificate and console state), and
 optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
 and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
 outside the cluster until `ingress.enabled` or a LoadBalancer Service asks
