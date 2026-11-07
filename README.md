@@ -82,13 +82,9 @@ or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
 
 ### Checks
 
-The [first real Operations acceptance](docs/OPERATIONS-ACCEPTANCE.md) used
-released v0.2.0, the four-host scenario and the installed vSAN Host Metrics
-2.0.0 pack on Operations 9.1.1. Two collection cycles ingested all 240 expected
-entities and 5,321 metric series with stable identities and source-value
-parity within floating-point tolerance. Native-vCenter attachment was disabled;
-native adapter ingestion, attached dashboards and the Java pack remain separate
-validation gates.
+The first real Operations collection gate passed against the installed vSAN
+Host Metrics 2.0.0 pack; its scope, procedure and measured result are in
+[OPERATIONS-ACCEPTANCE](docs/OPERATIONS-ACCEPTANCE.md).
 
 | Check | How | Where it runs |
 |---|---|---|

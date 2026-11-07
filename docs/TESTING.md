@@ -46,16 +46,12 @@ For each scenario sweep dashboard-only vs all modeled entity families, 5/10/15-m
 | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow, local | `mp-test connect` and two collects through the Operations integration SDK |
 
 The first real VCF Operations collection gate passed with the installed Python
-vSAN Host Metrics 2.0.0 pack on Operations 9.1.1: two nonempty cycles, 240
-simulated entities, 5,321 metric series, stable resource IDs, and
-`DATA_RECEIVING`. Every source value matched within `1e-6` relative/absolute
-tolerance. See [the acceptance procedure and measured result](OPERATIONS-ACCEPTANCE.md).
-This used `attach_to_vcenter=false`; native-vCenter attachment, dashboards,
-the Java Content Factory pack, and live scenario-change/failure tests remain
-unverified by this gate.
+vSAN Host Metrics 2.0.0 pack; scope, procedure and measured result are in
+[OPERATIONS-ACCEPTANCE](OPERATIONS-ACCEPTANCE.md). Native-vCenter attachment,
+dashboards, the Java Content Factory pack, and live scenario-change and
+failure tests (steps 5 and 7 above) remain unverified.
 
-Comparison against a live vCenter was never run: that part of the live-vCenter
-and VCF Operations gate (steps 4 and 5 above) remains unverified.
+Comparison against a live vCenter was never run and remains unverified.
 
 ## Determinism tests
 Given the same seed, entityRefId, metric and 5-minute UTC slot, return equal values regardless of request order or process restart. Different entities should not accidentally alias. Configured changes must take effect at a defined bucket boundary. Time window requests must contain only relevant bucket timestamps and honor unavailable or not-yet-populated bins.
