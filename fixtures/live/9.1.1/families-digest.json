@@ -1,0 +1,1215 @@
+{
+ "cache-disk": {
+  "status": 200,
+  "bytes": 522,
+  "elapsed": 0.124,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "cache-disk:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "capacity-disk": {
+  "status": 200,
+  "bytes": 525,
+  "elapsed": 0.175,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "capacity-disk:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "clom-disk": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.05,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "clom-host": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.053,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-domclient": {
+  "status": 200,
+  "bytes": 2998,
+  "elapsed": 0.213,
+  "entities": 1,
+  "series": 14,
+  "spp": {
+   "4": 14
+  },
+  "labels": 14,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-domclient:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-domcompmgr": {
+  "status": 200,
+  "bytes": 3136,
+  "elapsed": 0.125,
+  "entities": 1,
+  "series": 15,
+  "spp": {
+   "4": 15
+  },
+  "labels": 15,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-domcompmgr:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-domowner": {
+  "status": 200,
+  "bytes": 8431,
+  "elapsed": 0.135,
+  "entities": 1,
+  "series": 46,
+  "spp": {
+   "4": 46
+  },
+  "labels": 46,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-domowner:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-esa-dedup-domclient-io": {
+  "status": 200,
+  "bytes": 7839,
+  "elapsed": 0.125,
+  "entities": 1,
+  "series": 42,
+  "spp": {
+   "4": 42
+  },
+  "labels": 42,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-esa-dedup-domclient-io:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-esa-dedup-domcompmgr-io": {
+  "status": 200,
+  "bytes": 8158,
+  "elapsed": 0.18,
+  "entities": 1,
+  "series": 42,
+  "spp": {
+   "4": 42
+  },
+  "labels": 42,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-esa-dedup-domcompmgr-io:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-esa-dedup-domowner-io": {
+  "status": 200,
+  "bytes": 15836,
+  "elapsed": 0.321,
+  "entities": 1,
+  "series": 82,
+  "spp": {
+   "4": 82
+  },
+  "labels": 82,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-esa-dedup-domowner-io:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-esa-dedup-store-chunksvc": {
+  "status": 200,
+  "bytes": 6403,
+  "elapsed": 0.358,
+  "entities": 1,
+  "series": 33,
+  "spp": {
+   "4": 33
+  },
+  "labels": 33,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-esa-dedup-store-chunksvc:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-esa-dedup-store-hashsvc": {
+  "status": 200,
+  "bytes": 7383,
+  "elapsed": 0.252,
+  "entities": 1,
+  "series": 39,
+  "spp": {
+   "4": 39
+  },
+  "labels": 39,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-esa-dedup-store-hashsvc:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-pmem": {
+  "status": 500,
+  "bytes": 834,
+  "elapsed": 0.041,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:NotSupported",
+   "The operation is not supported on the object."
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-rdt-network-latency": {
+  "status": 200,
+  "bytes": 3503,
+  "elapsed": 0.344,
+  "entities": 1,
+  "series": 17,
+  "spp": {
+   "4": 17
+  },
+  "labels": 17,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-rdt-network-latency:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-remotedomclient": {
+  "status": 200,
+  "bytes": 535,
+  "elapsed": 0.244,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "cluster-remotedomclient:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-resync": {
+  "status": 200,
+  "bytes": 526,
+  "elapsed": 0.118,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "cluster-resync:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cluster-zdom-top-stats": {
+  "status": 200,
+  "bytes": 2654,
+  "elapsed": 0.126,
+  "entities": 1,
+  "series": 12,
+  "spp": {
+   "4": 12
+  },
+  "labels": 12,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cluster-zdom-top-stats:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cmmds-net": {
+  "status": 200,
+  "bytes": 9753,
+  "elapsed": 0.12,
+  "entities": 5,
+  "series": 50,
+  "spp": {
+   "4": 50
+  },
+  "labels": 10,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "cmmds-net:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "cmmds-workload": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.05,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "computeCluster-remotedomclient": {
+  "status": 200,
+  "bytes": 542,
+  "elapsed": 0.097,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "computeCluster-remotedomclient:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "computeHost-remotedomclient": {
+  "status": 200,
+  "bytes": 539,
+  "elapsed": 0.112,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "computeHost-remotedomclient:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "ddh-disk": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.057,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "disk-group": {
+  "status": 200,
+  "bytes": 522,
+  "elapsed": 0.165,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "disk-group:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "dom-world-cpu": {
+  "status": 200,
+  "bytes": 242679,
+  "elapsed": 0.212,
+  "entities": 330,
+  "series": 990,
+  "spp": {
+   "4": 990
+  },
+  "labels": 3,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "dom-world-cpu:<uuid>|VSAN_0x431424e023c0_Client|2098292",
+   "dom-world-cpu:<uuid>|VSAN_0x431424e2a5c0_Client|2098294",
+   "dom-world-cpu:<uuid>|VSAN_0x431424e519c0_Client|2098296",
+   "dom-world-cpu:<uuid>|VSAN_0x431424e75400_Client|2098298"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "heap-memory": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.065,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "host-cpu": {
+  "status": 200,
+  "bytes": 119333,
+  "elapsed": 0.234,
+  "entities": 165,
+  "series": 495,
+  "spp": {
+   "4": 495
+  },
+  "labels": 3,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-cpu:<uuid>",
+   "host-cpu:<uuid>|cpu-0",
+   "host-cpu:<uuid>|cpu-1",
+   "host-cpu:<uuid>|cpu-10"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-domclient": {
+  "status": 200,
+  "bytes": 68631,
+  "elapsed": 0.178,
+  "entities": 5,
+  "series": 390,
+  "spp": {
+   "4": 390
+  },
+  "labels": 78,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-domclient:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-domcompmgr": {
+  "status": 200,
+  "bytes": 72291,
+  "elapsed": 0.179,
+  "entities": 5,
+  "series": 410,
+  "spp": {
+   "4": 410
+  },
+  "labels": 82,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-domcompmgr:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-domowner": {
+  "status": 200,
+  "bytes": 252984,
+  "elapsed": 0.247,
+  "entities": 5,
+  "series": 1440,
+  "spp": {
+   "4": 1440
+  },
+  "labels": 288,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-domowner:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-esa-dedup-domclient-io": {
+  "status": 200,
+  "bytes": 37437,
+  "elapsed": 0.125,
+  "entities": 5,
+  "series": 210,
+  "spp": {
+   "4": 210
+  },
+  "labels": 42,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-esa-dedup-domclient-io:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-esa-dedup-domcompmgr-io": {
+  "status": 200,
+  "bytes": 38701,
+  "elapsed": 0.259,
+  "entities": 5,
+  "series": 210,
+  "spp": {
+   "4": 210
+  },
+  "labels": 42,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-esa-dedup-domcompmgr-io:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-esa-dedup-domowner-io": {
+  "status": 200,
+  "bytes": 76747,
+  "elapsed": 0.125,
+  "entities": 5,
+  "series": 410,
+  "spp": {
+   "4": 410
+  },
+  "labels": 82,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-esa-dedup-domowner-io:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-esa-dedup-store-chunksvc": {
+  "status": 200,
+  "bytes": 30070,
+  "elapsed": 0.214,
+  "entities": 5,
+  "series": 165,
+  "spp": {
+   "4": 165
+  },
+  "labels": 33,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-esa-dedup-store-chunksvc:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-esa-dedup-store-hashsvc": {
+  "status": 200,
+  "bytes": 34964,
+  "elapsed": 0.209,
+  "entities": 5,
+  "series": 195,
+  "spp": {
+   "4": 195
+  },
+  "labels": 39,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-esa-dedup-store-hashsvc:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-pmem": {
+  "status": 500,
+  "bytes": 834,
+  "elapsed": 0.035,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:NotSupported",
+   "The operation is not supported on the object."
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "host-remotedomclient": {
+  "status": 200,
+  "bytes": 532,
+  "elapsed": 0.106,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "host-remotedomclient:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-vsansparse": {
+  "status": 200,
+  "bytes": 18224,
+  "elapsed": 0.124,
+  "entities": 5,
+  "series": 105,
+  "spp": {
+   "4": 105
+  },
+  "labels": 21,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-vsansparse:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "host-zdom-top-stats": {
+  "status": 200,
+  "bytes": 17742,
+  "elapsed": 0.124,
+  "entities": 5,
+  "series": 95,
+  "spp": {
+   "4": 95
+  },
+  "labels": 19,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "host-zdom-top-stats:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "ioinsight": {
+  "status": 200,
+  "bytes": 521,
+  "elapsed": 0.099,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "ioinsight:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "lsom-world-cpu": {
+  "status": 200,
+  "bytes": 526,
+  "elapsed": 0.142,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "lsom-world-cpu:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "rdt-net": {
+  "status": 200,
+  "bytes": 2399,
+  "elapsed": 0.123,
+  "entities": 5,
+  "series": 5,
+  "spp": {
+   "4": 5
+  },
+  "labels": 1,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "rdt-net:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "rdt-network-latency": {
+  "status": 200,
+  "bytes": 15791,
+  "elapsed": 0.203,
+  "entities": 5,
+  "series": 85,
+  "spp": {
+   "4": 85
+  },
+  "labels": 17,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "rdt-network-latency:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "remote-virtual-disk": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.048,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "remote-virtual-machine": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.044,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "remote-vscsi": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.047,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "slab-memory": {
+  "status": 500,
+  "bytes": 656,
+  "elapsed": 0.044,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [],
+  "fault": [
+   "vim25:InvalidArgument",
+   "A specified parameter was not correct: entityRefId"
+  ],
+  "modeled": true,
+  "advertised": true
+ },
+ "system-mem": {
+  "status": 200,
+  "bytes": 4074,
+  "elapsed": 0.111,
+  "entities": 5,
+  "series": 15,
+  "spp": {
+   "4": 15
+  },
+  "labels": 3,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "system-mem:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "virtual-disk": {
+  "status": 200,
+  "bytes": 209639,
+  "elapsed": 0.266,
+  "entities": 148,
+  "series": 1036,
+  "spp": {
+   "4": 1029,
+   "3": 7
+  },
+  "labels": 7,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "virtual-disk:/<uuid>/vm-01.vmdk",
+   "virtual-disk:/<uuid>/vm-02.vmdk",
+   "virtual-disk:/<uuid>/vm-12.vmdk",
+   "virtual-disk:<uuid>/02e7c2cdcacc40c0bdcd0c332e819423.vmdk"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "virtual-machine": {
+  "status": 200,
+  "bytes": 47279,
+  "elapsed": 0.112,
+  "entities": 30,
+  "series": 240,
+  "spp": {
+   "4": 232,
+   "3": 8
+  },
+  "labels": 8,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "virtual-machine:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vnic-rdt-network-latency": {
+  "status": 200,
+  "bytes": 15841,
+  "elapsed": 0.11,
+  "entities": 5,
+  "series": 85,
+  "spp": {
+   "4": 85
+  },
+  "labels": 17,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vnic-rdt-network-latency:<uuid>|vmk2"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-cluster-capacity": {
+  "status": 200,
+  "bytes": 1787,
+  "elapsed": 0.116,
+  "entities": 1,
+  "series": 6,
+  "spp": {
+   "4": 6
+  },
+  "labels": 6,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-cluster-capacity:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-cpu": {
+  "status": 200,
+  "bytes": 6948,
+  "elapsed": 0.125,
+  "entities": 5,
+  "series": 35,
+  "spp": {
+   "4": 35
+  },
+  "labels": 7,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-cpu:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-direct-cluster": {
+  "status": 200,
+  "bytes": 531,
+  "elapsed": 0.139,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-direct-cluster:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-direct-host": {
+  "status": 200,
+  "bytes": 528,
+  "elapsed": 0.109,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-direct-host:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-distribution": {
+  "status": 200,
+  "bytes": 529,
+  "elapsed": 0.122,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-distribution:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-dp-historical-stats": {
+  "status": 200,
+  "bytes": 856,
+  "elapsed": 0.132,
+  "entities": 1,
+  "series": 1,
+  "spp": {
+   "4": 1
+  },
+  "labels": 1,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-dp-historical-stats:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-esa-disk-layer": {
+  "status": 200,
+  "bytes": 34945,
+  "elapsed": 0.128,
+  "entities": 5,
+  "series": 190,
+  "spp": {
+   "4": 190
+  },
+  "labels": 38,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-esa-disk-layer:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-esa-disk-scsifw": {
+  "status": 200,
+  "bytes": 15403,
+  "elapsed": 0.119,
+  "entities": 5,
+  "series": 80,
+  "spp": {
+   "4": 80
+  },
+  "labels": 16,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-esa-disk-scsifw:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-file-service": {
+  "status": 200,
+  "bytes": 529,
+  "elapsed": 0.191,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-file-service:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-host-net": {
+  "status": 200,
+  "bytes": 15024,
+  "elapsed": 0.19,
+  "entities": 5,
+  "series": 80,
+  "spp": {
+   "4": 80
+  },
+  "labels": 16,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-host-net:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-iscsi-host": {
+  "status": 200,
+  "bytes": 527,
+  "elapsed": 0.111,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-iscsi-host:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-iscsi-lun": {
+  "status": 200,
+  "bytes": 526,
+  "elapsed": 0.127,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-iscsi-lun:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-iscsi-target": {
+  "status": 200,
+  "bytes": 529,
+  "elapsed": 0.134,
+  "entities": 0,
+  "series": 0,
+  "spp": {},
+  "labels": 0,
+  "sampleInfo": null,
+  "refs": [
+   "vsan-iscsi-target:*"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-memory": {
+  "status": 200,
+  "bytes": 48099,
+  "elapsed": 0.184,
+  "entities": 5,
+  "series": 250,
+  "spp": {
+   "4": 250
+  },
+  "labels": 50,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-memory:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-pnic-net": {
+  "status": 200,
+  "bytes": 107899,
+  "elapsed": 0.299,
+  "entities": 10,
+  "series": 650,
+  "spp": {
+   "4": 650
+  },
+  "labels": 65,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-pnic-net:<uuid>|vmnic1",
+   "vsan-pnic-net:<uuid>|vmnic2"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-tcpip-stats": {
+  "status": 200,
+  "bytes": 28054,
+  "elapsed": 0.202,
+  "entities": 5,
+  "series": 160,
+  "spp": {
+   "4": 160
+  },
+  "labels": 32,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-tcpip-stats:<uuid>|defaultTcpipStack"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vsan-vnic-net": {
+  "status": 200,
+  "bytes": 55649,
+  "elapsed": 0.195,
+  "entities": 5,
+  "series": 320,
+  "spp": {
+   "4": 320
+  },
+  "labels": 64,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vsan-vnic-net:<uuid>|defaultTcpipStack|vmk2"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "vscsi": {
+  "status": 200,
+  "bytes": 226847,
+  "elapsed": 0.267,
+  "entities": 148,
+  "series": 1184,
+  "spp": {
+   "4": 1176,
+   "3": 8
+  },
+  "labels": 8,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "vscsi:<uuid>|scsi0:0",
+   "vscsi:<uuid>|scsi0:1",
+   "vscsi:<uuid>|scsi0:10",
+   "vscsi:<uuid>|scsi0:11"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ },
+ "zdom-vtx": {
+  "status": 200,
+  "bytes": 63591,
+  "elapsed": 0.152,
+  "entities": 5,
+  "series": 355,
+  "spp": {
+   "4": 355
+  },
+  "labels": 71,
+  "sampleInfo": "2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00",
+  "refs": [
+   "zdom-vtx:<uuid>"
+  ],
+  "fault": null,
+  "modeled": true,
+  "advertised": true
+ }
+}

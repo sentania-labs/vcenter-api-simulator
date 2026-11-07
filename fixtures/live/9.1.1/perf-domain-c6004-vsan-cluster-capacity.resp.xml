@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/"
+ xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+ xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<soapenv:Body>
+<VsanPerfQueryPerfResponse xmlns="urn:vsan"><returnval><entityRefId xmlns="urn:vim25">vsan-cluster-capacity:38b76b44-6165-59b0-b163-0377c3749178</entityRefId><sampleInfo xmlns="urn:vim25">2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00</sampleInfo><value xmlns="urn:vim25"><metricId><label>total</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>20165210945536,20165221601280,20165234300928,20165277303296</values></value><value xmlns="urn:vim25"><metricId><label>used</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>9638917034434,9638706812472,9638987054808,9639253470689</values></value><value xmlns="urn:vim25"><metricId><label>free</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>10526293911102,10526514788808,10526247246120,10526023832607</values></value><value xmlns="urn:vim25"><metricId><label>savedByDedup</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>1978336331776,1978896516608,1978825434624,1978855292416</values></value><value xmlns="urn:vim25"><metricId><label>dedupRatio</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>144,144,144,144</values></value><value xmlns="urn:vim25"><metricId><label>totalDpOverhead</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>None,None,None,None</values></value></returnval></VsanPerfQueryPerfResponse>
+</soapenv:Body>
+</soapenv:Envelope>

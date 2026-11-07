@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/"
+ xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+ xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<soapenv:Body>
+<soapenv:Fault><faultcode>ServerFaultCode</faultcode><faultstring>A specified parameter was not correct: </faultstring><detail><InvalidArgumentFault xsi:type="vim25:InvalidArgument" xmlns:vim25="urn:vim25"><faultMessage xmlns="urn:vim25"><key>com.vmware.vsan.perfsvc.fault.queryperf.wildcardqueryrange</key><arg><key>entityType</key><value xsi:type="xsd:string">host-domclient</value></arg><arg><key>duration</key><value xsi:type="xsd:int">12</value></arg><message>Invalid Argument. For wildcard query on entity type host-domclient, the startTime and endTime must be specified and the duration between startTime and endTime should be no more than 12 hours.</message></faultMessage></InvalidArgumentFault></detail></soapenv:Fault>
+</soapenv:Body>
+</soapenv:Envelope>
