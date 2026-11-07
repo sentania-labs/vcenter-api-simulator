@@ -270,7 +270,7 @@ def walk(base: str, creds: dict, cap: Capture, timeout: int = 30):
         sess = content.sessionManager.currentSession
         res = content.authorizationManager.HasPrivilegeOnEntities(
             [content.rootFolder], sess.key, list(READ_ONLY_PRIVS))
-        privs = sorted(p.privId for p in res[0].privAvailability if p.privAvailable)
+        privs = sorted(p.privId for p in res[0].privAvailability if p.isGranted)
     except Exception:                                           # noqa: BLE001
         try:
             user = content.sessionManager.currentSession.userName
@@ -1141,13 +1141,15 @@ def main() -> int:
     try:
         walk(base, creds, cap)
     finally:
-        info = sanitize_tree(raw, san, {urlsplit(base).hostname or "": "vcenter.lab.invalid",
-                                        creds["VCENTER_USER"]: "login-user"})
-        tar = os.path.join(args.out, os.path.basename(work) + ".tar.gz")
-        with tarfile.open(tar, "w:gz") as tf:
-            tf.add(san, arcname=os.path.basename(work))
-        if not args.zip:
-            shutil.rmtree(work)
+        try:
+            info = sanitize_tree(raw, san, {urlsplit(base).hostname or "": "vcenter.lab.invalid",
+                                            creds["VCENTER_USER"]: "login-user"})
+            tar = os.path.join(args.out, os.path.basename(work) + ".tar.gz")
+            with tarfile.open(tar, "w:gz") as tf:
+                tf.add(san, arcname=os.path.basename(work))
+        finally:
+            if not args.zip:
+                shutil.rmtree(work)
         print(json.dumps({"tarball": tar, "sanitized": info,
                           "calls": len(cap.calls),
                           "faults": len([c for c in cap.calls if not c["ok"]])}, indent=1))
