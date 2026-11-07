@@ -4,7 +4,7 @@
 #   docker compose up -d --build    # builds the image from this checkout instead
 #   docker compose logs -f
 #
-# The certificate is created on first start and kept in the `tls` volume, so
+# The certificate is created on first start and kept in the `data` volume, so
 # the fingerprint a management pack pinned survives `docker compose restart`.
 # Remove the volume (`docker compose down -v`) to issue a new one.
 services:
@@ -16,7 +16,7 @@ services:
         VERSION: ${VCSIM_TAG:-dev}
     command:
       - -listen=0.0.0.0:8443
-      - -tls-dir=/data/tls
+      - -data=/data
       - -seed=${VCSIM_SEED:-phase1}
       # Extra subject alternative names for the certificate created on first
       # start, for example the hostname collectors use to reach this machine.
@@ -30,7 +30,7 @@ services:
     ports:
       - "${VCSIM_PORT:-8443}:8443"
     volumes:
-      - tls:/data/tls
+      - data:/data
     read_only: true
     tmpfs:
       - /tmp
@@ -43,4 +43,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  tls:
+  data:

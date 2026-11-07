@@ -14,7 +14,7 @@
 # data directory and checks that the dump is byte-identical: identities
 # survive a restart. Exit status is non-zero on any mismatch.
 #
-# Needs: go, govc (go install github.com/vmware/govmomi/govc@v0.56.2),
+# Needs: go, govc (release binary: https://github.com/vmware/govmomi/releases/tag/v0.56.2),
 # python3. No management pack, no Docker.
 set -euo pipefail
 

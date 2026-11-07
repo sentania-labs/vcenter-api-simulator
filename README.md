@@ -92,7 +92,7 @@ or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
 | The reference pack's own `perfsvc.connect/probe/collect/build_name_map/build_parent_map/build_disk_hardware` against every cluster of a scenario, both metric scopes, label sets equal to the live capture, every object named and parented, second collection identical, verify-on with the simulator's certificate pinned | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow |
 | `mp-test connect` and `mp-test collect` twice through the Operations integration SDK 1.3.1 (builds and runs the pack's adapter container) | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow |
 
-Locally, with govc installed (`go install github.com/vmware/govmomi/govc@v0.56.2`):
+Locally, with govc installed (release binary: https://github.com/vmware/govmomi/releases/tag/v0.56.2):
 
 ```sh
 tools/smoke/smoke.sh                                   # the ten-cluster scenario
@@ -152,14 +152,15 @@ credentials at it.
 ### docker run
 
 ```sh
-docker run -d --name vcsim -p 8443:8443 -v vcsim-tls:/data/tls \
+docker run -d --name vcsim -p 8443:8443 -v vcsim-data:/data \
   --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
   ghcr.io/sentania-labs/vcenter-api-simulator:main
 curl -sk https://localhost:8443/sdk/vimServiceVersions.xml
 ```
 
-The certificate is created on first start and kept in the volume mounted at
-`/data/tls`, so the fingerprint a management pack pinned survives restarts.
+The identity registry and the certificate are created on first start and kept
+in the volume mounted at `/data`, so identities and the fingerprint a
+management pack pinned survive restarts.
 Add `-tls-names=<hostname>` (as a command argument) to put the name
 collectors use into it, and `--read-only` needs the `/tmp` tmpfs: vcsim keeps
 scratch files there.
