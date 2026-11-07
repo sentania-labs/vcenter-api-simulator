@@ -1,0 +1,9 @@
+# simulator runtime state
+/data/
+/vcsimulator
+# python
+__pycache__/
+*.pyc
+.venv/
+# tool output
+/logs/

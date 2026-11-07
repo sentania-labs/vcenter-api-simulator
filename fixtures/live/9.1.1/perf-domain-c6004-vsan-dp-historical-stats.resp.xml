@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/"
+ xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+ xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<soapenv:Body>
+<VsanPerfQueryPerfResponse xmlns="urn:vsan"><returnval><entityRefId xmlns="urn:vim25">vsan-dp-historical-stats:38b76b44-6165-59b0-b163-0377c3749178</entityRefId><sampleInfo xmlns="urn:vim25">2026-11-06 23:20:00,2026-11-06 23:25:00,2026-11-06 23:30:00,2026-11-06 23:35:00</sampleInfo><value xmlns="urn:vim25"><metricId><label>totalSnapshotCapacity</label><metricsCollectInterval>300</metricsCollectInterval></metricId><values>64257117696,64257117696,64257117696,64257117696</values></value></returnval></VsanPerfQueryPerfResponse>
+</soapenv:Body>
+</soapenv:Envelope>

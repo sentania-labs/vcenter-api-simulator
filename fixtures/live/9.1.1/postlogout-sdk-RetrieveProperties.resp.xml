@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/"
+ xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+ xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<soapenv:Body>
+<RetrievePropertiesResponse xmlns="urn:vim25"><returnval><obj type="ClusterComputeResource">domain-c6004</obj><missingSet><path>name</path><fault><fault xsi:type="NotAuthenticated"><object type="ClusterComputeResource">domain-c6004</object><privilegeId>System.View</privilegeId><missingPrivileges><entity type="ClusterComputeResource">domain-c6004</entity><privilegeIds>System.View</privilegeIds></missingPrivileges></fault><localizedMessage></localizedMessage></fault></missingSet></returnval></RetrievePropertiesResponse>
+</soapenv:Body>
+</soapenv:Envelope>
