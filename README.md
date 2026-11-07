@@ -2,7 +2,7 @@
 
 A configurable, deployable vCenter and vSAN ESA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
-> Project status: Phase 2 (functional simulator). No production-grade vCenter emulation is claimed.
+> Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack). No production-grade vCenter emulation is claimed.
 
 ## Mission
 Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service** to let the real VCF Operations vCenter adapter and custom Tier 2 management packs discover entities, query metrics, and ingest simulated telemetry. The first executable target is [nickfirefoot/vsanhostmetrics](https://github.com/nickfirefoot/vsanhostmetrics), being ported to a VCF Content Factory Tier 2 MP.
@@ -81,6 +81,14 @@ values; no OSA, iSCSI target service, file service, NFS/FC/iSCSI datastores
 or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
 
 ### Checks
+
+The [first real Operations acceptance](docs/OPERATIONS-ACCEPTANCE.md) used
+released v0.2.0, the four-host scenario and the installed vSAN Host Metrics
+2.0.0 pack on Operations 9.1.1. Two collection cycles ingested all 240 expected
+entities and 5,321 metric series with stable identities and source-value
+parity within floating-point tolerance. Native-vCenter attachment was disabled;
+native adapter ingestion, attached dashboards and the Java pack remain separate
+validation gates.
 
 | Check | How | Where it runs |
 |---|---|---|
