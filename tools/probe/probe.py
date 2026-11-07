@@ -230,13 +230,18 @@ def _jsonable(value):
 def read_credentials() -> dict:
     """VCENTER_USER/PASSWORD from the environment, prompting for gaps."""
     keys = ("VCENTER_USER", "VCENTER_PASSWORD")
-    creds = {k: os.environ.get(k, "").strip() for k in keys}
+    # the password is used verbatim: only the username is normalized with .strip()
+    creds = {k: (os.environ.get(k, "").strip() if k == "VCENTER_USER" else os.environ.get(k, ""))
+             for k in keys}
     for key in keys:
         if creds[key]:
             continue
         try:
             prompt = f"{key}="
-            value = (getpass.getpass(prompt) if key == "VCENTER_PASSWORD" else input(prompt)).strip()
+            if key == "VCENTER_PASSWORD":
+                value = getpass.getpass(prompt)
+            else:
+                value = input(prompt).strip()
         except EOFError:
             value = ""
         creds[key] = value
@@ -952,8 +957,8 @@ def sanitize_tree(raw: str, san: str, extra_names: dict | None = None) -> dict:
             if isinstance(value, str) and value and value not in bucket:
                 bucket.append(value)
     # host names also appear in the vSAN node information and health records
-    for sub, fname, path in (("vsan", "VsanPerfQueryNodeInformation", "hostname"),
-                             ("vsan", "VsanQueryVcClusterSmartStatsSummary", "hostname")):
+    for sub, fname, path in (("vsan", "VsanPerfQueryNodeInformation.json", "hostname"),
+                             ("vsan", "VsanQueryVcClusterSmartStatsSummary.json", "hostname")):
         full = os.path.join(raw, sub, fname)
         if not os.path.exists(full):
             continue

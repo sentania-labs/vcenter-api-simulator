@@ -140,8 +140,9 @@ def unit_checks(work: str) -> None:
           {b: probe._session_token(b) for b in forms})
 
     raw = os.path.join(work, "unit-raw")
-    os.makedirs(os.path.join(raw, "methods"))
-    os.makedirs(os.path.join(raw, "inv"))
+    os.makedirs(os.path.join(raw, "methods"), exist_ok=True)
+    os.makedirs(os.path.join(raw, "inv"), exist_ok=True)
+    os.makedirs(os.path.join(raw, "vsan"), exist_ok=True)
     docs = {
         "inv/HostSystem.json": [{"_moref": "HostSystem:host-1", "props": {"name": "esx-real-1"}}],
         "about.json": {"about": {"apiVersion": "9.1.1.0", "version": "9.1.1",
@@ -154,6 +155,7 @@ def unit_checks(work: str) -> None:
                         {"_type": "OptionValue", "key": "config.log.level", "value": "verbose"}]},
         "methods/Events.json": [{"fullFormattedMessage": "Host 10.1.2.3. down; peer 10.4.5.6, mac "
                                                          "AA:BB:CC:DD:EE:FF; driver 1.2.3.4.5"}],
+        "vsan/VsanPerfQueryNodeInformation.json": [{"hostname": "esx-short-1"}],
     }
     for rel, doc in docs.items():
         with open(os.path.join(raw, rel), "w", encoding="utf-8") as fh:
@@ -173,6 +175,8 @@ def unit_checks(work: str) -> None:
           about == docs["about.json"]["about"], about)
     check("sanitizer masks inventory host names",
           "esx-real-1" not in json.dumps(load(san, "inv", "HostSystem.json")))
+    check("sanitizer masks the short hostname from the vSAN node record",
+          "esx-short-1" not in json.dumps(load(san, "vsan", "VsanPerfQueryNodeInformation.json")))
 
     cap = probe.Capture(os.path.join(work, "unit-cap"))
     result = cap.call(("methods", "Absent"), probe._MissingMo("vsanSystem").QueryHostStatus)
@@ -202,6 +206,21 @@ def unit_checks(work: str) -> None:
         os.environ.update(saved[3])
     check("a failed sanitize still removes the raw work directory",
           failed and os.listdir(out) == [], os.listdir(out))
+
+    # password keeps its exact bytes; only the username is normalized
+    env_saved = {k: os.environ.get(k) for k in ("VCENTER_USER", "VCENTER_PASSWORD")}
+    os.environ.update(VCENTER_USER="  admin@vsphere.local  ", VCENTER_PASSWORD="  pw  ")
+    try:
+        creds = probe.read_credentials()
+    finally:
+        for k, v in env_saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    check("credentials: username normalized, password kept verbatim",
+          creds["VCENTER_USER"] == "admin@vsphere.local" and creds["VCENTER_PASSWORD"] == "  pw  ",
+          creds)
 
 
 def main() -> int:
