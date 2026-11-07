@@ -44,6 +44,7 @@ For each scenario sweep dashboard-only vs all modeled entity families, 5/10/15-m
 | `tools/smoke/smoke.sh` | CI, required | the principal's acceptance (2026-11-07): a plain vSphere client (govc) connects, lists hosts and VMs, counts match the scenario, identities identical across a restart |
 | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow, local | the reference pack's collector against every cluster of a scenario |
 | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow, local | `mp-test connect` and two collects through the Operations integration SDK |
+| `tools/probe/test_probe.py` | local, not in CI (needs `go` and `pyVmomi`) | the read-only vCenter walk `tools/probe/probe.py` against the built simulator: complete evidence tree, fault records, sanitized copy and tarball contents (see [`tools/probe/README.md`](../tools/probe/README.md)) |
 
 Live-vCenter and VCF Operations checks (steps 4 and 5 below) remain unverified gates.
 
