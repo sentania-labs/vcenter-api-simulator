@@ -1,7 +1,9 @@
 package sim_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -218,6 +220,17 @@ func TestDedupSwitch(t *testing.T) {
 		}
 	}
 
+	wantTypes := elementTexts(t, fixture(t, "entitytypes-"+capturedMoid+".resp.xml"), "id")
+	_, body = off.replay("entitytypes-"+capturedMoid+".req.xml", true)
+	gotTypes := elementTexts(t, body, "id")
+	hasDedup := false
+	for _, id := range gotTypes {
+		hasDedup = hasDedup || strings.Contains(id, "dedup")
+	}
+	if !hasDedup || !equalStrings(gotTypes, wantTypes) {
+		t.Errorf("dedup off: entity types differ from the capture (dedup advertised: %v, %d ids, want %d)", hasDedup, len(gotTypes), len(wantTypes))
+	}
+
 	vc, err := vsan.NewClient(context.Background(), off.client)
 	if err != nil {
 		t.Fatal(err)
@@ -247,6 +260,28 @@ func dedupFixtures(t *testing.T) []string {
 	var out []string
 	for _, f := range all {
 		out = append(out, filepath.Base(f))
+	}
+	return out
+}
+
+func elementTexts(t *testing.T, doc []byte, name string) []string {
+	t.Helper()
+	var out []string
+	dec := xml.NewDecoder(bytes.NewReader(doc))
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if el, ok := tok.(xml.StartElement); ok && el.Name.Local == name {
+			var txt string
+			if err := dec.DecodeElement(&txt, &el); err == nil {
+				out = append(out, txt)
+			}
+		}
 	}
 	return out
 }
