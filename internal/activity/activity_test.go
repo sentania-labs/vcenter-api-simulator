@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -218,5 +219,24 @@ func TestNextCollectionStartsAtTheServiceContentCall(t *testing.T) {
 	cy := l.Summarize(now).Cycle
 	if cy.Calls != 3 || hasFinding(cy.Findings, "bad", "Authentication failed") || !hasFinding(cy.Findings, "bad", "Every performance query returned empty") {
 		t.Errorf("the second session must be judged on its own: %+v", cy)
+	}
+}
+
+// The console's Telemetry tab reads summary.families.length; a quiet log (no
+// collector traffic yet) must serialize empty lists as [] not null.
+func TestSummaryOfAQuietLogSerializesEmptyListsNotNull(t *testing.T) {
+	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	b, err := json.Marshal(New(5, now).Summarize(now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"methods", "families", "duration", "minutes", "clusters"} {
+		if s := string(got[k]); !strings.HasPrefix(s, "[") {
+			t.Errorf("%s = %s, want a JSON array", k, s)
+		}
 	}
 }

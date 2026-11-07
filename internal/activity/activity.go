@@ -399,7 +399,7 @@ type Finding struct {
 // Summarize computes the aggregates at time now.
 func (l *Log) Summarize(now time.Time) Summary {
 	calls := l.all()
-	s := Summary{Now: now, Totals: l.Totals(), Clusters: []string{}}
+	s := Summary{Now: now, Totals: l.Totals(), Clusters: []string{}, Methods: []MethodStat{}, Families: []FamilyStat{}}
 	hour := now.Add(-time.Hour)
 	minutes := map[time.Time]*Minute{}
 	for i := 59; i >= 0; i-- {
