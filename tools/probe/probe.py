@@ -34,6 +34,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import shutil
 import ssl
 import sys
@@ -827,6 +828,8 @@ def http_get(base, path, ctx, timeout, cap: Capture, parts, headers=None, prefix
     except Exception as exc:                                    # noqa: BLE001
         status, body = None, repr(exc).encode()
     name = path.strip("/").replace("/", "_") or "root"
+    if path != "/" and path.endswith("/"):
+        name += "_"
     try:
         payload = json.loads(body)
     except Exception:                                           # noqa: BLE001
@@ -887,6 +890,8 @@ SECRET_KEYS = {"password", "sslThumbprint", "thumbprint", "certificate", "serial
                "otherIdentifyingInfo", "licenseKey", "model", "vendor"}
 USER_KEYS = {"userName", "principal", "user", "login", "owner", "createdBy",
              "lastModifiedUser", "userAgent"}
+STRUCTURAL_KEYS = {"_type", "_moref", "type"}
+VERSION_KEY = re.compile(r"(?:[vV]ersion|^build)$")
 IPV4 = None  # compiled below
 PRESERVE = None
 
@@ -897,7 +902,9 @@ def _compile():
     IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])")
     PRESERVE = (re.compile(r"urn:(?:vsan|vim25|pbm|sms|vslm|eam)/\d+(?:\.\d+)+"),
                 re.compile(r'versionId="[^"]+"'),
-                re.compile(r"\d+(?:\.\d+){2,}-\d*vmw\.[\w.]+"))
+                re.compile(r"\d+(?:\.\d+){2,}-\d*vmw\.[\w.]+"),
+                re.compile(r"\d+(?:\.\d+){3}(?=\s+build\b)"),
+                re.compile(r"(?<=<version>)[^<]*"))
 
 
 def sanitize_tree(raw: str, san: str, extra_names: dict | None = None) -> dict:
@@ -1003,6 +1010,8 @@ def sanitize_tree(raw: str, san: str, extra_names: dict | None = None) -> dict:
         if isinstance(value, list):
             return [walk_json(v, key) for v in value]
         if not isinstance(value, str):
+            return value
+        if key in STRUCTURAL_KEYS or (key and VERSION_KEY.search(key)):
             return value
         if key in SECRET_KEYS and len(value) > 3 and not value.startswith("<"):
             return f"<{key}-{digest(value)}>"

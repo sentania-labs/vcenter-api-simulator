@@ -195,11 +195,24 @@ def main() -> int:
         check("unsupported methods are recorded as MethodNotFound, not skipped",
               any(x.get("fault", "").endswith("MethodNotFound") for x in summary["calls"]))
 
-        raw_types = {v for k, v in pairs(load(raw, "inv", "VirtualMachine.json")) if k == "_type"}
-        san_types = {v for k, v in pairs(load(san, "inv", "VirtualMachine.json")) if k == "_type"}
-        check("sanitized: VM records keep their managed-object type names",
-              "VirtualMachineConfigInfo" in raw_types and san_types == raw_types,
-              sorted(san_types ^ raw_types)[:3])
+        shape_diffs, shape_seen = [], set()
+        for f in tree_files(raw):
+            rel = os.path.relpath(f, raw)
+            want = [(k, v) for k, v in pairs(load(f)) if k in ("_type", "_moref")]
+            got = [(k, v) for k, v in pairs(load(san, rel)) if k in ("_type", "_moref")]
+            shape_seen.update(v for _k, v in want)
+            if got != want:
+                shape_diffs.append(rel)
+        check("sanitized: managed-object types and morefs are untouched in every record",
+              "VirtualMachineConfigInfo" in shape_seen and not shape_diffs, shape_diffs[:3])
+        raw_about, san_about = summary["about"]["about"], load(san, "about.json")["about"]
+        check("sanitized: about keeps the version strings",
+              all(raw_about.get(k) and san_about.get(k) == raw_about[k]
+                  for k in ("apiVersion", "version", "fullName")),
+              {k: (raw_about.get(k), san_about.get(k)) for k in ("apiVersion", "version", "fullName")})
+        http_dir = os.listdir(os.path.join(raw, "http"))
+        check("plain GETs with and without a trailing slash keep separate records",
+              "sdk.json" in http_dir and "sdk_.json" in http_dir, sorted(http_dir)[:6])
         san_hosts = load(san, "inv", "HostSystem.json")
         check("sanitized: host names masked",
               san_hosts[0]["props"]["name"] != hosts[0] and san_hosts[0]["props"]["name"].startswith("esx"),
