@@ -1137,6 +1137,7 @@ def main() -> int:
         base = os.environ.get("VCENTER_URL", "https://127.0.0.1:8443")
     if "//" not in base:
         base = f"https://{base}"
+    base = base.rstrip("/")
     creds = read_credentials()
 
     os.makedirs(args.out, exist_ok=True)
