@@ -31,7 +31,7 @@ func storageDevice(h *topology.Host) *types.HostStorageDeviceInfo {
 		})
 		disk := vsanhealth.ScsiDisk(d)
 		sd.ScsiLun = append(sd.ScsiLun, &disk)
-		sd.ScsiTopology = appendTopology(sd.ScsiTopology, hbaKey, d.Key)
+		sd.ScsiTopology = appendTopology(sd.ScsiTopology, hbaKey, d.ScsiKey)
 	}
 	return sd
 }

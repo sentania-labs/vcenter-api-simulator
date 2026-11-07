@@ -53,6 +53,9 @@ type env struct {
 	cookie string
 }
 
+// cl is the first (Phase 1) cluster.
+func (e *env) cl() *sim.ClusterRefs { return e.sim.Clusters[0] }
+
 func start(t *testing.T, seed string) *env {
 	t.Helper()
 	return startTopology(t, topology.Phase1(seed))
@@ -97,9 +100,9 @@ func (e *env) replay(name string, withCookie bool) (int, []byte) {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	req := strings.ReplaceAll(string(b), capturedMoid, e.sim.ClusterRef.Value)
-	req = strings.ReplaceAll(req, capturedHost, e.sim.HostRefs[0].Value)
-	req = strings.ReplaceAll(req, capturedHost2, e.sim.Topology.Cluster.Hosts[0].NodeUUID)
+	req := strings.ReplaceAll(string(b), capturedMoid, e.cl().Ref.Value)
+	req = strings.ReplaceAll(req, capturedHost, e.cl().Hosts[0].Value)
+	req = strings.ReplaceAll(req, capturedHost2, e.cl().Cluster.Hosts[0].NodeUUID)
 	r, _ := http.NewRequest("POST", e.srv.URL+"/vsanHealth", strings.NewReader(req))
 	r.Header.Set("Content-Type", "text/xml; charset=utf-8")
 	r.Header.Set("SOAPAction", "urn:vsan/8.0.0.4")
@@ -394,20 +397,21 @@ func TestIdentityConsistency(t *testing.T) {
 	ctx := context.Background()
 	c := e.client
 	topo := e.sim.Topology
+	tcl := topo.Clusters()[0]
 
 	var cl mo.ClusterComputeResource
-	if err := property.DefaultCollector(c).RetrieveOne(ctx, e.sim.ClusterRef, []string{"name", "host", "configurationEx"}, &cl); err != nil {
+	if err := property.DefaultCollector(c).RetrieveOne(ctx, e.cl().Ref, []string{"name", "host", "configurationEx"}, &cl); err != nil {
 		t.Fatal(err)
 	}
 	sdkUUID := cl.ConfigurationEx.(*types.ClusterConfigInfoEx).VsanConfigInfo.DefaultConfig.Uuid
-	if sdkUUID != topo.Cluster.VsanUUID {
+	if sdkUUID != topo.Clusters()[0].VsanUUID {
 		t.Fatalf("/sdk cluster uuid %s", sdkUUID)
 	}
 	vc, err := vsan.NewClient(ctx, c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := vc.VsanClusterGetConfig(ctx, e.sim.ClusterRef)
+	cfg, err := vc.VsanClusterGetConfig(ctx, e.cl().Ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +424,7 @@ func TestIdentityConsistency(t *testing.T) {
 
 	// host node uuids: vsanSystem.config on /sdk vs node information
 	nodes, err := vsanmethods.VsanPerfQueryNodeInformation(ctx, vc.Client, &vsantypes.VsanPerfQueryNodeInformation{
-		This: vsanhealth.PerfManagerRef, Cluster: &e.sim.ClusterRef})
+		This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,14 +531,14 @@ func TestIdentityConsistency(t *testing.T) {
 		for _, dev := range vm.Config.Hardware.Device {
 			if d, ok := dev.(*types.VirtualDisk); ok {
 				fn := d.Backing.(*types.VirtualDiskFlatVer2BackingInfo).FileName
-				if !strings.HasPrefix(fn, "["+topology.Datastore+"] ") {
+				if !strings.HasPrefix(fn, "["+tcl.Datastore+"] ") {
 					t.Errorf("disk %s not on the vSAN datastore", fn)
 				}
-				paths[strings.TrimPrefix(fn, "["+topology.Datastore+"] ")] = true
+				paths[strings.TrimPrefix(fn, "["+tcl.Datastore+"] ")] = true
 			}
 		}
 	}
-	if len(vms) != len(topo.Cluster.VMs) {
+	if len(vms) != len(topo.Clusters()[0].VMs) {
 		t.Fatalf("%d VMs", len(vms))
 	}
 	for _, ref := range e.entities("virtual-machine") {
@@ -581,7 +585,7 @@ var refRe = regexp.MustCompile(`<entityRefId[^>]*>([^<]*)</entityRefId>`)
 // entities queries a family with the fixture window and returns its refs.
 func (e *env) entities(family string) []string {
 	e.t.Helper()
-	req := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><VsanPerfQueryPerf xmlns="urn:vsan"><_this type="VsanPerformanceManager">vsan-performance-manager</_this><querySpecs><entityRefId>%s:*</entityRefId><startTime>2026-11-06T23:23:22.340Z</startTime><endTime>2026-11-06T23:38:22.340Z</endTime></querySpecs><cluster type="ClusterComputeResource">%s</cluster></VsanPerfQueryPerf></soapenv:Body></soapenv:Envelope>`, family, e.sim.ClusterRef.Value)
+	req := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><VsanPerfQueryPerf xmlns="urn:vsan"><_this type="VsanPerformanceManager">vsan-performance-manager</_this><querySpecs><entityRefId>%s:*</entityRefId><startTime>2026-11-06T23:23:22.340Z</startTime><endTime>2026-11-06T23:38:22.340Z</endTime></querySpecs><cluster type="ClusterComputeResource">%s</cluster></VsanPerfQueryPerf></soapenv:Body></soapenv:Envelope>`, family, e.cl().Ref.Value)
 	r, _ := http.NewRequest("POST", e.srv.URL+"/vsanHealth", strings.NewReader(req))
 	r.AddCookie(&http.Cookie{Name: soap.SessionCookieName, Value: e.cookie})
 	res, err := http.DefaultClient.Do(r)
@@ -613,11 +617,11 @@ func TestDeterminism(t *testing.T) {
 	a := start(t, "det")
 	b := start(t, "det")
 	c := start(t, "other")
-	if a.sim.ClusterRef != b.sim.ClusterRef || a.sim.ClusterRef != c.sim.ClusterRef {
-		t.Fatalf("cluster morefs %v %v %v", a.sim.ClusterRef, b.sim.ClusterRef, c.sim.ClusterRef)
+	if a.cl().Ref != b.cl().Ref || a.cl().Ref != c.cl().Ref {
+		t.Fatalf("cluster morefs %v %v %v", a.cl().Ref, b.cl().Ref, c.cl().Ref)
 	}
-	for i := range a.sim.HostRefs {
-		if a.sim.HostRefs[i] != b.sim.HostRefs[i] {
+	for i := range a.cl().Hosts {
+		if a.cl().Hosts[i] != b.cl().Hosts[i] {
 			t.Fatalf("host morefs differ")
 		}
 	}

@@ -1,0 +1,3512 @@
+[
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-31208",
+  "props": {
+   "name": "pg-10",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-31208",
+    "name": "pg-10",
+    "numPorts": 32,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 16
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": true,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": true,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": true,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-31208"
+    },
+    "name": "pg-10",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-31208",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-31212"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31211"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31213"
+    },
+    {
+     "_moref": "VirtualMachine:vm-35088"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-31209",
+  "props": {
+   "name": "pg-09",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-31209",
+    "name": "pg-09",
+    "numPorts": 32,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 17
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": true,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": true,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": true,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-31209"
+    },
+    "name": "pg-09",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-31209",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-31210"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-35120",
+  "props": {
+   "name": "pg-11",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-35120",
+    "name": "pg-11",
+    "numPorts": 8,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 18
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": true,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": true,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": true,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-35120"
+    },
+    "name": "pg-11",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-35120",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-31326"
+    },
+    {
+     "_moref": "VirtualMachine:vm-35135"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-35121",
+  "props": {
+   "name": "pg-12",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-35121",
+    "name": "pg-12",
+    "numPorts": 8,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 19
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": true,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": true,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": true,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-35121"
+    },
+    "name": "pg-12",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-35121",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-39030"
+    },
+    {
+     "_moref": "VirtualMachine:vm-39031"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6007",
+  "props": {
+   "name": "pg-04",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6007",
+    "name": "pg-04",
+    "numPorts": 10,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": false,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": false,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": false,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": false
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": false,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": false
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchTrunkVlanSpec",
+      "inherited": false,
+      "vlanId": [
+       {
+        "_type": "NumericRange",
+        "start": 0,
+        "end": 4094
+       }
+      ]
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": false,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": false,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": false,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": false,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": false,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": false,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": false,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": true,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": false,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": false,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": false,
+    "uplink": true
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6007"
+    },
+    "name": "pg-04",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6007",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6008",
+  "props": {
+   "name": "pg-05",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6008",
+    "name": "pg-05",
+    "numPorts": 5,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 110
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_loadbased"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "ephemeral",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": false,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": false,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": false,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6008"
+    },
+    "name": "pg-05",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6008",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6009",
+  "props": {
+   "name": "pg-07",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6009",
+    "name": "pg-07",
+    "numPorts": 8,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 120
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_loadbased"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": false,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": false,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6009"
+    },
+    "name": "pg-07",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6009",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6010",
+  "props": {
+   "name": "pg-08",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6010",
+    "name": "pg-08",
+    "numPorts": 8,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 130
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_loadbased"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": false,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": false,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6010"
+    },
+    "name": "pg-08",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6010",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": []
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6022",
+  "props": {
+   "name": "pg-13",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6022",
+    "name": "pg-13",
+    "numPorts": 13,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 13
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": false,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": false,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": true,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": false,
+       "enabled": true,
+       "allowUnicastFlooding": true,
+       "limit": 4096,
+       "limitPolicy": "allow"
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "vmVnicNetworkResourcePoolKey": "-1",
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6022"
+    },
+    "name": "pg-13",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6022",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-31164"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6023",
+  "props": {
+   "name": "pg-14",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6023",
+    "name": "pg-14",
+    "numPorts": 23,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 180
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "earlyBinding",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": true,
+    "vmVnicNetworkResourcePoolKey": "-1",
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6023"
+    },
+    "name": "pg-14",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6023",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-26019"
+    },
+    {
+     "_moref": "VirtualMachine:vm-25098"
+    },
+    {
+     "_moref": "VirtualMachine:vm-20"
+    },
+    {
+     "_moref": "VirtualMachine:vm-25097"
+    },
+    {
+     "_moref": "VirtualMachine:vm-34"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1010"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1036"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1023"
+    },
+    {
+     "_moref": "VirtualMachine:vm-18040"
+    },
+    {
+     "_moref": "VirtualMachine:vm-17001"
+    },
+    {
+     "_moref": "VirtualMachine:vm-1011"
+    },
+    {
+     "_moref": "VirtualMachine:vm-13101"
+    },
+    {
+     "_moref": "VirtualMachine:vm-2001"
+    },
+    {
+     "_moref": "VirtualMachine:vm-2002"
+    },
+    {
+     "_moref": "VirtualMachine:vm-25096"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-6024",
+  "props": {
+   "name": "pg-15",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-6024",
+    "name": "pg-15",
+    "numPorts": 9,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 180
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_srcid"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink2",
+        "uplink1"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "ephemeral",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": true,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": true,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "2",
+    "autoExpand": false,
+    "vmVnicNetworkResourcePoolKey": "-1",
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6024"
+    },
+    "name": "pg-15",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-6024",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": [
+    {
+     "_moref": "VirtualMachine:vm-27130"
+    },
+    {
+     "_moref": "VirtualMachine:vm-34002"
+    },
+    {
+     "_moref": "VirtualMachine:vm-31452"
+    },
+    {
+     "_moref": "VirtualMachine:vm-29007"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37011"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37014"
+    },
+    {
+     "_moref": "VirtualMachine:vm-39042"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37012"
+    },
+    {
+     "_moref": "VirtualMachine:vm-23208"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37015"
+    },
+    {
+     "_moref": "VirtualMachine:vm-39043"
+    },
+    {
+     "_moref": "VirtualMachine:vm-37013"
+    },
+    {
+     "_moref": "VirtualMachine:vm-23209"
+    },
+    {
+     "_moref": "VirtualMachine:vm-18001"
+    },
+    {
+     "_moref": "VirtualMachine:vm-21"
+    },
+    {
+     "_moref": "VirtualMachine:vm-27022"
+    }
+   ]
+  }
+ },
+ {
+  "_moref": "DistributedVirtualPortgroup:dvportgroup-9001",
+  "props": {
+   "name": "pg-06",
+   "parent": {
+    "_moref": "Folder:group-n7"
+   },
+   "config": {
+    "_type": "DVPortgroupConfigInfo",
+    "key": "dvportgroup-9001",
+    "name": "pg-06",
+    "numPorts": 0,
+    "distributedVirtualSwitch": {
+     "_moref": "VmwareDistributedVirtualSwitch:dvs-6006"
+    },
+    "defaultPortConfig": {
+     "_type": "VMwareDVSPortSetting",
+     "blocked": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "vmDirectPathGen2Allowed": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "inShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "outShapingPolicy": {
+      "_type": "DVSTrafficShapingPolicy",
+      "inherited": true,
+      "enabled": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "averageBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "peakBandwidth": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 100000000
+      },
+      "burstSize": {
+       "_type": "LongPolicy",
+       "inherited": true,
+       "value": 104857600
+      }
+     },
+     "vendorSpecificConfig": {
+      "_type": "DVSVendorSpecificConfig",
+      "inherited": true
+     },
+     "networkResourcePoolKey": {
+      "_type": "StringPolicy",
+      "inherited": true,
+      "value": "-1"
+     },
+     "filterPolicy": {
+      "_type": "DvsFilterPolicy",
+      "inherited": true
+     },
+     "vlan": {
+      "_type": "VmwareDistributedVirtualSwitchVlanIdSpec",
+      "inherited": false,
+      "vlanId": 110
+     },
+     "qosTag": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": -1
+     },
+     "uplinkTeamingPolicy": {
+      "_type": "VmwareUplinkPortTeamingPolicy",
+      "inherited": false,
+      "policy": {
+       "_type": "StringPolicy",
+       "inherited": false,
+       "value": "loadbalance_loadbased"
+      },
+      "reversePolicy": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": true
+      },
+      "notifySwitches": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": true
+      },
+      "rollingOrder": {
+       "_type": "BoolPolicy",
+       "inherited": false,
+       "value": false
+      },
+      "failureCriteria": {
+       "_type": "DVSFailureCriteria",
+       "inherited": false,
+       "checkSpeed": {
+        "_type": "StringPolicy",
+        "inherited": true,
+        "value": "minimum"
+       },
+       "speed": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 10
+       },
+       "checkDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "fullDuplex": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "checkErrorPercent": {
+        "_type": "BoolPolicy",
+        "inherited": true,
+        "value": false
+       },
+       "percentage": {
+        "_type": "IntPolicy",
+        "inherited": true,
+        "value": 0
+       },
+       "checkBeacon": {
+        "_type": "BoolPolicy",
+        "inherited": false,
+        "value": false
+       }
+      },
+      "uplinkPortOrder": {
+       "_type": "VMwareUplinkPortOrderPolicy",
+       "inherited": false,
+       "activeUplinkPort": [
+        "uplink1",
+        "uplink2"
+       ]
+      }
+     },
+     "securityPolicy": {
+      "_type": "DVSSecurityPolicy",
+      "inherited": true,
+      "allowPromiscuous": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "macChanges": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "forgedTransmits": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      }
+     },
+     "ipfixEnabled": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "txUplink": {
+      "_type": "BoolPolicy",
+      "inherited": true,
+      "value": false
+     },
+     "lacpPolicy": {
+      "_type": "VMwareUplinkLacpPolicy",
+      "inherited": true,
+      "enable": {
+       "_type": "BoolPolicy",
+       "inherited": true,
+       "value": false
+      },
+      "mode": {
+       "_type": "StringPolicy",
+       "inherited": true,
+       "value": "passive"
+      }
+     },
+     "macManagementPolicy": {
+      "_type": "DVSMacManagementPolicy",
+      "inherited": true,
+      "allowPromiscuous": false,
+      "macChanges": false,
+      "forgedTransmits": false,
+      "macLearningPolicy": {
+       "_type": "DVSMacLearningPolicy",
+       "inherited": true,
+       "enabled": false
+      }
+     },
+     "VNI": {
+      "_type": "IntPolicy",
+      "inherited": true,
+      "value": 0
+     }
+    },
+    "type": "ephemeral",
+    "backingType": "standard",
+    "policy": {
+     "_type": "VMwareDVSPortgroupPolicy",
+     "blockOverrideAllowed": false,
+     "shapingOverrideAllowed": false,
+     "vendorConfigOverrideAllowed": false,
+     "livePortMovingAllowed": false,
+     "portConfigResetAtDisconnect": false,
+     "networkResourcePoolOverrideAllowed": false,
+     "trafficFilterOverrideAllowed": false,
+     "vlanOverrideAllowed": false,
+     "uplinkTeamingOverrideAllowed": false,
+     "securityPolicyOverrideAllowed": false,
+     "ipfixOverrideAllowed": false,
+     "macManagementOverrideAllowed": false
+    },
+    "configVersion": "0",
+    "autoExpand": false,
+    "uplink": false
+   },
+   "summary": {
+    "_type": "NetworkSummary",
+    "network": {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-9001"
+    },
+    "name": "pg-06",
+    "accessible": true,
+    "ipPoolName": ""
+   },
+   "key": "dvportgroup-9001",
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    }
+   ],
+   "vm": []
+  }
+ }
+]

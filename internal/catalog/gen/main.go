@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/vmware/govmomi/vim25/soap"
@@ -30,6 +31,20 @@ type family struct {
 	Labels    []string `json:"labels,omitempty"`
 	RefShapes []string `json:"refShapes,omitempty"`
 	Entities  int      `json:"entities"`
+	// Stats are the observed value statistics per label (mirrors
+	// catalog.Stats): min, p25, median, p75, max over every entity and
+	// sample in the capture, and whether the service returned decimals.
+	Stats map[string]stats `json:"stats,omitempty"`
+}
+
+type stats struct {
+	Min   float64 `json:"min"`
+	P25   float64 `json:"p25"`
+	P50   float64 `json:"p50"`
+	P75   float64 `json:"p75"`
+	Max   float64 `json:"max"`
+	Float bool    `json:"float,omitempty"`
+	N     int     `json:"n"`
 }
 
 type about struct {
@@ -87,6 +102,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// quantile is the nearest-rank quantile of sorted xs.
+func quantile(xs []float64, q float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	i := int(q*float64(len(xs)-1) + 0.5)
+	return xs[i]
 }
 
 func read(dir, name string) ([]byte, error) {
@@ -267,6 +291,8 @@ func Build(dir string) ([]byte, error) {
 		default:
 			shapes := map[string]bool{}
 			seen := map[string]bool{}
+			values := map[string][]float64{}
+			floats := map[string]bool{}
 			for _, e := range qp.Res.Returnval {
 				if strings.Contains(e.EntityRefId, "*") {
 					continue
@@ -286,6 +312,21 @@ func Build(dir string) ([]byte, error) {
 						seen[v.MetricId.Label] = true
 						f.Labels = append(f.Labels, v.MetricId.Label)
 					}
+					// "None" marks a sample the service had no value for
+					// (entities created mid-window)
+					for _, raw := range strings.Split(v.Values, ",") {
+						if raw == "" || raw == "None" {
+							continue
+						}
+						x, err := strconv.ParseFloat(raw, 64)
+						if err != nil {
+							return nil, fmt.Errorf("perf %s: %s: value %q", name, v.MetricId.Label, raw)
+						}
+						if strings.Contains(raw, ".") {
+							floats[v.MetricId.Label] = true
+						}
+						values[v.MetricId.Label] = append(values[v.MetricId.Label], x)
+					}
 				}
 			}
 			if f.Entities == 0 {
@@ -296,6 +337,14 @@ func Build(dir string) ([]byte, error) {
 					f.RefShapes = append(f.RefShapes, s)
 				}
 				sort.Strings(f.RefShapes)
+				f.Stats = map[string]stats{}
+				for label, xs := range values {
+					sort.Float64s(xs)
+					f.Stats[label] = stats{
+						Min: xs[0], P25: quantile(xs, 0.25), P50: quantile(xs, 0.5), P75: quantile(xs, 0.75), Max: xs[len(xs)-1],
+						Float: floats[label], N: len(xs),
+					}
+				}
 			}
 		}
 		c.Families[name] = f

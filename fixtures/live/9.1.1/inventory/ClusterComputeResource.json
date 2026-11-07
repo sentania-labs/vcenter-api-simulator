@@ -1,0 +1,563 @@
+[
+ {
+  "_moref": "ClusterComputeResource:domain-c6004",
+  "props": {
+   "name": "cluster-01",
+   "parent": {
+    "_moref": "Folder:group-h5"
+   },
+   "configurationEx": {
+    "_type": "ClusterConfigInfoEx",
+    "vmSwapPlacement": "vmDirectory",
+    "spbmEnabled": true,
+    "systemVMsConfig": {
+     "_type": "ClusterSystemVMsConfigInfo",
+     "dsTagCategoriesToExclude": [
+      "SRM-com.vmware.vcDr:::status"
+     ],
+     "deploymentMode": "ABSENT"
+    },
+    "dasConfig": {
+     "_type": "ClusterDasConfigInfo",
+     "enabled": true,
+     "vmMonitoring": "vmMonitoringDisabled",
+     "hostMonitoring": "enabled",
+     "vmComponentProtecting": "enabled",
+     "failoverLevel": 1,
+     "admissionControlPolicy": {
+      "_type": "ClusterFailoverResourcesAdmissionControlPolicy",
+      "resourceReductionToToleratePercent": 100,
+      "pMemAdmissionControlEnabled": false,
+      "cpuFailoverResourcesPercent": 20,
+      "memoryFailoverResourcesPercent": 20,
+      "failoverLevel": 1,
+      "autoComputePercentages": true
+     },
+     "admissionControlEnabled": true,
+     "defaultVmSettings": {
+      "_type": "ClusterDasVmSettings",
+      "restartPriority": "medium",
+      "restartPriorityTimeout": 600,
+      "isolationResponse": "powerOff",
+      "vmToolsMonitoringSettings": {
+       "_type": "ClusterVmToolsMonitoringSettings",
+       "enabled": false,
+       "vmMonitoring": "vmMonitoringDisabled",
+       "clusterSettings": true,
+       "failureInterval": 30,
+       "minUpTime": 120,
+       "maxFailures": 3,
+       "maxFailureWindow": -1
+      },
+      "vmComponentProtectionSettings": {
+       "_type": "ClusterVmComponentProtectionSettings",
+       "vmStorageProtectionForAPD": "restartConservative",
+       "enableAPDTimeoutForHosts": true,
+       "vmTerminateDelayForAPDSec": 180,
+       "vmReactionOnAPDCleared": "none",
+       "vmStorageProtectionForPDL": "restartAggressive"
+      }
+     },
+     "hBDatastoreCandidatePolicy": "allFeasibleDsWithUserPreference"
+    },
+    "dasVmConfig": [
+     {
+      "_type": "ClusterDasVmConfigInfo",
+      "key": {
+       "_moref": "VirtualMachine:vm-34"
+      },
+      "restartPriority": "high",
+      "dasSettings": {
+       "_type": "ClusterDasVmSettings",
+       "restartPriority": "high",
+       "isolationResponse": "clusterIsolationResponse",
+       "vmToolsMonitoringSettings": {
+        "_type": "ClusterVmToolsMonitoringSettings"
+       },
+       "vmComponentProtectionSettings": {
+        "_type": "ClusterVmComponentProtectionSettings"
+       }
+      }
+     },
+     {
+      "_type": "ClusterDasVmConfigInfo",
+      "key": {
+       "_moref": "VirtualMachine:vm-2002"
+      },
+      "restartPriority": "high",
+      "dasSettings": {
+       "_type": "ClusterDasVmSettings",
+       "restartPriority": "high",
+       "isolationResponse": "clusterIsolationResponse",
+       "vmToolsMonitoringSettings": {
+        "_type": "ClusterVmToolsMonitoringSettings"
+       },
+       "vmComponentProtectionSettings": {
+        "_type": "ClusterVmComponentProtectionSettings"
+       }
+      }
+     }
+    ],
+    "drsConfig": {
+     "_type": "ClusterDrsConfigInfo",
+     "enabled": true,
+     "enableVmBehaviorOverrides": false,
+     "defaultVmBehavior": "fullyAutomated",
+     "vmotionRate": 2,
+     "scaleDescendantsShares": "disabled"
+    },
+    "rule": [
+     {
+      "_type": "ClusterAntiAffinityRuleSpec",
+      "key": 101,
+      "enabled": true,
+      "name": "K8s Anti-Affinity",
+      "userCreated": true,
+      "ruleUuid": "3ed42b9a-8fdd-56f7-a149-411f0dac0287",
+      "vm": [
+       {
+        "_moref": "VirtualMachine:vm-31213"
+       },
+       {
+        "_moref": "VirtualMachine:vm-31212"
+       },
+       {
+        "_moref": "VirtualMachine:vm-31211"
+       }
+      ]
+     }
+    ],
+    "orchestration": {
+     "_type": "ClusterOrchestrationInfo",
+     "defaultVmReadiness": {
+      "_type": "ClusterVmReadiness",
+      "readyCondition": "none",
+      "postReadyDelay": 0
+     }
+    },
+    "dpmConfigInfo": {
+     "_type": "ClusterDpmConfigInfo",
+     "enabled": false,
+     "defaultDpmBehavior": "automated",
+     "hostPowerActionRate": 3
+    },
+    "vsanConfigInfo": {
+     "_type": "VsanClusterConfigInfo",
+     "enabled": true,
+     "defaultConfig": {
+      "_type": "VsanClusterConfigInfoHostDefaultInfo",
+      "uuid": "f435a280-975a-59ae-9867-1454eb7f20b0",
+      "autoClaimStorage": false
+     },
+     "vsanEsaEnabled": true
+    },
+    "vsanHostConfig": [
+     {
+      "_type": "VsanHostConfigInfo",
+      "enabled": true,
+      "hostSystem": {
+       "_moref": "HostSystem:host-15151"
+      },
+      "clusterInfo": {
+       "_type": "VsanHostConfigInfoClusterInfo",
+       "uuid": "f435a280-975a-59ae-9867-1454eb7f20b0",
+       "nodeUuid": "6f382134-4cf2-5dd8-80a3-937145f2f1f6"
+      },
+      "storageInfo": {
+       "_type": "VsanHostConfigInfoStorageInfo",
+       "autoClaimStorage": false
+      },
+      "networkInfo": {
+       "_type": "VsanHostConfigInfoNetworkInfo",
+       "port": [
+        {
+         "_type": "VsanHostConfigInfoNetworkInfoPortConfig",
+         "ipConfig": {
+          "_type": "VsanHostIpConfig",
+          "upstreamIpAddress": "10.255.201.247",
+          "downstreamIpAddress": "10.255.57.38"
+         },
+         "device": "vmk2"
+        }
+       ]
+      },
+      "faultDomainInfo": {
+       "_type": "VsanHostFaultDomainInfo",
+       "name": ""
+      },
+      "vsanEsaEnabled": true
+     },
+     {
+      "_type": "VsanHostConfigInfo",
+      "enabled": true,
+      "hostSystem": {
+       "_moref": "HostSystem:host-31189"
+      },
+      "clusterInfo": {
+       "_type": "VsanHostConfigInfoClusterInfo",
+       "uuid": "f435a280-975a-59ae-9867-1454eb7f20b0",
+       "nodeUuid": "b5c5e8c6-6e80-5499-a551-d6394bbf0521"
+      },
+      "storageInfo": {
+       "_type": "VsanHostConfigInfoStorageInfo",
+       "autoClaimStorage": false
+      },
+      "networkInfo": {
+       "_type": "VsanHostConfigInfoNetworkInfo",
+       "port": [
+        {
+         "_type": "VsanHostConfigInfoNetworkInfoPortConfig",
+         "ipConfig": {
+          "_type": "VsanHostIpConfig",
+          "upstreamIpAddress": "10.255.201.247",
+          "downstreamIpAddress": "10.255.57.38"
+         },
+         "device": "vmk2"
+        }
+       ]
+      },
+      "faultDomainInfo": {
+       "_type": "VsanHostFaultDomainInfo",
+       "name": ""
+      },
+      "vsanEsaEnabled": true
+     },
+     {
+      "_type": "VsanHostConfigInfo",
+      "enabled": true,
+      "hostSystem": {
+       "_moref": "HostSystem:host-6011"
+      },
+      "clusterInfo": {
+       "_type": "VsanHostConfigInfoClusterInfo",
+       "uuid": "f435a280-975a-59ae-9867-1454eb7f20b0",
+       "nodeUuid": "f3a25466-dbbe-5aaa-8772-70094da4bdc7"
+      },
+      "storageInfo": {
+       "_type": "VsanHostConfigInfoStorageInfo",
+       "autoClaimStorage": false
+      },
+      "networkInfo": {
+       "_type": "VsanHostConfigInfoNetworkInfo",
+       "port": [
+        {
+         "_type": "VsanHostConfigInfoNetworkInfoPortConfig",
+         "ipConfig": {
+          "_type": "VsanHostIpConfig",
+          "upstreamIpAddress": "10.255.201.247",
+          "downstreamIpAddress": "10.255.57.38"
+         },
+         "device": "vmk2"
+        }
+       ]
+      },
+      "faultDomainInfo": {
+       "_type": "VsanHostFaultDomainInfo",
+       "name": ""
+      },
+      "vsanEsaEnabled": true
+     },
+     {
+      "_type": "VsanHostConfigInfo",
+      "enabled": true,
+      "hostSystem": {
+       "_moref": "HostSystem:host-6015"
+      },
+      "clusterInfo": {
+       "_type": "VsanHostConfigInfoClusterInfo",
+       "uuid": "f435a280-975a-59ae-9867-1454eb7f20b0",
+       "nodeUuid": "10e83b1f-744d-5d11-bf95-ae4fbf236d30"
+      },
+      "storageInfo": {
+       "_type": "VsanHostConfigInfoStorageInfo",
+       "autoClaimStorage": false
+      },
+      "networkInfo": {
+       "_type": "VsanHostConfigInfoNetworkInfo",
+       "port": [
+        {
+         "_type": "VsanHostConfigInfoNetworkInfoPortConfig",
+         "ipConfig": {
+          "_type": "VsanHostIpConfig",
+          "upstreamIpAddress": "10.255.201.247",
+          "downstreamIpAddress": "10.255.57.38"
+         },
+         "device": "vmk2"
+        }
+       ]
+      },
+      "faultDomainInfo": {
+       "_type": "VsanHostFaultDomainInfo",
+       "name": ""
+      },
+      "vsanEsaEnabled": true
+     },
+     {
+      "_type": "VsanHostConfigInfo",
+      "enabled": true,
+      "hostSystem": {
+       "_moref": "HostSystem:host-6017"
+      },
+      "clusterInfo": {
+       "_type": "VsanHostConfigInfoClusterInfo",
+       "uuid": "f435a280-975a-59ae-9867-1454eb7f20b0",
+       "nodeUuid": "ad5deab8-2ae5-5698-aa72-f248bdf8a01f"
+      },
+      "storageInfo": {
+       "_type": "VsanHostConfigInfoStorageInfo",
+       "autoClaimStorage": false
+      },
+      "networkInfo": {
+       "_type": "VsanHostConfigInfoNetworkInfo",
+       "port": [
+        {
+         "_type": "VsanHostConfigInfoNetworkInfoPortConfig",
+         "ipConfig": {
+          "_type": "VsanHostIpConfig",
+          "upstreamIpAddress": "10.255.201.247",
+          "downstreamIpAddress": "10.255.57.38"
+         },
+         "device": "vmk2"
+        }
+       ]
+      },
+      "faultDomainInfo": {
+       "_type": "VsanHostFaultDomainInfo",
+       "name": ""
+      },
+      "vsanEsaEnabled": true
+     }
+    ],
+    "group": [
+     {
+      "_type": "ClusterVmGroup",
+      "name": "K8s",
+      "vm": [
+       {
+        "_moref": "VirtualMachine:vm-31213"
+       },
+       {
+        "_moref": "VirtualMachine:vm-31212"
+       },
+       {
+        "_moref": "VirtualMachine:vm-31211"
+       }
+      ]
+     }
+    ],
+    "infraUpdateHaConfig": {
+     "_type": "ClusterInfraUpdateHaConfigInfo",
+     "enabled": false,
+     "behavior": "Manual",
+     "moderateRemediation": "QuarantineMode",
+     "severeRemediation": "QuarantineMode"
+    },
+    "proactiveDrsConfig": {
+     "_type": "ClusterProactiveDrsConfigInfo",
+     "enabled": true
+    },
+    "cryptoConfig": {
+     "_type": "ClusterCryptoConfigInfo",
+     "cryptoMode": "onDemand"
+    }
+   },
+   "summary": {
+    "_type": "ClusterComputeResourceSummary",
+    "totalCpu": 199600,
+    "totalMemory": 1349481308160,
+    "numCpuCores": 80,
+    "numCpuThreads": 160,
+    "effectiveCpu": 170275,
+    "effectiveMemory": 1042889,
+    "numHosts": 5,
+    "numEffectiveHosts": 5,
+    "overallStatus": "green",
+    "currentFailoverLevel": 1,
+    "admissionControlInfo": {
+     "_type": "ClusterFailoverResourcesAdmissionControlInfo",
+     "currentCpuFailoverResourcesPercent": 99,
+     "currentMemoryFailoverResourcesPercent": 96,
+     "currentPMemFailoverResourcesPercent": 0
+    },
+    "numVmotions": 26273,
+    "targetBalance": 63,
+    "currentBalance": 54,
+    "drsScore": 97,
+    "numVmsPerDrsScoreBucket": [
+     0,
+     0,
+     0,
+     0,
+     30
+    ],
+    "usageSummary": {
+     "_type": "ClusterUsageSummary",
+     "totalCpuCapacityMhz": 170275,
+     "totalMemCapacityMB": 1042889,
+     "cpuReservationMhz": 0,
+     "memReservationMB": 34462,
+     "poweredOffCpuReservationMhz": 0,
+     "poweredOffMemReservationMB": 0,
+     "cpuDemandMhz": 91765,
+     "memDemandMB": 197859,
+     "statsGenNumber": 18532,
+     "cpuEntitledMhz": 83316,
+     "memEntitledMB": 307285,
+     "poweredOffVmCount": 12,
+     "totalVmCount": 42,
+     "tier0MemCapacityMB": 398593,
+     "reservedTier0MemMB": 13470,
+     "unreservedTier0MemMB": 384483
+    },
+    "currentEVCGraphicsModeKey": "",
+    "dasData": {
+     "_type": "ClusterDasDataSummary",
+     "hostListVersion": 1407,
+     "clusterConfigVersion": 68,
+     "compatListVersion": 1232
+    },
+    "clusterMaintenanceModeStatus": "notInMaintenanceMode",
+    "vcsHealthStatus": "healthy"
+   },
+   "summaryEx": {
+    "_type": "ClusterComputeResourceSummary",
+    "totalCpu": 199600,
+    "totalMemory": 1349481308160,
+    "numCpuCores": 80,
+    "numCpuThreads": 160,
+    "effectiveCpu": 170275,
+    "effectiveMemory": 1043483,
+    "numHosts": 5,
+    "numEffectiveHosts": 5,
+    "overallStatus": "green",
+    "currentFailoverLevel": 1,
+    "admissionControlInfo": {
+     "_type": "ClusterFailoverResourcesAdmissionControlInfo",
+     "currentCpuFailoverResourcesPercent": 99,
+     "currentMemoryFailoverResourcesPercent": 96,
+     "currentPMemFailoverResourcesPercent": 0
+    },
+    "numVmotions": 26273,
+    "targetBalance": 63,
+    "currentBalance": 54,
+    "drsScore": 97,
+    "numVmsPerDrsScoreBucket": [
+     0,
+     0,
+     0,
+     0,
+     30
+    ],
+    "usageSummary": {
+     "_type": "ClusterUsageSummary",
+     "totalCpuCapacityMhz": 170275,
+     "totalMemCapacityMB": 1043483,
+     "cpuReservationMhz": 0,
+     "memReservationMB": 34462,
+     "poweredOffCpuReservationMhz": 0,
+     "poweredOffMemReservationMB": 0,
+     "cpuDemandMhz": 91765,
+     "memDemandMB": 197859,
+     "statsGenNumber": 18532,
+     "cpuEntitledMhz": 83316,
+     "memEntitledMB": 307285,
+     "poweredOffVmCount": 12,
+     "totalVmCount": 42,
+     "tier0MemCapacityMB": 398593,
+     "reservedTier0MemMB": 13470,
+     "unreservedTier0MemMB": 384483
+    },
+    "currentEVCGraphicsModeKey": "",
+    "dasData": {
+     "_type": "ClusterDasDataSummary",
+     "hostListVersion": 1407,
+     "clusterConfigVersion": 68,
+     "compatListVersion": 1232
+    },
+    "clusterMaintenanceModeStatus": "notInMaintenanceMode",
+    "vcsHealthStatus": "healthy"
+   },
+   "host": [
+    {
+     "_moref": "HostSystem:host-6011"
+    },
+    {
+     "_moref": "HostSystem:host-6015"
+    },
+    {
+     "_moref": "HostSystem:host-15151"
+    },
+    {
+     "_moref": "HostSystem:host-31189"
+    },
+    {
+     "_moref": "HostSystem:host-6017"
+    }
+   ],
+   "datastore": [
+    {
+     "_moref": "Datastore:datastore-6018"
+    },
+    {
+     "_moref": "Datastore:datastore-18"
+    },
+    {
+     "_moref": "Datastore:datastore-7001"
+    },
+    {
+     "_moref": "Datastore:datastore-31192"
+    },
+    {
+     "_moref": "Datastore:datastore-6016"
+    },
+    {
+     "_moref": "Datastore:datastore-15154"
+    },
+    {
+     "_moref": "Datastore:datastore-6012"
+    }
+   ],
+   "network": [
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-35120"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-35121"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6022"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6007"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6008"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6009"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6010"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6023"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-9001"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-31208"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-31209"
+    },
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6024"
+    }
+   ],
+   "resourcePool": {
+    "_moref": "ResourcePool:resgroup-6005"
+   }
+  }
+ }
+]

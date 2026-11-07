@@ -68,30 +68,48 @@ func TestFixturesAreSanitized(t *testing.T) {
 	brands := regexp.MustCompile(`(?i)Samsung|Sabrent|Seagate|FireCuda|\bTEAM\b|hynix|phison|\bAMD\b|\bIntel\b|Realtek|Mellanox|Broadcom Inc|Micron|Kingston|Western Digital|\bWDC\b|Crucial|\bDell\b|\bHPE\b|Lenovo|Supermicro|\bASUS\b|Gigabyte|Minisforum|Beelink|Micro Computer|JetKVM|Toshiba|Kioxia|Solidigm|Nvidia|Qualcomm`)
 	hosts := regexp.MustCompile(`\b[a-z0-9-]+\.(?:sentania|local|lan|home|internal|corp|int)\b`)
 	nqn := regexp.MustCompile(`nqn\.\d{4}-\d{2}\.[a-z.]+`)
-	entries, err := os.ReadDir(fixtures)
+	// every file under the fixture tree, including the inventory/ subtree
+	var files []string
+	err := filepath.WalkDir(fixtures, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 180 {
-		t.Fatalf("only %d fixture files", len(entries))
+	if len(files) < 180 {
+		t.Fatalf("only %d fixture files", len(files))
 	}
-	for _, e := range entries {
-		b, err := os.ReadFile(filepath.Join(fixtures, e.Name()))
+	inventory := 0
+	for _, path := range files {
+		name, _ := filepath.Rel(fixtures, path)
+		if strings.HasPrefix(name, "inventory"+string(filepath.Separator)) {
+			inventory++
+		}
+		b, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, re := range []*regexp.Regexp{brands, hosts} {
 			if m := re.Find(b); m != nil {
-				t.Errorf("%s: %q", e.Name(), m)
+				t.Errorf("%s: %q", name, m)
 			}
 		}
 		for _, m := range nqn.FindAll(b, -1) {
 			if string(m) != "nqn.2000-01.invalid" {
-				t.Errorf("%s: NVMe qualified name %q", e.Name(), m)
+				t.Errorf("%s: NVMe qualified name %q", name, m)
 			}
 		}
 		if bytes.Contains(b, []byte("vmware_soap_session=")) && !bytes.Contains(b, []byte("<session-redacted>")) {
-			t.Errorf("%s: session cookie", e.Name())
+			t.Errorf("%s: session cookie", name)
 		}
+	}
+	if inventory == 0 {
+		t.Error("no files under inventory/ were scanned")
 	}
 }

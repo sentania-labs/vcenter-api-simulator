@@ -81,6 +81,18 @@ func LoadOrCreateCertificate(dir string, names []string) (*Certificate, error) {
 	return c, nil
 }
 
+// LoadCertificateFiles serves a provided key pair (an operator's or a
+// mounted Secret's certFile and keyFile). Like LoadOrCreateCertificate's
+// pair it notices when the files are replaced and serves the new pair to
+// the next handshake. It never creates or writes anything.
+func LoadCertificateFiles(certFile, keyFile string) (*Certificate, error) {
+	c := &Certificate{certFile: certFile, keyFile: keyFile, Interval: time.Second}
+	if err := c.load(); err != nil {
+		return nil, fmt.Errorf("tls: load %s and %s: %w", certFile, keyFile, err)
+	}
+	return c, nil
+}
+
 // GetCertificate is the tls.Config hook; it returns the current pair after
 // checking the files for a replacement.
 func (c *Certificate) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {

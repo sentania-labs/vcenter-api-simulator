@@ -29,6 +29,9 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 		OverallHealthDescription: "",
 	}
 	cl := s.env.Cluster(req.Cluster)
+	if fault := s.env.methodFault("VsanQueryVcClusterHealthSummary", cl); fault != nil {
+		return &methods.VsanQueryVcClusterHealthSummaryBody{Fault_: fault}
+	}
 	if cl != nil {
 		hcl := &vsantypes.VsanClusterHclInfo{HclDbLastUpdate: &hclDbLastUpdate, HclDbAgeHealth: "green"}
 		for _, h := range cl.Hosts {

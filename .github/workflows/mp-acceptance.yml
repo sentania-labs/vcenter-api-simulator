@@ -1,8 +1,10 @@
 name: mp-acceptance
 
-# Optional acceptance against the reference management pack (pyVmomi
-# collector harness and the Operations integration SDK's mp-test). Not part
-# of required CI: dispatch it by hand when the simulator's contract changes.
+# Optional, manual: the reference management pack's own collector (pyVmomi
+# harness) and the Operations integration SDK's mp-test against the
+# simulator. Not part of required CI (the principal's call, 2026-11-07: CI
+# acceptance is a plain vSphere client smoke); dispatch it by hand before a
+# release or when the pack or the simulator's contract changes.
 #
 #   gh workflow run mp-acceptance.yml --ref <branch>
 #
@@ -11,6 +13,13 @@ name: mp-acceptance
 
 on:
   workflow_dispatch:
+    inputs:
+      scenario:
+        description: scenario file to run the pack against
+        default: examples/scenarios/ten-clusters.yaml
+      mp_commit:
+        description: sentania-labs/vsanhostmetrics commit (default is the pinned tuneup/upstream-2026-10, tag v2.0.0-rc.2)
+        default: af976fb9fe97bbac2fd94b666a3f79aa12656f2a
 
 permissions:
   contents: read
@@ -20,11 +29,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The reference management pack, pinned: sentania-labs/vsanhostmetrics
-  # branch tuneup/upstream-2026-10 (tag v2.0.0-rc.2).
   MP_REPO: https://github.com/sentania-labs/vsanhostmetrics
-  MP_COMMIT: af976fb9fe97bbac2fd94b666a3f79aa12656f2a
   PYVMOMI: pyvmomi==8.0.3.0.1
+  # inputs reach the scripts through the environment, never by expansion
+  # into a run: script
+  SCENARIO: ${{ inputs.scenario }}
+  MP_COMMIT: ${{ inputs.mp_commit }}
 
 jobs:
   mp-collector:
@@ -46,14 +56,15 @@ jobs:
       - name: build and start the simulator
         run: |
           go build -o "$RUNNER_TEMP/vcsimulator" ./cmd/vcsimulator
-          "$RUNNER_TEMP/vcsimulator" -listen 127.0.0.1:8443 -tls-dir "$RUNNER_TEMP/tls" -seed ci > "$RUNNER_TEMP/sim.log" 2>&1 &
+          "$RUNNER_TEMP/vcsimulator" -listen 127.0.0.1:8443 -data "$RUNNER_TEMP/data" -scenario "$SCENARIO" > "$RUNNER_TEMP/sim.log" 2>&1 &
           for _ in $(seq 1 30); do curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml >/dev/null && break; sleep 1; done
           cat "$RUNNER_TEMP/sim.log"
           curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml | grep -q '<version>9.1.1.0</version>' || { echo "simulator did not start"; exit 1; }
-      - name: run the pack's perfsvc functions against the simulator
+      - name: run the pack's perfsvc functions against the simulator, twice
         run: |
           python3 tools/mp-harness/harness.py --sim 127.0.0.1:8443 --mp "$RUNNER_TEMP/mp" \
-            --fixtures fixtures/live/9.1.1 --ca "$RUNNER_TEMP/tls/cert.pem" --report "$RUNNER_TEMP/harness.json"
+            --user administrator@vsphere.local --password 'VMware1!' \
+            --fixtures fixtures/live/9.1.1 --ca "$RUNNER_TEMP/data/tls/cert.pem" --report "$RUNNER_TEMP/harness.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -79,13 +90,14 @@ jobs:
       - name: build and start the simulator (reachable from the adapter container)
         run: |
           go build -o "$RUNNER_TEMP/vcsimulator" ./cmd/vcsimulator
-          "$RUNNER_TEMP/vcsimulator" -listen 0.0.0.0:8443 -tls-dir "$RUNNER_TEMP/tls" -seed ci > "$RUNNER_TEMP/sim.log" 2>&1 &
+          "$RUNNER_TEMP/vcsimulator" -listen 0.0.0.0:8443 -data "$RUNNER_TEMP/data" -scenario "$SCENARIO" > "$RUNNER_TEMP/sim.log" 2>&1 &
           for _ in $(seq 1 30); do curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml >/dev/null && break; sleep 1; done
           cat "$RUNNER_TEMP/sim.log"
           curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml | grep -q '<version>9.1.1.0</version>' || { echo "simulator did not start"; exit 1; }
       - name: mp-test connect, then collect twice, and compare
         run: |
           python3 tools/mp-harness/mp_test_run.py --mp "$RUNNER_TEMP/mp" --sim-port 8443 \
+            --user administrator@vsphere.local --password 'VMware1!' \
             --scope dashboard --attach false --report "$RUNNER_TEMP/mp-test.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

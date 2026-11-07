@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25/soap"
 	vim25types "github.com/vmware/govmomi/vim25/types"
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
@@ -29,6 +30,8 @@ type Env struct {
 	Topo    *topology.Topology
 	Catalog *catalog.Catalog
 	Now     func() time.Time
+	// Knobs are the scenario's fault and latency settings; nil means none.
+	Knobs *Knobs
 
 	clusters map[vim25types.ManagedObjectReference]*topology.Cluster
 	hosts    map[vim25types.ManagedObjectReference]hostEntry
@@ -61,6 +64,11 @@ func (e *Env) RegisterCluster(ref vim25types.ManagedObjectReference, c *topology
 func (e *Env) RegisterHost(ref vim25types.ManagedObjectReference, c *topology.Cluster, h *topology.Host) {
 	e.hosts[ref] = hostEntry{host: h, cluster: c}
 	e.hostRefs[h] = ref
+}
+
+// clusterByValue resolves a cluster MoRef value.
+func (e *Env) clusterByValue(value string) *topology.Cluster {
+	return e.clusters[vim25types.ManagedObjectReference{Type: "ClusterComputeResource", Value: value}]
 }
 
 // Cluster resolves a cluster MoRef.
@@ -96,4 +104,16 @@ func Install(s *simulator.Service, env *Env) {
 	r.Put(&DiskManagementSystem{ManagedObjectReference: DiskMgmtRef, env: env})
 	r.Put(&ClusterHealthSystem{ManagedObjectReference: HealthSystemRef, env: env})
 	s.RegisterSDK(r)
+}
+
+// methodFault returns the scenario's injected fault for a method on a
+// cluster, if any is active.
+func (e *Env) methodFault(method string, cl *topology.Cluster) *soap.Fault {
+	if e.Knobs == nil || cl == nil {
+		return nil
+	}
+	if inj := e.Knobs.MethodFault(method, cl.Key); inj != nil {
+		return e.Knobs.Fault(inj, method)
+	}
+	return nil
 }

@@ -42,7 +42,7 @@ func TestVsanHealthServesOnlyTheSlice(t *testing.T) {
 	e := start(t, "narrow")
 	call := func(typ, id, op string) shape {
 		t.Helper()
-		_, body := e.post("/vsanHealth", `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><`+op+` xmlns="urn:vsan"><_this type="`+typ+`">`+id+`</_this><cluster type="ClusterComputeResource">`+e.sim.ClusterRef.Value+`</cluster></`+op+`></soapenv:Body></soapenv:Envelope>`)
+		_, body := e.post("/vsanHealth", `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><`+op+` xmlns="urn:vsan"><_this type="`+typ+`">`+id+`</_this><cluster type="ClusterComputeResource">`+e.cl().Ref.Value+`</cluster></`+op+`></soapenv:Body></soapenv:Envelope>`)
 		return parseShape(t, body)
 	}
 	got := call(vsan.VsanVcStretchedClusterSystem.Type, vsan.VsanVcStretchedClusterSystem.Value, "VSANVcConvertToStretchedCluster")
@@ -60,21 +60,24 @@ func TestVsanHealthServesOnlyTheSlice(t *testing.T) {
 }
 
 // The identities /vsanHealth emits for NICs must exist on /sdk: the vSAN
-// uplinks, the vSAN vmkernel NIC and its TCP/IP stack on every host, all on
-// the one vDS the hosts are members of.
+// uplinks are the host's proxy switch uplinks on the one vDS, the vSAN
+// vmkernel NIC is on the vDS and on the stack its entities name, and every
+// host is a vDS member. /sdk carries more (a management uplink, the
+// management and vMotion vmkernel NICs, the extra TCP/IP stacks), as a
+// real host does.
 func TestHostNetworkMatchesVsanHealthEntities(t *testing.T) {
 	e := start(t, "network")
 	ctx := context.Background()
 	c := e.client
-	cl := e.sim.Topology.Cluster
+	cl := e.cl().Cluster
 
 	var dvs mo.DistributedVirtualSwitch
 	dvsRef := firstOf(t, e, "DistributedVirtualSwitch")
 	if err := property.DefaultCollector(c).RetrieveOne(ctx, dvsRef, []string{"name", "uuid", "summary.hostMember"}, &dvs); err != nil {
 		t.Fatal(err)
 	}
-	if dvs.Name != cl.VDS || dvs.Uuid != cl.VDSUUID {
-		t.Fatalf("vDS %q %q, topology %q %q", dvs.Name, dvs.Uuid, cl.VDS, cl.VDSUUID)
+	if dvs.Name != cl.VDS() || dvs.Uuid != cl.VDSUUID() {
+		t.Fatalf("vDS %q %q, topology %q %q", dvs.Name, dvs.Uuid, cl.VDS(), cl.VDSUUID())
 	}
 
 	// vsanHealth entities per kind of NIC identity, by node uuid
@@ -108,41 +111,58 @@ func TestHostNetworkMatchesVsanHealthEntities(t *testing.T) {
 		}
 	}
 
-	for i, href := range e.sim.HostRefs {
+	for i, href := range e.cl().Hosts {
 		h := cl.Hosts[i]
 		var hs mo.HostSystem
 		if err := property.DefaultCollector(c).RetrieveOne(ctx, href, []string{"config.network"}, &hs); err != nil {
 			t.Fatal(err)
 		}
 		n := hs.Config.Network
-		var gotPnic, gotVnic, gotStack []string
-		pnicKey := map[string]bool{}
+		pnicKey := map[string]string{}
 		for _, p := range n.Pnic {
-			gotPnic = append(gotPnic, p.Device)
-			pnicKey[p.Key] = true
+			pnicKey[p.Key] = p.Device
 		}
+		vnic := map[string]types.HostVirtualNic{}
 		for _, v := range n.Vnic {
-			gotVnic = append(gotVnic, v.Device)
-			if v.Spec.DistributedVirtualPort == nil || v.Spec.DistributedVirtualPort.SwitchUuid != dvs.Uuid {
-				t.Errorf("%s %s is not on the vDS: %+v", h.Name, v.Device, v.Spec.DistributedVirtualPort)
-			}
-			if v.Spec.NetStackInstanceKey != h.Stack {
-				t.Errorf("%s %s stack %q", h.Name, v.Device, v.Spec.NetStackInstanceKey)
-			}
+			vnic[v.Device] = v
 		}
+		stack := map[string]bool{}
 		for _, s := range n.NetStackInstance {
-			gotStack = append(gotStack, s.Key)
+			stack[s.Key] = true
 		}
 		if len(n.ProxySwitch) != 1 || n.ProxySwitch[0].DvsUuid != dvs.Uuid {
 			t.Fatalf("%s proxy switches %+v", h.Name, n.ProxySwitch)
 		}
+		var uplinks []string
 		for _, k := range n.ProxySwitch[0].Pnic {
-			if !pnicKey[k] {
+			if pnicKey[k] == "" {
 				t.Errorf("%s proxy switch uplink %s is not a pnic", h.Name, k)
 			}
+			uplinks = append(uplinks, pnicKey[k])
 		}
-		if len(n.ProxySwitch[0].Pnic) != 2 {
-			t.Errorf("%s: %d vDS uplinks", h.Name, len(n.ProxySwitch[0].Pnic))
+		if !sameSet(uplinks, pnics[h.NodeUUID]) {
+			t.Errorf("%s uplinks: /sdk proxy switch %v, /vsanHealth %v", h.Name, uplinks, pnics[h.NodeUUID])
+		}
+		for _, dev := range vnics[h.NodeUUID] {
+			v, ok := vnic[dev]
+			if !ok {
+				t.Errorf("%s: /vsanHealth names %s, /sdk has no such vmkernel NIC", h.Name, dev)
+				continue
+			}
+			if v.Spec.DistributedVirtualPort == nil || v.Spec.DistributedVirtualPort.SwitchUuid != dvs.Uuid {
+				t.Errorf("%s %s is not on the vDS: %+v", h.Name, dev, v.Spec.DistributedVirtualPort)
+			}
+			if v.Spec.NetStackInstanceKey != h.Stack {
+				t.Errorf("%s %s stack %q", h.Name, dev, v.Spec.NetStackInstanceKey)
+			}
+		}
+		for _, st := range stacks[h.NodeUUID] {
+			if !stack[st] {
+				t.Errorf("%s: /vsanHealth names stack %s, /sdk lacks it", h.Name, st)
+			}
+		}
+		if len(vnic) < 3 || !stack["vmotion"] {
+			t.Errorf("%s: a real host carries management and vMotion NICs too: %v", h.Name, n.Vnic)
 		}
 		member := false
 		for _, m := range dvs.Summary.HostMember {
@@ -150,15 +170,6 @@ func TestHostNetworkMatchesVsanHealthEntities(t *testing.T) {
 		}
 		if !member {
 			t.Errorf("%s is not a vDS member", h.Name)
-		}
-		for what, pair := range map[string][2][]string{
-			"pnic":  {gotPnic, pnics[h.NodeUUID]},
-			"vnic":  {gotVnic, vnics[h.NodeUUID]},
-			"stack": {gotStack, stacks[h.NodeUUID]},
-		} {
-			if !sameSet(pair[0], pair[1]) {
-				t.Errorf("%s %s: /sdk %v, /vsanHealth %v", h.Name, what, pair[0], pair[1])
-			}
 		}
 	}
 }
@@ -203,7 +214,7 @@ func TestDedupSwitch(t *testing.T) {
 	}
 
 	topo := topology.Phase1("dedup")
-	topo.Cluster.Dedup = false
+	topo.Clusters()[0].Dedup = false
 	off := startTopology(t, topo)
 	status, body := off.replay(req, true)
 	got := parseShape(t, body)
@@ -235,7 +246,7 @@ func TestDedupSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := vc.VsanClusterGetConfig(context.Background(), off.sim.ClusterRef)
+	cfg, err := vc.VsanClusterGetConfig(context.Background(), off.cl().Ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +257,7 @@ func TestDedupSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg, err = vc.VsanClusterGetConfig(context.Background(), on.sim.ClusterRef); err != nil || !cfg.DataEfficiencyConfig.DedupEnabled {
+	if cfg, err = vc.VsanClusterGetConfig(context.Background(), on.cl().Ref); err != nil || !cfg.DataEfficiencyConfig.DedupEnabled {
 		t.Errorf("dedup on: %+v %v", cfg.DataEfficiencyConfig, err)
 	}
 }

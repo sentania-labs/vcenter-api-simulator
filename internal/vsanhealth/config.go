@@ -21,6 +21,9 @@ type ClusterConfigSystem struct {
 // VsanConfigInfoEx can carry.
 func (s *ClusterConfigSystem) VsanClusterGetConfig(ctx *simulator.Context, req *vsantypes.VsanClusterGetConfig) soap.HasFault {
 	cl := s.env.Cluster(&req.Cluster)
+	if fault := s.env.methodFault("VsanClusterGetConfig", cl); fault != nil {
+		return &methods.VsanClusterGetConfigBody{Fault_: fault}
+	}
 	info := vsantypes.VsanConfigInfoEx{}
 	if cl == nil {
 		info.Enabled = vim25types.NewBool(false)

@@ -1,0 +1,3801 @@
+[
+ {
+  "_moref": "VirtualMachine:vm-1011",
+  "props": {
+   "name": "vm-23",
+   "parent": {
+    "_moref": "Folder:group-v1022"
+   },
+   "config": {
+    "_type": "VirtualMachineConfigInfo",
+    "name": "vm-23",
+    "uuid": "bdcee56f-6743-5f98-ac80-86cc52338148",
+    "instanceUuid": "6244f287-918f-5542-beb7-4bfca58babcf",
+    "version": "vmx-22",
+    "guestId": "ubuntu64Guest",
+    "guestFullName": "Ubuntu Linux (64-bit)",
+    "files": {
+     "_type": "VirtualMachineFileInfo",
+     "vmPathName": "[ds-01] f4be47cd-21b2-5088-a95a-143bdb7b48d3/vm-23.vmx",
+     "snapshotDirectory": "[ds-01] f4be47cd-21b2-5088-a95a-143bdb7b48d3/",
+     "suspendDirectory": "[ds-01] f4be47cd-21b2-5088-a95a-143bdb7b48d3/",
+     "logDirectory": "[ds-01] f4be47cd-21b2-5088-a95a-143bdb7b48d3/"
+    },
+    "hardware": {
+     "_type": "VirtualHardware",
+     "numCPU": 2,
+     "numCoresPerSocket": 2,
+     "autoCoresPerSocket": true,
+     "memoryMB": 8192,
+     "virtualICH7MPresent": false,
+     "virtualSMCPresent": false,
+     "device": [
+      {
+       "_type": "VirtualIDEController",
+       "key": 200,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "IDE 0",
+        "summary": "IDE 0"
+       },
+       "busNumber": 0,
+       "device": [
+        3000
+       ]
+      },
+      {
+       "_type": "VirtualIDEController",
+       "key": 201,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "IDE 1",
+        "summary": "IDE 1"
+       },
+       "busNumber": 1
+      },
+      {
+       "_type": "VirtualPS2Controller",
+       "key": 300,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "PS2 controller 0",
+        "summary": "PS2 controller 0"
+       },
+       "busNumber": 0,
+       "device": [
+        600,
+        700
+       ]
+      },
+      {
+       "_type": "VirtualKeyboard",
+       "key": 600,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Keyboard ",
+        "summary": "Keyboard"
+       },
+       "controllerKey": 300,
+       "unitNumber": 0
+      },
+      {
+       "_type": "VirtualPointingDevice",
+       "key": 700,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Pointing device",
+        "summary": "Pointing device; Device"
+       },
+       "backing": {
+        "_type": "VirtualPointingDeviceDeviceBackingInfo",
+        "deviceName": "",
+        "useAutoDetect": false,
+        "hostPointingDevice": "autodetect"
+       },
+       "controllerKey": 300,
+       "unitNumber": 1
+      },
+      {
+       "_type": "VirtualPCIController",
+       "key": 100,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "PCI controller 0",
+        "summary": "PCI controller 0"
+       },
+       "busNumber": 0,
+       "device": [
+        500,
+        12000,
+        1000,
+        4000
+       ]
+      },
+      {
+       "_type": "VirtualSIOController",
+       "key": 400,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "SIO controller 0",
+        "summary": "SIO controller 0"
+       },
+       "busNumber": 0
+      },
+      {
+       "_type": "VirtualMachineVideoCard",
+       "key": 500,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Video card ",
+        "summary": "Video card"
+       },
+       "controllerKey": 100,
+       "unitNumber": 0,
+       "videoRamSizeInKB": 4096,
+       "numDisplays": 1,
+       "useAutoDetect": false,
+       "enable3DSupport": false,
+       "use3dRenderer": "automatic",
+       "graphicsMemorySizeInKB": 262144
+      },
+      {
+       "_type": "VirtualMachineVMCIDevice",
+       "key": 12000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "VMCI device",
+        "summary": "Device on the virtual machine PCI bus that provides support for the virtual machine communication interface"
+       },
+       "controllerKey": 100,
+       "unitNumber": 17,
+       "id": -1207933325,
+       "allowUnrestrictedCommunication": false,
+       "filterEnable": true
+      },
+      {
+       "_type": "VirtualLsiLogicController",
+       "key": 1000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "SCSI controller 0",
+        "summary": "LSI Logic"
+       },
+       "slotInfo": {
+        "_type": "VirtualDevicePciBusSlotInfo",
+        "pciSlotNumber": 16
+       },
+       "controllerKey": 100,
+       "unitNumber": 3,
+       "busNumber": 0,
+       "device": [
+        2000
+       ],
+       "hotAddRemove": true,
+       "sharedBus": "noSharing",
+       "scsiCtlrUnitNumber": 7
+      },
+      {
+       "_type": "VirtualCdrom",
+       "key": 3000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "CD/DVD drive 1",
+        "summary": "Remote device CD/DVD drive 0"
+       },
+       "backing": {
+        "_type": "VirtualCdromRemotePassthroughBackingInfo",
+        "deviceName": "CD/DVD drive 0",
+        "useAutoDetect": false,
+        "exclusive": false
+       },
+       "connectable": {
+        "_type": "VirtualDeviceConnectInfo",
+        "startConnected": false,
+        "allowGuestControl": true,
+        "connected": false,
+        "status": "ok"
+       },
+       "controllerKey": 200,
+       "unitNumber": 0
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 1",
+        "summary": "262,144,000 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] f4be47cd-21b2-5088-a95a-143bdb7b48d3/vm-23.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "98118a6f-bf86-5d46-877d-dc57f152e5b1",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "5980e0b0-e455-5e17-b101-4ad21a5448df",
+        "contentId": "03c9ec5fd3d7a663a2b88efa2a6f1a70",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 0,
+       "capacityInKB": 262144000,
+       "capacityInBytes": 268435456000,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "563-2000",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualVmxnet3",
+       "key": 4000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Network adapter 1",
+        "summary": "DVSwitch: 34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89"
+       },
+       "backing": {
+        "_type": "VirtualEthernetCardDistributedVirtualPortBackingInfo",
+        "port": {
+         "_type": "DistributedVirtualSwitchPortConnection",
+         "switchUuid": "34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89",
+         "portgroupKey": "dvportgroup-6023",
+         "portKey": "45",
+         "connectionCookie": 945473578
+        }
+       },
+       "connectable": {
+        "_type": "VirtualDeviceConnectInfo",
+        "migrateConnect": "unset",
+        "startConnected": true,
+        "allowGuestControl": true,
+        "connected": true,
+        "status": "ok"
+       },
+       "slotInfo": {
+        "_type": "VirtualDevicePciBusSlotInfo",
+        "pciSlotNumber": 160
+       },
+       "controllerKey": 100,
+       "unitNumber": 7,
+       "addressType": "assigned",
+       "macAddress": "02:00:00:ec:01:06",
+       "wakeOnLanEnabled": true,
+       "resourceAllocation": {
+        "_type": "VirtualEthernetCardResourceAllocation",
+        "reservation": 0,
+        "share": {
+         "_type": "SharesInfo",
+         "shares": 50,
+         "level": "normal"
+        },
+        "limit": -1
+       },
+       "uptCompatibilityEnabled": false,
+       "uptv2Enabled": false,
+       "strictLatencyConfig": {
+        "_type": "VirtualVmxnet3StrictLatencyConfig",
+        "allowed": false
+       }
+      }
+     ],
+     "motherboardLayout": "i440bxHostBridge",
+     "simultaneousThreads": 1
+    },
+    "template": false,
+    "createDate": "2025-10-07T14:57:21.629962+00:00",
+    "datastoreUrl": [
+     {
+      "_type": "VirtualMachineConfigInfoDatastoreUrlPair",
+      "name": "ds-01",
+      "url": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a"
+     }
+    ],
+    "tools": {
+     "_type": "ToolsConfigInfo",
+     "toolsVersion": 12389,
+     "toolsInstallType": "guestToolsTypeOpenVMTools",
+     "afterPowerOn": true,
+     "afterResume": true,
+     "beforeGuestStandby": true,
+     "beforeGuestShutdown": true,
+     "toolsUpgradePolicy": "manual",
+     "syncTimeWithHostAllowed": true,
+     "syncTimeWithHost": false,
+     "lastInstallInfo": {
+      "_type": "ToolsConfigInfoToolsLastInstallInfo",
+      "counter": 3
+     }
+    },
+    "bootOptions": {
+     "_type": "VirtualMachineBootOptions",
+     "bootDelay": 0,
+     "enterBIOSSetup": false,
+     "efiSecureBootEnabled": false,
+     "bootRetryEnabled": false,
+     "bootRetryDelay": 10000,
+     "networkBootProtocol": "ipv4"
+    },
+    "firmware": "bios",
+    "cpuAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "expandableReservation": false,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 2000,
+      "level": "normal"
+     }
+    },
+    "memoryAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "expandableReservation": false,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 81920,
+      "level": "normal"
+     },
+     "overheadLimit": 111
+    }
+   },
+   "guest": {
+    "_type": "GuestInfo",
+    "toolsStatus": "toolsOk",
+    "toolsVersionStatus": "guestToolsUnmanaged",
+    "toolsVersionStatus2": "guestToolsUnmanaged",
+    "toolsRunningStatus": "guestToolsRunning",
+    "toolsVersion": "12389",
+    "toolsInstallType": "guestToolsTypeOpenVMTools",
+    "guestId": "ubuntu64Guest",
+    "guestFamily": "linuxGuest",
+    "guestFullName": "Ubuntu Linux (64-bit)",
+    "hostName": "guest-f435",
+    "ipAddress": "10.255.133.65",
+    "net": [
+     {
+      "_type": "GuestNicInfo",
+      "network": "pg-14",
+      "ipAddress": [
+       "10.255.133.65"
+      ],
+      "macAddress": "02:00:00:ec:01:06",
+      "connected": true,
+      "deviceConfigId": 4000,
+      "ipConfig": {
+       "_type": "NetIpConfigInfo",
+       "ipAddress": [
+        {
+         "_type": "NetIpConfigInfoIpAddress",
+         "ipAddress": "10.255.133.65",
+         "prefixLength": 24,
+         "state": "preferred"
+        }
+       ]
+      }
+     }
+    ],
+    "disk": [
+     {
+      "_type": "GuestDiskInfo",
+      "diskPath": "/",
+      "capacity": 30328991744,
+      "freeSpace": 22585704448,
+      "filesystemType": "ext4"
+     }
+    ],
+    "guestState": "running",
+    "appHeartbeatStatus": "appStatusGray",
+    "guestKernelCrashed": false,
+    "appState": "none",
+    "guestOperationsReady": true,
+    "interactiveGuestOperationsReady": false,
+    "guestStateChangeSupported": true,
+    "hwVersion": "vmx-22",
+    "customizationInfo": {
+     "_type": "GuestInfoCustomizationInfo",
+     "customizationStatus": "TOOLSDEPLOYPKG_IDLE"
+    }
+   },
+   "runtime": {
+    "_type": "VirtualMachineRuntimeInfo",
+    "device": [
+     {
+      "_type": "VirtualMachineDeviceRuntimeInfo",
+      "runtimeState": {
+       "_type": "VirtualMachineDeviceRuntimeInfoVirtualEthernetCardRuntimeState",
+       "vmDirectPathGen2Active": false,
+       "vmDirectPathGen2InactiveReasonOther": [
+        "vmNptIncompatibleNetwork"
+       ],
+       "attachmentStatus": "green"
+      },
+      "key": 4000
+     }
+    ],
+    "host": {
+     "_moref": "HostSystem:host-6017"
+    },
+    "connectionState": "connected",
+    "powerState": "poweredOn",
+    "faultToleranceState": "notConfigured",
+    "dasVmProtection": {
+     "_type": "VirtualMachineRuntimeInfoDasProtectionState",
+     "dasProtected": true
+    },
+    "toolsInstallerMounted": false,
+    "bootTime": "2026-10-24T18:37:21.987870+00:00",
+    "suspendInterval": 0,
+    "maxCpuUsage": 4990,
+    "maxMemoryUsage": 8192,
+    "numMksConnections": 0,
+    "recordReplayState": "inactive",
+    "onlineStandby": false,
+    "minRequiredEVCModeKey": "simvendor-gen5",
+    "consolidationNeeded": false,
+    "offlineFeatureRequirement": [
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.lm",
+      "featureName": "cpuid.lm",
+      "value": "Num:Min:1"
+     }
+    ],
+    "featureRequirement": [
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.3dnprefetch",
+      "featureName": "cpuid.3dnprefetch",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.abm",
+      "featureName": "cpuid.abm",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.adx",
+      "featureName": "cpuid.adx",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.aes",
+      "featureName": "cpuid.aes",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.always_serializing_lfence",
+      "featureName": "cpuid.always_serializing_lfence",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.simvendor",
+      "featureName": "cpuid.simvendor",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.amd_fast_short_cmpsb",
+      "featureName": "cpuid.amd_fast_short_cmpsb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.amd_fast_short_stosb",
+      "featureName": "cpuid.amd_fast_short_stosb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.automatic_ibrs",
+      "featureName": "cpuid.automatic_ibrs",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx",
+      "featureName": "cpuid.avx",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx2",
+      "featureName": "cpuid.avx2",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512bf16",
+      "featureName": "cpuid.avx512bf16",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512bitalg",
+      "featureName": "cpuid.avx512bitalg",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512bw",
+      "featureName": "cpuid.avx512bw",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512cd",
+      "featureName": "cpuid.avx512cd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512dq",
+      "featureName": "cpuid.avx512dq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512f",
+      "featureName": "cpuid.avx512f",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512ifma",
+      "featureName": "cpuid.avx512ifma",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vbmi",
+      "featureName": "cpuid.avx512vbmi",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vbmi2",
+      "featureName": "cpuid.avx512vbmi2",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vl",
+      "featureName": "cpuid.avx512vl",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vnni",
+      "featureName": "cpuid.avx512vnni",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vp2intersect",
+      "featureName": "cpuid.avx512vp2intersect",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vpopcntdq",
+      "featureName": "cpuid.avx512vpopcntdq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx_vnni",
+      "featureName": "cpuid.avx_vnni",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.bmi1",
+      "featureName": "cpuid.bmi1",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.bmi2",
+      "featureName": "cpuid.bmi2",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.btc_no",
+      "featureName": "cpuid.btc_no",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.cet_ss",
+      "featureName": "cpuid.cet_ss",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.clflushopt",
+      "featureName": "cpuid.clflushopt",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.clwb",
+      "featureName": "cpuid.clwb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.clzero",
+      "featureName": "cpuid.clzero",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.cmpxchg16b",
+      "featureName": "cpuid.cmpxchg16b",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.cr8avail",
+      "featureName": "cpuid.cr8avail",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.enfstrg",
+      "featureName": "cpuid.enfstrg",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.extapicspc",
+      "featureName": "cpuid.extapicspc",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.f16c",
+      "featureName": "cpuid.f16c",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fast_rep_scasb",
+      "featureName": "cpuid.fast_rep_scasb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fast_short_repmov",
+      "featureName": "cpuid.fast_short_repmov",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fcmd",
+      "featureName": "cpuid.fcmd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ffxsr",
+      "featureName": "cpuid.ffxsr",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fma",
+      "featureName": "cpuid.fma",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fsgsbase",
+      "featureName": "cpuid.fsgsbase",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.gfni",
+      "featureName": "cpuid.gfni",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ibpb",
+      "featureName": "cpuid.ibpb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ibrs",
+      "featureName": "cpuid.ibrs",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.invpcid",
+      "featureName": "cpuid.invpcid",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.lahf64",
+      "featureName": "cpuid.lahf64",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf821_prefetchi",
+      "featureName": "cpuid.leaf821_prefetchi",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_ibrs_same_mode",
+      "featureName": "cpuid.leaf88_ibrs_same_mode",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_prefer_ibrs",
+      "featureName": "cpuid.leaf88_prefer_ibrs",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_psfd",
+      "featureName": "cpuid.leaf88_psfd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_ssbd_spec_ctrl",
+      "featureName": "cpuid.leaf88_ssbd_spec_ctrl",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.lm",
+      "featureName": "cpuid.lm",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.misaligned_sse",
+      "featureName": "cpuid.misaligned_sse",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.mmxext",
+      "featureName": "cpuid.mmxext",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.movbe",
+      "featureName": "cpuid.movbe",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.movdir64b",
+      "featureName": "cpuid.movdir64b",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.movdiri",
+      "featureName": "cpuid.movdiri",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.nx",
+      "featureName": "cpuid.nx",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.opcode_0f017_reclaim",
+      "featureName": "cpuid.opcode_0f017_reclaim",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.pclmulqdq",
+      "featureName": "cpuid.pclmulqdq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.pdpe1gb",
+      "featureName": "cpuid.pdpe1gb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.pku",
+      "featureName": "cpuid.pku",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.popcnt",
+      "featureName": "cpuid.popcnt",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.rdpid",
+      "featureName": "cpuid.rdpid",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.rdrand",
+      "featureName": "cpuid.rdrand",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.rdtscp",
+      "featureName": "cpuid.rdtscp",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sha",
+      "featureName": "cpuid.sha",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.smap",
+      "featureName": "cpuid.smap",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.smep",
+      "featureName": "cpuid.smep",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse3",
+      "featureName": "cpuid.sse3",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse41",
+      "featureName": "cpuid.sse41",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse42",
+      "featureName": "cpuid.sse42",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse4a",
+      "featureName": "cpuid.sse4a",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ssse3",
+      "featureName": "cpuid.ssse3",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.umip",
+      "featureName": "cpuid.umip",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.vaes",
+      "featureName": "cpuid.vaes",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.vpclmulqdq",
+      "featureName": "cpuid.vpclmulqdq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.wbnoinvd",
+      "featureName": "cpuid.wbnoinvd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_hi16_zmm",
+      "featureName": "cpuid.xcr0_master_hi16_zmm",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_opmask",
+      "featureName": "cpuid.xcr0_master_opmask",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_pkru",
+      "featureName": "cpuid.xcr0_master_pkru",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_sse",
+      "featureName": "cpuid.xcr0_master_sse",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_ymm_h",
+      "featureName": "cpuid.xcr0_master_ymm_h",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_zmm_h",
+      "featureName": "cpuid.xcr0_master_zmm_h",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xgetbv_ecx1",
+      "featureName": "cpuid.xgetbv_ecx1",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsave",
+      "featureName": "cpuid.xsave",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsavec",
+      "featureName": "cpuid.xsavec",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaveopt",
+      "featureName": "cpuid.xsaveopt",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaves",
+      "featureName": "cpuid.xsaves",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaves_cet_s_sup_by_xss",
+      "featureName": "cpuid.xsaves_cet_s_sup_by_xss",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaves_cet_u_sup_by_xss",
+      "featureName": "cpuid.xsaves_cet_u_sup_by_xss",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xss_master_cet_s",
+      "featureName": "cpuid.xss_master_cet_s",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xss_master_cet_u",
+      "featureName": "cpuid.xss_master_cet_u",
+      "value": "Bool:Min:1"
+     }
+    ],
+    "paused": false,
+    "snapshotInBackground": false,
+    "instantCloneFrozen": false,
+    "opNotificationTimeout": 0
+   },
+   "summary": {
+    "_type": "VirtualMachineSummary",
+    "vm": {
+     "_moref": "VirtualMachine:vm-1011"
+    },
+    "runtime": {
+     "_type": "VirtualMachineRuntimeInfo",
+     "device": [
+      {
+       "_type": "VirtualMachineDeviceRuntimeInfo",
+       "runtimeState": {
+        "_type": "VirtualMachineDeviceRuntimeInfoVirtualEthernetCardRuntimeState",
+        "vmDirectPathGen2Active": false,
+        "vmDirectPathGen2InactiveReasonOther": [
+         "vmNptIncompatibleNetwork"
+        ],
+        "attachmentStatus": "green"
+       },
+       "key": 4000
+      }
+     ],
+     "host": {
+      "_moref": "HostSystem:host-6017"
+     },
+     "connectionState": "connected",
+     "powerState": "poweredOn",
+     "faultToleranceState": "notConfigured",
+     "dasVmProtection": {
+      "_type": "VirtualMachineRuntimeInfoDasProtectionState",
+      "dasProtected": true
+     },
+     "toolsInstallerMounted": false,
+     "bootTime": "2026-10-24T18:37:21.987870+00:00",
+     "suspendInterval": 0,
+     "maxCpuUsage": 4990,
+     "maxMemoryUsage": 8192,
+     "numMksConnections": 0,
+     "recordReplayState": "inactive",
+     "onlineStandby": false,
+     "minRequiredEVCModeKey": "simvendor-gen5",
+     "consolidationNeeded": false,
+     "offlineFeatureRequirement": [
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.lm",
+       "featureName": "cpuid.lm",
+       "value": "Num:Min:1"
+      }
+     ],
+     "featureRequirement": [
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.3dnprefetch",
+       "featureName": "cpuid.3dnprefetch",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.abm",
+       "featureName": "cpuid.abm",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.adx",
+       "featureName": "cpuid.adx",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.aes",
+       "featureName": "cpuid.aes",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.always_serializing_lfence",
+       "featureName": "cpuid.always_serializing_lfence",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.simvendor",
+       "featureName": "cpuid.simvendor",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.amd_fast_short_cmpsb",
+       "featureName": "cpuid.amd_fast_short_cmpsb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.amd_fast_short_stosb",
+       "featureName": "cpuid.amd_fast_short_stosb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.automatic_ibrs",
+       "featureName": "cpuid.automatic_ibrs",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx",
+       "featureName": "cpuid.avx",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx2",
+       "featureName": "cpuid.avx2",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512bf16",
+       "featureName": "cpuid.avx512bf16",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512bitalg",
+       "featureName": "cpuid.avx512bitalg",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512bw",
+       "featureName": "cpuid.avx512bw",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512cd",
+       "featureName": "cpuid.avx512cd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512dq",
+       "featureName": "cpuid.avx512dq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512f",
+       "featureName": "cpuid.avx512f",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512ifma",
+       "featureName": "cpuid.avx512ifma",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vbmi",
+       "featureName": "cpuid.avx512vbmi",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vbmi2",
+       "featureName": "cpuid.avx512vbmi2",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vl",
+       "featureName": "cpuid.avx512vl",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vnni",
+       "featureName": "cpuid.avx512vnni",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vp2intersect",
+       "featureName": "cpuid.avx512vp2intersect",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vpopcntdq",
+       "featureName": "cpuid.avx512vpopcntdq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx_vnni",
+       "featureName": "cpuid.avx_vnni",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.bmi1",
+       "featureName": "cpuid.bmi1",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.bmi2",
+       "featureName": "cpuid.bmi2",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.btc_no",
+       "featureName": "cpuid.btc_no",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.cet_ss",
+       "featureName": "cpuid.cet_ss",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.clflushopt",
+       "featureName": "cpuid.clflushopt",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.clwb",
+       "featureName": "cpuid.clwb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.clzero",
+       "featureName": "cpuid.clzero",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.cmpxchg16b",
+       "featureName": "cpuid.cmpxchg16b",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.cr8avail",
+       "featureName": "cpuid.cr8avail",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.enfstrg",
+       "featureName": "cpuid.enfstrg",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.extapicspc",
+       "featureName": "cpuid.extapicspc",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.f16c",
+       "featureName": "cpuid.f16c",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fast_rep_scasb",
+       "featureName": "cpuid.fast_rep_scasb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fast_short_repmov",
+       "featureName": "cpuid.fast_short_repmov",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fcmd",
+       "featureName": "cpuid.fcmd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ffxsr",
+       "featureName": "cpuid.ffxsr",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fma",
+       "featureName": "cpuid.fma",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fsgsbase",
+       "featureName": "cpuid.fsgsbase",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.gfni",
+       "featureName": "cpuid.gfni",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ibpb",
+       "featureName": "cpuid.ibpb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ibrs",
+       "featureName": "cpuid.ibrs",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.invpcid",
+       "featureName": "cpuid.invpcid",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.lahf64",
+       "featureName": "cpuid.lahf64",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf821_prefetchi",
+       "featureName": "cpuid.leaf821_prefetchi",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_ibrs_same_mode",
+       "featureName": "cpuid.leaf88_ibrs_same_mode",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_prefer_ibrs",
+       "featureName": "cpuid.leaf88_prefer_ibrs",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_psfd",
+       "featureName": "cpuid.leaf88_psfd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_ssbd_spec_ctrl",
+       "featureName": "cpuid.leaf88_ssbd_spec_ctrl",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.lm",
+       "featureName": "cpuid.lm",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.misaligned_sse",
+       "featureName": "cpuid.misaligned_sse",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.mmxext",
+       "featureName": "cpuid.mmxext",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.movbe",
+       "featureName": "cpuid.movbe",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.movdir64b",
+       "featureName": "cpuid.movdir64b",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.movdiri",
+       "featureName": "cpuid.movdiri",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.nx",
+       "featureName": "cpuid.nx",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.opcode_0f017_reclaim",
+       "featureName": "cpuid.opcode_0f017_reclaim",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.pclmulqdq",
+       "featureName": "cpuid.pclmulqdq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.pdpe1gb",
+       "featureName": "cpuid.pdpe1gb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.pku",
+       "featureName": "cpuid.pku",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.popcnt",
+       "featureName": "cpuid.popcnt",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.rdpid",
+       "featureName": "cpuid.rdpid",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.rdrand",
+       "featureName": "cpuid.rdrand",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.rdtscp",
+       "featureName": "cpuid.rdtscp",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sha",
+       "featureName": "cpuid.sha",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.smap",
+       "featureName": "cpuid.smap",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.smep",
+       "featureName": "cpuid.smep",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse3",
+       "featureName": "cpuid.sse3",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse41",
+       "featureName": "cpuid.sse41",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse42",
+       "featureName": "cpuid.sse42",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse4a",
+       "featureName": "cpuid.sse4a",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ssse3",
+       "featureName": "cpuid.ssse3",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.umip",
+       "featureName": "cpuid.umip",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.vaes",
+       "featureName": "cpuid.vaes",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.vpclmulqdq",
+       "featureName": "cpuid.vpclmulqdq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.wbnoinvd",
+       "featureName": "cpuid.wbnoinvd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_hi16_zmm",
+       "featureName": "cpuid.xcr0_master_hi16_zmm",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_opmask",
+       "featureName": "cpuid.xcr0_master_opmask",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_pkru",
+       "featureName": "cpuid.xcr0_master_pkru",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_sse",
+       "featureName": "cpuid.xcr0_master_sse",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_ymm_h",
+       "featureName": "cpuid.xcr0_master_ymm_h",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_zmm_h",
+       "featureName": "cpuid.xcr0_master_zmm_h",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xgetbv_ecx1",
+       "featureName": "cpuid.xgetbv_ecx1",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsave",
+       "featureName": "cpuid.xsave",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsavec",
+       "featureName": "cpuid.xsavec",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaveopt",
+       "featureName": "cpuid.xsaveopt",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaves",
+       "featureName": "cpuid.xsaves",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaves_cet_s_sup_by_xss",
+       "featureName": "cpuid.xsaves_cet_s_sup_by_xss",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaves_cet_u_sup_by_xss",
+       "featureName": "cpuid.xsaves_cet_u_sup_by_xss",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xss_master_cet_s",
+       "featureName": "cpuid.xss_master_cet_s",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xss_master_cet_u",
+       "featureName": "cpuid.xss_master_cet_u",
+       "value": "Bool:Min:1"
+      }
+     ],
+     "paused": false,
+     "snapshotInBackground": false,
+     "instantCloneFrozen": false,
+     "opNotificationTimeout": 0
+    },
+    "guest": {
+     "_type": "VirtualMachineGuestSummary",
+     "guestId": "ubuntu64Guest",
+     "guestFullName": "Ubuntu Linux (64-bit)",
+     "toolsStatus": "toolsOk",
+     "toolsVersionStatus": "guestToolsUnmanaged",
+     "toolsVersionStatus2": "guestToolsUnmanaged",
+     "toolsRunningStatus": "guestToolsRunning",
+     "hostName": "guest-f435",
+     "ipAddress": "10.255.133.65",
+     "hwVersion": "vmx-22"
+    },
+    "config": {
+     "_type": "VirtualMachineConfigSummary",
+     "name": "vm-23",
+     "template": false,
+     "vmPathName": "[ds-01] f4be47cd-21b2-5088-a95a-143bdb7b48d3/vm-23.vmx",
+     "memorySizeMB": 8192,
+     "cpuReservation": 0,
+     "memoryReservation": 0,
+     "numCpu": 2,
+     "numEthernetCards": 1,
+     "numVirtualDisks": 1,
+     "uuid": "bdcee56f-6743-5f98-ac80-86cc52338148",
+     "instanceUuid": "6244f287-918f-5542-beb7-4bfca58babcf",
+     "guestId": "ubuntu64Guest",
+     "guestFullName": "Ubuntu Linux (64-bit)",
+     "annotation": "sim annotation",
+     "product": {
+      "_type": "VAppProductInfo",
+      "key": 0,
+      "classId": "",
+      "instanceId": "",
+      "name": "folder-03 Operations for Networks Collector",
+      "vendor": "VMware, Inc.",
+      "version": "10.255.9.126",
+      "fullVersion": "",
+      "vendorUrl": "http://www.vmware.com",
+      "productUrl": "http://www.vmware.com",
+      "appUrl": "http://www.vmware.com"
+     },
+     "installBootRequired": false,
+     "tpmPresent": false,
+     "numVmiopBackings": 0,
+     "hwVersion": "vmx-22"
+    },
+    "storage": {
+     "_type": "VirtualMachineStorageSummary",
+     "committed": 45493694720,
+     "uncommitted": 232235534464,
+     "unshared": 44787603328,
+     "timestamp": "2026-11-06T23:55:06.058378+00:00"
+    },
+    "quickStats": {
+     "_type": "VirtualMachineQuickStats",
+     "overallCpuUsage": 873,
+     "overallCpuDemand": 898,
+     "overallCpuReadiness": 0,
+     "guestMemoryUsage": 3194,
+     "hostMemoryUsage": 7261,
+     "guestHeartbeatStatus": "green",
+     "distributedCpuEntitlement": 898,
+     "distributedMemoryEntitlement": 5514,
+     "staticCpuEntitlement": 2158,
+     "staticMemoryEntitlement": 8540,
+     "grantedMemory": 8192,
+     "privateMemory": 7166,
+     "sharedMemory": 1026,
+     "swappedMemory": 0,
+     "balloonedMemory": 0,
+     "consumedOverheadMemory": 73,
+     "ftLogBandwidth": -1,
+     "ftSecondaryLatency": -1,
+     "ftLatencyStatus": "gray",
+     "compressedMemory": 0,
+     "uptimeSeconds": 70399,
+     "ssdSwappedMemory": 0,
+     "activeMemory": 3194
+    },
+    "overallStatus": "green"
+   },
+   "resourceConfig": {
+    "_type": "ResourceConfigSpec",
+    "entity": {
+     "_moref": "VirtualMachine:vm-1011"
+    },
+    "cpuAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "expandableReservation": false,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 2000,
+      "level": "normal"
+     }
+    },
+    "memoryAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "expandableReservation": false,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 81920,
+      "level": "normal"
+     },
+     "overheadLimit": 111
+    }
+   },
+   "datastore": [
+    {
+     "_moref": "Datastore:datastore-7001"
+    }
+   ],
+   "network": [
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6023"
+    }
+   ],
+   "resourcePool": {
+    "_moref": "ResourcePool:resgroup-6005"
+   }
+  }
+ },
+ {
+  "_moref": "VirtualMachine:vm-20",
+  "props": {
+   "name": "vm-26",
+   "parent": {
+    "_moref": "Folder:group-v1022"
+   },
+   "config": {
+    "_type": "VirtualMachineConfigInfo",
+    "name": "vm-26",
+    "uuid": "716c9379-087e-5950-998d-b12467984868",
+    "instanceUuid": "a1a36428-98ad-5110-8e1f-8401df81c492",
+    "version": "vmx-22",
+    "guestId": "vmwarePhoton64Guest",
+    "guestFullName": "VMware Photon OS (64-bit)",
+    "files": {
+     "_type": "VirtualMachineFileInfo",
+     "vmPathName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vm-26.vmx",
+     "snapshotDirectory": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/",
+     "suspendDirectory": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/",
+     "logDirectory": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/"
+    },
+    "hardware": {
+     "_type": "VirtualHardware",
+     "numCPU": 2,
+     "numCoresPerSocket": 1,
+     "autoCoresPerSocket": false,
+     "memoryMB": 11264,
+     "virtualICH7MPresent": false,
+     "virtualSMCPresent": false,
+     "device": [
+      {
+       "_type": "VirtualIDEController",
+       "key": 200,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "IDE 0",
+        "summary": "IDE 0"
+       },
+       "busNumber": 0
+      },
+      {
+       "_type": "VirtualIDEController",
+       "key": 201,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "IDE 1",
+        "summary": "IDE 1"
+       },
+       "busNumber": 1
+      },
+      {
+       "_type": "VirtualPS2Controller",
+       "key": 300,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "PS2 controller 0",
+        "summary": "PS2 controller 0"
+       },
+       "busNumber": 0,
+       "device": [
+        600,
+        700
+       ]
+      },
+      {
+       "_type": "VirtualKeyboard",
+       "key": 600,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Keyboard ",
+        "summary": "Keyboard"
+       },
+       "controllerKey": 300,
+       "unitNumber": 0
+      },
+      {
+       "_type": "VirtualPointingDevice",
+       "key": 700,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Pointing device",
+        "summary": "Pointing device; Device"
+       },
+       "backing": {
+        "_type": "VirtualPointingDeviceDeviceBackingInfo",
+        "deviceName": "",
+        "useAutoDetect": false,
+        "hostPointingDevice": "autodetect"
+       },
+       "controllerKey": 300,
+       "unitNumber": 1
+      },
+      {
+       "_type": "VirtualPCIController",
+       "key": 100,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "PCI controller 0",
+        "summary": "PCI controller 0"
+       },
+       "busNumber": 0,
+       "device": [
+        500,
+        12000,
+        1000,
+        4000
+       ]
+      },
+      {
+       "_type": "VirtualSIOController",
+       "key": 400,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "SIO controller 0",
+        "summary": "SIO controller 0"
+       },
+       "busNumber": 0
+      },
+      {
+       "_type": "VirtualMachineVideoCard",
+       "key": 500,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Video card ",
+        "summary": "Video card"
+       },
+       "controllerKey": 100,
+       "unitNumber": 0,
+       "videoRamSizeInKB": 4096,
+       "numDisplays": 1,
+       "useAutoDetect": false,
+       "enable3DSupport": false,
+       "use3dRenderer": "automatic",
+       "graphicsMemorySizeInKB": 262144
+      },
+      {
+       "_type": "VirtualMachineVMCIDevice",
+       "key": 12000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "VMCI device",
+        "summary": "Device on the virtual machine PCI bus that provides support for the virtual machine communication interface"
+       },
+       "controllerKey": 100,
+       "unitNumber": 17,
+       "id": 1609096766,
+       "allowUnrestrictedCommunication": false,
+       "filterEnable": true
+      },
+      {
+       "_type": "VirtualLsiLogicController",
+       "key": 1000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "SCSI controller 0",
+        "summary": "LSI Logic"
+       },
+       "slotInfo": {
+        "_type": "VirtualDevicePciBusSlotInfo",
+        "pciSlotNumber": 16
+       },
+       "controllerKey": 100,
+       "unitNumber": 3,
+       "busNumber": 0,
+       "device": [
+        2000,
+        2001,
+        2002,
+        2003,
+        2004,
+        2005
+       ],
+       "hotAddRemove": true,
+       "sharedBus": "noSharing",
+       "scsiCtlrUnitNumber": 7
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 1",
+        "summary": "33,554,432 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vm-26.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "cbb1f914-9107-5936-9584-7e1938f14aa3",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "3caa2254-e5be-5f09-b5a9-609dbe254f07",
+        "contentId": "fe72c55c6041e3bac6bdb2e24d379c1a",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 0,
+       "capacityInKB": 33554432,
+       "capacityInBytes": 34359738368,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "551-2000",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2001,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 2",
+        "summary": "16,777,216 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vmfile-4bdcf7_1.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "93cce3c8-efc4-50b6-9205-bf6b7689739e",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "059de096-d2b9-515e-b1af-51b8cf61b768",
+        "contentId": "292ca3e5d44f5b157419cb9a39cd9d6e",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 1,
+       "capacityInKB": 16777216,
+       "capacityInBytes": 17179869184,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "551-2001",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2002,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 3",
+        "summary": "251,658,240 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vmfile-4bdcf7_2.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "84dc8fe7-8c2e-54fd-bd9f-a6f1dc2b058e",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "042985fb-e5e0-534a-b503-2b4764bd51fc",
+        "contentId": "d3272ac187923b8d34b02a59f6257571",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 2,
+       "capacityInKB": 251658240,
+       "capacityInBytes": 257698037760,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "551-2002",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2003,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 4",
+        "summary": "536,870,912 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vmfile-4bdcf7_3.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "357189b4-a625-59c6-971b-53d132c24dfe",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "51671874-5add-576c-a2d1-6c8826f5cfb4",
+        "contentId": "d573656f7b956b439e3dc82965a6dd8a",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 3,
+       "capacityInKB": 536870912,
+       "capacityInBytes": 549755813888,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "551-2003",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2004,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 5",
+        "summary": "27,262,976 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vmfile-4bdcf7_4.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "4b223c39-b128-546e-9eaf-631083d61a22",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "dcebed16-5320-5f39-afc7-91dac1895ff4",
+        "contentId": "4977d417c59a15d0267e5f689642c8a0",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 4,
+       "capacityInKB": 27262976,
+       "capacityInBytes": 27917287424,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "551-2004",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualDisk",
+       "key": 2005,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Hard disk 6",
+        "summary": "92,274,688 KB"
+       },
+       "backing": {
+        "_type": "VirtualDiskFlatVer2BackingInfo",
+        "fileName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vmfile-4bdcf7_5.vmdk",
+        "datastore": {
+         "_moref": "Datastore:datastore-7001"
+        },
+        "backingObjectId": "d107849c-dc2e-5d64-a7b3-c258c9c37fad",
+        "diskMode": "persistent",
+        "split": false,
+        "writeThrough": false,
+        "thinProvisioned": true,
+        "eagerlyScrub": false,
+        "uuid": "5e776989-0b37-5a9e-8dd8-7c85a23ed148",
+        "contentId": "7704f48c55c145bc6a647ac38c3bb4f2",
+        "digestEnabled": false,
+        "sharing": "sharingNone"
+       },
+       "controllerKey": 1000,
+       "unitNumber": 5,
+       "capacityInKB": 92274688,
+       "capacityInBytes": 94489280512,
+       "shares": {
+        "_type": "SharesInfo",
+        "shares": 1000,
+        "level": "normal"
+       },
+       "storageIOAllocation": {
+        "_type": "StorageIOAllocationInfo",
+        "limit": -1,
+        "shares": {
+         "_type": "SharesInfo",
+         "shares": 1000,
+         "level": "normal"
+        },
+        "reservation": 1
+       },
+       "diskObjectId": "551-2005",
+       "vDiskVersion": 4,
+       "virtualDiskFormat": "native_512",
+       "nativeUnmanagedLinkedClone": false,
+       "guestReadOnly": false
+      },
+      {
+       "_type": "VirtualVmxnet3",
+       "key": 4000,
+       "deviceInfo": {
+        "_type": "Description",
+        "label": "Network adapter 1",
+        "summary": "DVSwitch: 34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89"
+       },
+       "backing": {
+        "_type": "VirtualEthernetCardDistributedVirtualPortBackingInfo",
+        "port": {
+         "_type": "DistributedVirtualSwitchPortConnection",
+         "switchUuid": "34 5b 7a 2c 0c 9c ff 67-c8 c4 66 f7 ca 5e 74 89",
+         "portgroupKey": "dvportgroup-6023",
+         "portKey": "38",
+         "connectionCookie": 943866510
+        }
+       },
+       "connectable": {
+        "_type": "VirtualDeviceConnectInfo",
+        "migrateConnect": "unset",
+        "startConnected": true,
+        "allowGuestControl": true,
+        "connected": true,
+        "status": "ok"
+       },
+       "slotInfo": {
+        "_type": "VirtualDevicePciBusSlotInfo",
+        "pciSlotNumber": 160
+       },
+       "controllerKey": 100,
+       "unitNumber": 7,
+       "addressType": "generated",
+       "macAddress": "02:00:00:b0:e5:d1",
+       "wakeOnLanEnabled": false,
+       "resourceAllocation": {
+        "_type": "VirtualEthernetCardResourceAllocation",
+        "reservation": 0,
+        "share": {
+         "_type": "SharesInfo",
+         "shares": 50,
+         "level": "normal"
+        },
+        "limit": -1
+       },
+       "uptCompatibilityEnabled": true,
+       "uptv2Enabled": false,
+       "strictLatencyConfig": {
+        "_type": "VirtualVmxnet3StrictLatencyConfig",
+        "allowed": false
+       }
+      }
+     ],
+     "motherboardLayout": "i440bxHostBridge",
+     "simultaneousThreads": 1
+    },
+    "template": false,
+    "createDate": "2025-10-01T14:10:05.695734+00:00",
+    "datastoreUrl": [
+     {
+      "_type": "VirtualMachineConfigInfoDatastoreUrlPair",
+      "name": "ds-01",
+      "url": "/vmfs/volumes/vsan:90d067b8007711f1-af60000c297e270a"
+     }
+    ],
+    "tools": {
+     "_type": "ToolsConfigInfo",
+     "toolsVersion": 13312,
+     "toolsInstallType": "guestToolsTypeOpenVMTools",
+     "afterPowerOn": true,
+     "afterResume": true,
+     "beforeGuestStandby": true,
+     "beforeGuestShutdown": true,
+     "toolsUpgradePolicy": "manual",
+     "syncTimeWithHostAllowed": true,
+     "syncTimeWithHost": false,
+     "lastInstallInfo": {
+      "_type": "ToolsConfigInfoToolsLastInstallInfo",
+      "counter": 1
+     }
+    },
+    "bootOptions": {
+     "_type": "VirtualMachineBootOptions",
+     "bootDelay": 0,
+     "enterBIOSSetup": false,
+     "efiSecureBootEnabled": false,
+     "bootRetryEnabled": false,
+     "bootRetryDelay": 10000,
+     "networkBootProtocol": "ipv4"
+    },
+    "firmware": "efi",
+    "cpuAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 4000,
+      "level": "normal"
+     }
+    },
+    "memoryAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 163840,
+      "level": "normal"
+     },
+     "overheadLimit": 134
+    }
+   },
+   "guest": {
+    "_type": "GuestInfo",
+    "toolsStatus": "toolsOk",
+    "toolsVersionStatus": "guestToolsUnmanaged",
+    "toolsVersionStatus2": "guestToolsUnmanaged",
+    "toolsRunningStatus": "guestToolsRunning",
+    "toolsVersion": "13312",
+    "toolsInstallType": "guestToolsTypeOpenVMTools",
+    "guestId": "vmwarePhoton64Guest",
+    "guestFamily": "linuxGuest",
+    "guestFullName": "VMware Photon OS (64-bit)",
+    "hostName": "guest-22b6",
+    "ipAddress": "10.255.156.72",
+    "net": [
+     {
+      "_type": "GuestNicInfo",
+      "network": "pg-14",
+      "ipAddress": [
+       "10.255.156.72"
+      ],
+      "macAddress": "02:00:00:b0:e5:d1",
+      "connected": true,
+      "deviceConfigId": 4000,
+      "ipConfig": {
+       "_type": "NetIpConfigInfo",
+       "ipAddress": [
+        {
+         "_type": "NetIpConfigInfoIpAddress",
+         "ipAddress": "10.255.156.72",
+         "prefixLength": 24,
+         "state": "preferred"
+        }
+       ]
+      }
+     }
+    ],
+    "disk": [
+     {
+      "_type": "GuestDiskInfo",
+      "diskPath": "/",
+      "capacity": 27294601216,
+      "freeSpace": 18104049664,
+      "filesystemType": "ext4"
+     }
+    ],
+    "guestState": "running",
+    "appHeartbeatStatus": "appStatusGray",
+    "guestKernelCrashed": false,
+    "appState": "none",
+    "guestOperationsReady": true,
+    "interactiveGuestOperationsReady": false,
+    "guestStateChangeSupported": true,
+    "hwVersion": "vmx-22",
+    "customizationInfo": {
+     "_type": "GuestInfoCustomizationInfo",
+     "customizationStatus": "TOOLSDEPLOYPKG_IDLE"
+    }
+   },
+   "runtime": {
+    "_type": "VirtualMachineRuntimeInfo",
+    "device": [
+     {
+      "_type": "VirtualMachineDeviceRuntimeInfo",
+      "runtimeState": {
+       "_type": "VirtualMachineDeviceRuntimeInfoVirtualEthernetCardRuntimeState",
+       "vmDirectPathGen2Active": false,
+       "vmDirectPathGen2InactiveReasonOther": [
+        "vmNptIncompatibleNetwork"
+       ],
+       "attachmentStatus": "green"
+      },
+      "key": 4000
+     }
+    ],
+    "host": {
+     "_moref": "HostSystem:host-6017"
+    },
+    "connectionState": "connected",
+    "powerState": "poweredOn",
+    "faultToleranceState": "notConfigured",
+    "dasVmProtection": {
+     "_type": "VirtualMachineRuntimeInfoDasProtectionState",
+     "dasProtected": true
+    },
+    "toolsInstallerMounted": false,
+    "bootTime": "2026-10-22T14:49:45.987870+00:00",
+    "suspendInterval": 0,
+    "maxCpuUsage": 4990,
+    "maxMemoryUsage": 11264,
+    "numMksConnections": 0,
+    "recordReplayState": "inactive",
+    "onlineStandby": false,
+    "minRequiredEVCModeKey": "simvendor-gen5",
+    "consolidationNeeded": false,
+    "offlineFeatureRequirement": [
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.lm",
+      "featureName": "cpuid.lm",
+      "value": "Num:Min:1"
+     }
+    ],
+    "featureRequirement": [
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.3dnprefetch",
+      "featureName": "cpuid.3dnprefetch",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.abm",
+      "featureName": "cpuid.abm",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.adx",
+      "featureName": "cpuid.adx",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.aes",
+      "featureName": "cpuid.aes",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.always_serializing_lfence",
+      "featureName": "cpuid.always_serializing_lfence",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.simvendor",
+      "featureName": "cpuid.simvendor",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.amd_fast_short_cmpsb",
+      "featureName": "cpuid.amd_fast_short_cmpsb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.amd_fast_short_stosb",
+      "featureName": "cpuid.amd_fast_short_stosb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.automatic_ibrs",
+      "featureName": "cpuid.automatic_ibrs",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx",
+      "featureName": "cpuid.avx",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx2",
+      "featureName": "cpuid.avx2",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512bf16",
+      "featureName": "cpuid.avx512bf16",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512bitalg",
+      "featureName": "cpuid.avx512bitalg",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512bw",
+      "featureName": "cpuid.avx512bw",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512cd",
+      "featureName": "cpuid.avx512cd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512dq",
+      "featureName": "cpuid.avx512dq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512f",
+      "featureName": "cpuid.avx512f",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512ifma",
+      "featureName": "cpuid.avx512ifma",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vbmi",
+      "featureName": "cpuid.avx512vbmi",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vbmi2",
+      "featureName": "cpuid.avx512vbmi2",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vl",
+      "featureName": "cpuid.avx512vl",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vnni",
+      "featureName": "cpuid.avx512vnni",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vp2intersect",
+      "featureName": "cpuid.avx512vp2intersect",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx512vpopcntdq",
+      "featureName": "cpuid.avx512vpopcntdq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.avx_vnni",
+      "featureName": "cpuid.avx_vnni",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.bmi1",
+      "featureName": "cpuid.bmi1",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.bmi2",
+      "featureName": "cpuid.bmi2",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.btc_no",
+      "featureName": "cpuid.btc_no",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.cet_ss",
+      "featureName": "cpuid.cet_ss",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.clflushopt",
+      "featureName": "cpuid.clflushopt",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.clwb",
+      "featureName": "cpuid.clwb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.clzero",
+      "featureName": "cpuid.clzero",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.cmpxchg16b",
+      "featureName": "cpuid.cmpxchg16b",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.cr8avail",
+      "featureName": "cpuid.cr8avail",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.enfstrg",
+      "featureName": "cpuid.enfstrg",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.extapicspc",
+      "featureName": "cpuid.extapicspc",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.f16c",
+      "featureName": "cpuid.f16c",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fast_rep_scasb",
+      "featureName": "cpuid.fast_rep_scasb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fast_short_repmov",
+      "featureName": "cpuid.fast_short_repmov",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fcmd",
+      "featureName": "cpuid.fcmd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ffxsr",
+      "featureName": "cpuid.ffxsr",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fma",
+      "featureName": "cpuid.fma",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.fsgsbase",
+      "featureName": "cpuid.fsgsbase",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.gfni",
+      "featureName": "cpuid.gfni",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ibpb",
+      "featureName": "cpuid.ibpb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ibrs",
+      "featureName": "cpuid.ibrs",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.invpcid",
+      "featureName": "cpuid.invpcid",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.lahf64",
+      "featureName": "cpuid.lahf64",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf821_prefetchi",
+      "featureName": "cpuid.leaf821_prefetchi",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_ibrs_same_mode",
+      "featureName": "cpuid.leaf88_ibrs_same_mode",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_prefer_ibrs",
+      "featureName": "cpuid.leaf88_prefer_ibrs",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_psfd",
+      "featureName": "cpuid.leaf88_psfd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.leaf88_ssbd_spec_ctrl",
+      "featureName": "cpuid.leaf88_ssbd_spec_ctrl",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.lm",
+      "featureName": "cpuid.lm",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.misaligned_sse",
+      "featureName": "cpuid.misaligned_sse",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.mmxext",
+      "featureName": "cpuid.mmxext",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.movbe",
+      "featureName": "cpuid.movbe",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.movdir64b",
+      "featureName": "cpuid.movdir64b",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.movdiri",
+      "featureName": "cpuid.movdiri",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.nx",
+      "featureName": "cpuid.nx",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.opcode_0f017_reclaim",
+      "featureName": "cpuid.opcode_0f017_reclaim",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.pclmulqdq",
+      "featureName": "cpuid.pclmulqdq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.pdpe1gb",
+      "featureName": "cpuid.pdpe1gb",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.pku",
+      "featureName": "cpuid.pku",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.popcnt",
+      "featureName": "cpuid.popcnt",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.rdpid",
+      "featureName": "cpuid.rdpid",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.rdrand",
+      "featureName": "cpuid.rdrand",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.rdtscp",
+      "featureName": "cpuid.rdtscp",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sha",
+      "featureName": "cpuid.sha",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.smap",
+      "featureName": "cpuid.smap",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.smep",
+      "featureName": "cpuid.smep",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse3",
+      "featureName": "cpuid.sse3",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse41",
+      "featureName": "cpuid.sse41",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse42",
+      "featureName": "cpuid.sse42",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.sse4a",
+      "featureName": "cpuid.sse4a",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.ssse3",
+      "featureName": "cpuid.ssse3",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.umip",
+      "featureName": "cpuid.umip",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.vaes",
+      "featureName": "cpuid.vaes",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.vpclmulqdq",
+      "featureName": "cpuid.vpclmulqdq",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.wbnoinvd",
+      "featureName": "cpuid.wbnoinvd",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_hi16_zmm",
+      "featureName": "cpuid.xcr0_master_hi16_zmm",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_opmask",
+      "featureName": "cpuid.xcr0_master_opmask",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_pkru",
+      "featureName": "cpuid.xcr0_master_pkru",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_sse",
+      "featureName": "cpuid.xcr0_master_sse",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_ymm_h",
+      "featureName": "cpuid.xcr0_master_ymm_h",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xcr0_master_zmm_h",
+      "featureName": "cpuid.xcr0_master_zmm_h",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xgetbv_ecx1",
+      "featureName": "cpuid.xgetbv_ecx1",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsave",
+      "featureName": "cpuid.xsave",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsavec",
+      "featureName": "cpuid.xsavec",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaveopt",
+      "featureName": "cpuid.xsaveopt",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaves",
+      "featureName": "cpuid.xsaves",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaves_cet_s_sup_by_xss",
+      "featureName": "cpuid.xsaves_cet_s_sup_by_xss",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xsaves_cet_u_sup_by_xss",
+      "featureName": "cpuid.xsaves_cet_u_sup_by_xss",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xss_master_cet_s",
+      "featureName": "cpuid.xss_master_cet_s",
+      "value": "Bool:Min:1"
+     },
+     {
+      "_type": "VirtualMachineFeatureRequirement",
+      "key": "cpuid.xss_master_cet_u",
+      "featureName": "cpuid.xss_master_cet_u",
+      "value": "Bool:Min:1"
+     }
+    ],
+    "paused": false,
+    "snapshotInBackground": false,
+    "instantCloneFrozen": false,
+    "opNotificationTimeout": 0
+   },
+   "summary": {
+    "_type": "VirtualMachineSummary",
+    "vm": {
+     "_moref": "VirtualMachine:vm-20"
+    },
+    "runtime": {
+     "_type": "VirtualMachineRuntimeInfo",
+     "device": [
+      {
+       "_type": "VirtualMachineDeviceRuntimeInfo",
+       "runtimeState": {
+        "_type": "VirtualMachineDeviceRuntimeInfoVirtualEthernetCardRuntimeState",
+        "vmDirectPathGen2Active": false,
+        "vmDirectPathGen2InactiveReasonOther": [
+         "vmNptIncompatibleNetwork"
+        ],
+        "attachmentStatus": "green"
+       },
+       "key": 4000
+      }
+     ],
+     "host": {
+      "_moref": "HostSystem:host-6017"
+     },
+     "connectionState": "connected",
+     "powerState": "poweredOn",
+     "faultToleranceState": "notConfigured",
+     "dasVmProtection": {
+      "_type": "VirtualMachineRuntimeInfoDasProtectionState",
+      "dasProtected": true
+     },
+     "toolsInstallerMounted": false,
+     "bootTime": "2026-10-22T14:49:45.987870+00:00",
+     "suspendInterval": 0,
+     "maxCpuUsage": 4990,
+     "maxMemoryUsage": 11264,
+     "numMksConnections": 0,
+     "recordReplayState": "inactive",
+     "onlineStandby": false,
+     "minRequiredEVCModeKey": "simvendor-gen5",
+     "consolidationNeeded": false,
+     "offlineFeatureRequirement": [
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.lm",
+       "featureName": "cpuid.lm",
+       "value": "Num:Min:1"
+      }
+     ],
+     "featureRequirement": [
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.3dnprefetch",
+       "featureName": "cpuid.3dnprefetch",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.abm",
+       "featureName": "cpuid.abm",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.adx",
+       "featureName": "cpuid.adx",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.aes",
+       "featureName": "cpuid.aes",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.always_serializing_lfence",
+       "featureName": "cpuid.always_serializing_lfence",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.simvendor",
+       "featureName": "cpuid.simvendor",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.amd_fast_short_cmpsb",
+       "featureName": "cpuid.amd_fast_short_cmpsb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.amd_fast_short_stosb",
+       "featureName": "cpuid.amd_fast_short_stosb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.automatic_ibrs",
+       "featureName": "cpuid.automatic_ibrs",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx",
+       "featureName": "cpuid.avx",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx2",
+       "featureName": "cpuid.avx2",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512bf16",
+       "featureName": "cpuid.avx512bf16",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512bitalg",
+       "featureName": "cpuid.avx512bitalg",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512bw",
+       "featureName": "cpuid.avx512bw",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512cd",
+       "featureName": "cpuid.avx512cd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512dq",
+       "featureName": "cpuid.avx512dq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512f",
+       "featureName": "cpuid.avx512f",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512ifma",
+       "featureName": "cpuid.avx512ifma",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vbmi",
+       "featureName": "cpuid.avx512vbmi",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vbmi2",
+       "featureName": "cpuid.avx512vbmi2",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vl",
+       "featureName": "cpuid.avx512vl",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vnni",
+       "featureName": "cpuid.avx512vnni",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vp2intersect",
+       "featureName": "cpuid.avx512vp2intersect",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx512vpopcntdq",
+       "featureName": "cpuid.avx512vpopcntdq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.avx_vnni",
+       "featureName": "cpuid.avx_vnni",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.bmi1",
+       "featureName": "cpuid.bmi1",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.bmi2",
+       "featureName": "cpuid.bmi2",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.btc_no",
+       "featureName": "cpuid.btc_no",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.cet_ss",
+       "featureName": "cpuid.cet_ss",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.clflushopt",
+       "featureName": "cpuid.clflushopt",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.clwb",
+       "featureName": "cpuid.clwb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.clzero",
+       "featureName": "cpuid.clzero",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.cmpxchg16b",
+       "featureName": "cpuid.cmpxchg16b",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.cr8avail",
+       "featureName": "cpuid.cr8avail",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.enfstrg",
+       "featureName": "cpuid.enfstrg",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.extapicspc",
+       "featureName": "cpuid.extapicspc",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.f16c",
+       "featureName": "cpuid.f16c",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fast_rep_scasb",
+       "featureName": "cpuid.fast_rep_scasb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fast_short_repmov",
+       "featureName": "cpuid.fast_short_repmov",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fcmd",
+       "featureName": "cpuid.fcmd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ffxsr",
+       "featureName": "cpuid.ffxsr",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fma",
+       "featureName": "cpuid.fma",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.fsgsbase",
+       "featureName": "cpuid.fsgsbase",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.gfni",
+       "featureName": "cpuid.gfni",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ibpb",
+       "featureName": "cpuid.ibpb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ibrs",
+       "featureName": "cpuid.ibrs",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.invpcid",
+       "featureName": "cpuid.invpcid",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.lahf64",
+       "featureName": "cpuid.lahf64",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf821_prefetchi",
+       "featureName": "cpuid.leaf821_prefetchi",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_ibrs_same_mode",
+       "featureName": "cpuid.leaf88_ibrs_same_mode",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_prefer_ibrs",
+       "featureName": "cpuid.leaf88_prefer_ibrs",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_psfd",
+       "featureName": "cpuid.leaf88_psfd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.leaf88_ssbd_spec_ctrl",
+       "featureName": "cpuid.leaf88_ssbd_spec_ctrl",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.lm",
+       "featureName": "cpuid.lm",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.misaligned_sse",
+       "featureName": "cpuid.misaligned_sse",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.mmxext",
+       "featureName": "cpuid.mmxext",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.movbe",
+       "featureName": "cpuid.movbe",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.movdir64b",
+       "featureName": "cpuid.movdir64b",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.movdiri",
+       "featureName": "cpuid.movdiri",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.nx",
+       "featureName": "cpuid.nx",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.opcode_0f017_reclaim",
+       "featureName": "cpuid.opcode_0f017_reclaim",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.pclmulqdq",
+       "featureName": "cpuid.pclmulqdq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.pdpe1gb",
+       "featureName": "cpuid.pdpe1gb",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.pku",
+       "featureName": "cpuid.pku",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.popcnt",
+       "featureName": "cpuid.popcnt",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.rdpid",
+       "featureName": "cpuid.rdpid",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.rdrand",
+       "featureName": "cpuid.rdrand",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.rdtscp",
+       "featureName": "cpuid.rdtscp",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sha",
+       "featureName": "cpuid.sha",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.smap",
+       "featureName": "cpuid.smap",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.smep",
+       "featureName": "cpuid.smep",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse3",
+       "featureName": "cpuid.sse3",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse41",
+       "featureName": "cpuid.sse41",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse42",
+       "featureName": "cpuid.sse42",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.sse4a",
+       "featureName": "cpuid.sse4a",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.ssse3",
+       "featureName": "cpuid.ssse3",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.umip",
+       "featureName": "cpuid.umip",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.vaes",
+       "featureName": "cpuid.vaes",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.vpclmulqdq",
+       "featureName": "cpuid.vpclmulqdq",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.wbnoinvd",
+       "featureName": "cpuid.wbnoinvd",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_hi16_zmm",
+       "featureName": "cpuid.xcr0_master_hi16_zmm",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_opmask",
+       "featureName": "cpuid.xcr0_master_opmask",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_pkru",
+       "featureName": "cpuid.xcr0_master_pkru",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_sse",
+       "featureName": "cpuid.xcr0_master_sse",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_ymm_h",
+       "featureName": "cpuid.xcr0_master_ymm_h",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xcr0_master_zmm_h",
+       "featureName": "cpuid.xcr0_master_zmm_h",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xgetbv_ecx1",
+       "featureName": "cpuid.xgetbv_ecx1",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsave",
+       "featureName": "cpuid.xsave",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsavec",
+       "featureName": "cpuid.xsavec",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaveopt",
+       "featureName": "cpuid.xsaveopt",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaves",
+       "featureName": "cpuid.xsaves",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaves_cet_s_sup_by_xss",
+       "featureName": "cpuid.xsaves_cet_s_sup_by_xss",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xsaves_cet_u_sup_by_xss",
+       "featureName": "cpuid.xsaves_cet_u_sup_by_xss",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xss_master_cet_s",
+       "featureName": "cpuid.xss_master_cet_s",
+       "value": "Bool:Min:1"
+      },
+      {
+       "_type": "VirtualMachineFeatureRequirement",
+       "key": "cpuid.xss_master_cet_u",
+       "featureName": "cpuid.xss_master_cet_u",
+       "value": "Bool:Min:1"
+      }
+     ],
+     "paused": false,
+     "snapshotInBackground": false,
+     "instantCloneFrozen": false,
+     "opNotificationTimeout": 0
+    },
+    "guest": {
+     "_type": "VirtualMachineGuestSummary",
+     "guestId": "vmwarePhoton64Guest",
+     "guestFullName": "VMware Photon OS (64-bit)",
+     "toolsStatus": "toolsOk",
+     "toolsVersionStatus": "guestToolsUnmanaged",
+     "toolsVersionStatus2": "guestToolsUnmanaged",
+     "toolsRunningStatus": "guestToolsRunning",
+     "hostName": "guest-22b6",
+     "ipAddress": "10.255.156.72",
+     "hwVersion": "vmx-22"
+    },
+    "config": {
+     "_type": "VirtualMachineConfigSummary",
+     "name": "vm-26",
+     "template": false,
+     "vmPathName": "[ds-01] 16d7c4be-e800-56a9-84b4-f866c0447f6a/vm-26.vmx",
+     "memorySizeMB": 11264,
+     "cpuReservation": 0,
+     "memoryReservation": 0,
+     "numCpu": 2,
+     "numEthernetCards": 1,
+     "numVirtualDisks": 6,
+     "uuid": "716c9379-087e-5950-998d-b12467984868",
+     "instanceUuid": "a1a36428-98ad-5110-8e1f-8401df81c492",
+     "guestId": "vmwarePhoton64Guest",
+     "guestFullName": "VMware Photon OS (64-bit)",
+     "annotation": "",
+     "installBootRequired": false,
+     "tpmPresent": false,
+     "numVmiopBackings": 0,
+     "hwVersion": "vmx-22"
+    },
+    "storage": {
+     "_type": "VirtualMachineStorageSummary",
+     "committed": 241729085952,
+     "uncommitted": 752104814336,
+     "unshared": 241103464704,
+     "timestamp": "2026-11-06T23:55:06.056374+00:00"
+    },
+    "quickStats": {
+     "_type": "VirtualMachineQuickStats",
+     "overallCpuUsage": 424,
+     "overallCpuDemand": 424,
+     "overallCpuReadiness": 0,
+     "guestMemoryUsage": 2478,
+     "hostMemoryUsage": 10573,
+     "guestHeartbeatStatus": "green",
+     "distributedCpuEntitlement": 424,
+     "distributedMemoryEntitlement": 5117,
+     "staticCpuEntitlement": 2155,
+     "staticMemoryEntitlement": 11635,
+     "grantedMemory": 11245,
+     "privateMemory": 10216,
+     "sharedMemory": 1029,
+     "swappedMemory": 0,
+     "balloonedMemory": 0,
+     "consumedOverheadMemory": 86,
+     "ftLogBandwidth": -1,
+     "ftSecondaryLatency": -1,
+     "ftLatencyStatus": "gray",
+     "compressedMemory": 0,
+     "uptimeSeconds": 97156,
+     "ssdSwappedMemory": 0,
+     "activeMemory": 2478
+    },
+    "overallStatus": "green"
+   },
+   "resourceConfig": {
+    "_type": "ResourceConfigSpec",
+    "entity": {
+     "_moref": "VirtualMachine:vm-20"
+    },
+    "cpuAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 4000,
+      "level": "normal"
+     }
+    },
+    "memoryAllocation": {
+     "_type": "ResourceAllocationInfo",
+     "reservation": 0,
+     "limit": -1,
+     "shares": {
+      "_type": "SharesInfo",
+      "shares": 163840,
+      "level": "normal"
+     },
+     "overheadLimit": 134
+    }
+   },
+   "datastore": [
+    {
+     "_moref": "Datastore:datastore-7001"
+    }
+   ],
+   "network": [
+    {
+     "_moref": "DistributedVirtualPortgroup:dvportgroup-6023"
+    }
+   ],
+   "resourcePool": {
+    "_moref": "ResourcePool:resgroup-6005"
+   }
+  }
+ }
+]

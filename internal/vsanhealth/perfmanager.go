@@ -1,7 +1,6 @@
 package vsanhealth
 
 import (
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +29,9 @@ type PerfManager struct {
 func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *vsantypes.VsanPerfQueryNodeInformation) soap.HasFault {
 	res := &vsantypes.VsanPerfQueryNodeInformationResponse{}
 	cl := m.env.Cluster(req.Cluster)
+	if fault := m.env.methodFault("VsanPerfQueryNodeInformation", cl); fault != nil {
+		return &methods.VsanPerfQueryNodeInformationBody{Fault_: fault}
+	}
 	if cl != nil && len(cl.Hosts) > 0 {
 		master := cl.Hosts[0].NodeUUID
 		now := m.env.Now().UTC()
@@ -116,6 +118,14 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 		if !ok || !known || tail == "" {
 			return &queryPerfBody{Fault_: faultInvalidRef()}
 		}
+		// an injected fault (latency and timeout holds ran before dispatch)
+		if cl != nil {
+			if inj := m.env.Knobs.FamilyFault(family, cl.Key); inj != nil {
+				if fault := m.env.Knobs.Fault(inj, family); fault != nil {
+					return &queryPerfBody{Fault_: fault}
+				}
+			}
+		}
 		switch f.Behaviour {
 		case catalog.InvalidArgument:
 			return &queryPerfBody{Fault_: faultInvalidRef()}
@@ -168,9 +178,10 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 			e := entityMetricCSV{EntityRefId: ref, SampleInfo: stamps}
 			for _, label := range f.Labels {
 				unit := m.env.Catalog.Unit(family, label)
+				st, ok := m.env.Catalog.LabelStats(family, label)
 				vals := make([]string, len(buckets))
 				for i, b := range buckets {
-					vals[i] = strconv.FormatInt(perf.Value(m.env.Topo.Seed, ref, label, unit, b), 10)
+					vals[i] = perf.Value(m.env.Topo.TelemetrySeed, ref, label, st, ok, unit, b)
 				}
 				e.Value = append(e.Value, vsantypes.VsanPerfMetricSeriesCSV{
 					MetricId: vsantypes.VsanPerfMetricId{Label: label, MetricsCollectInterval: m.env.Catalog.MetricsCollectInt},

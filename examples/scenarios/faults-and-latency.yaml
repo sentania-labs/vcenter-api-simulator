@@ -1,0 +1,57 @@
+# The ten-cluster scenario with the failure and latency knobs on: one
+# family faulted on one cluster, a slow family, and a few milliseconds on
+# every /sdk call. The reference pack skips vsan-pnic-net on cluster-03 as
+# "feature absent" and reports nothing else; a collection of all ten
+# clusters takes minutes instead of seconds. Same seed as
+# ten-clusters.yaml, so the identities are the same on the same data
+# directory.
+seed: ten-clusters
+datacenters:
+  - name: dc-01
+    clusters: 10
+defaults:
+  hosts: 8
+  dedup: true
+  compression: true
+  host:
+    threads: 32
+    domWorlds: 66
+    vsanPnics: 2
+    claimedDevices: 1
+    localDevices: 1
+  vms:
+    perHost: 4
+    disksPerVM: 1
+vary:
+  hosts: [4, 6, 8, 8, 12]
+  vmsPerHost: {min: 2, max: 8}
+  claimedDevices: [1, 1, 2]
+  domWorlds: {min: 40, max: 90}
+clusters:
+  - key: dc-01/cluster-01
+    hosts: 4
+  - key: dc-01/cluster-03
+    hosts: 16
+    dedup: false
+    compression: false
+auth:
+  users:
+    - name: administrator@vsphere.local
+      password: VMware1!
+latency:
+  perfQuery: {fixedMs: 100, jitterMs: 50}
+  families:
+    host-domowner: {fixedMs: 300, jitterMs: 100}
+  sdk: {fixedMs: 5, jitterMs: 5}
+faults:
+  - family: vsan-pnic-net
+    clusters: [dc-01/cluster-03]
+    fault: invalid-argument
+  # a time-boxed outage, snapped to five-minute buckets:
+  # - family: host-domowner
+  #   fault: system-error
+  #   from: 2026-11-07T14:00:00Z
+  #   to: 2026-11-07T15:00:00Z
+  # - method: QueryVsanManagedDisks
+  #   clusters: [dc-01/cluster-04]
+  #   fault: timeout

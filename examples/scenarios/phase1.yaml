@@ -1,0 +1,17 @@
+# The Phase 1 shape as a scenario file: one datacenter, one four-host ESA
+# cluster, one VM per host. Any user name and password log in.
+seed: phase1
+datacenters:
+  - name: dc-01
+    clusters: 1
+defaults:
+  hosts: 4
+  host:
+    threads: 16
+    domWorlds: 12
+    vsanPnics: 2
+    claimedDevices: 1
+    localDevices: 1
+  vms:
+    perHost: 1
+    disksPerVM: 1

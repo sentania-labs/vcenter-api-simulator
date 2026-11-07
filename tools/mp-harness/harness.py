@@ -15,8 +15,12 @@ means, for both metric scopes:
   * the set of gauges collected per entity family equals the label set the
     live service returned (fixtures), minus the "<x>Actual" twins the pack
     drops on purpose
-  * object counts match the simulator's topology (4 hosts, 4 VMs, ...)
+  * object counts match the simulator's topology (hosts, VMs, uplinks,
+    threads and claimed disks per cluster, read from /sdk)
   * a second collection produces the same object keys
+
+Every vSAN cluster the simulator serves is collected in turn (Phase 2
+scenarios have many); the checks above run per cluster.
   * with --ca, connecting with verification on and the simulator's own
     certificate as the accepted PEM works, as it does in Operations
 
@@ -97,15 +101,8 @@ def main() -> int:
     content = si.RetrieveContent()
     check("about.apiVersion 9.1.1.0", content.about.apiVersion == "9.1.1.0", content.about.apiVersion)
     check("about.instanceUuid present", bool(content.about.instanceUuid))
-    check("clusters found", len(clusters) == 1, len(clusters))
-    cluster = clusters[0]
-    check("vsan_enabled", perfsvc.vsan_enabled(cluster) is True, perfsvc.vsan_enabled(cluster))
+    check("clusters found", len(clusters) >= 1, len(clusters))
     perf = mos["vsan-performance-manager"]
-    hosts = list(cluster.host)
-    vms_expected = None
-
-    n, problem = perfsvc.probe(perf, cluster)
-    check("probe returns one cluster-domclient object", n == 1 and problem is None, (n, problem))
 
     ent_for_kind = {spec["kind"]: ent for ent, spec in perfsvc.MODEL.ENTITIES.items()}
     dashboard = {ent_for_kind[k]: set(m) for k, m in metric_scope.COVERED.items() if k in ent_for_kind}
@@ -113,77 +110,98 @@ def main() -> int:
     names = perfsvc.build_name_map(si, clusters, perf, mos)
     parents = perfsvc.build_parent_map(si, clusters, perf, mos)
     disk_hw = perfsvc.build_disk_hardware(si, clusters, mos.get("vsan-cluster-health-system"))
+    all_hosts = [h for c in clusters for h in c.host]
     check("parent map: vcid", bool(parents.get("vcid")))
-    check("parent map: every host joined by node uuid", len(parents["hosts"]) == len(hosts), (len(parents["hosts"]), len(hosts)))
-    check("parent map: cluster joined by vsan uuid", len(parents["clusters"]) == 1, parents["clusters"])
-    check("parent map: disks joined to hosts", len(parents["disks"]) == len(hosts), len(parents["disks"]))
+    check("parent map: every host joined by node uuid", len(parents["hosts"]) == len(all_hosts), (len(parents["hosts"]), len(all_hosts)))
+    check("parent map: every cluster joined by vsan uuid", len(parents["clusters"]) == len(clusters), (len(parents["clusters"]), len(clusters)))
     check("disk hardware for every claimed disk", set(disk_hw) == set(parents["disks"]), (len(disk_hw), len(parents["disks"])))
     check("disk hardware has firmware/model/vendor/driver/driver_version",
           all({"firmware", "model", "vendor", "driver", "driver_version"} <= set(v) for v in disk_hw.values()),
           {k: sorted(v) for k, v in list(disk_hw.items())[:1]})
 
-    results = {}
-    for scope_name, scope in (("all", None), ("dashboard", dashboard)):
-        objs, problems = perfsvc.collect(perf, cluster, scope=scope)
-        check(f"collect[{scope_name}]: zero problems", not problems, problems[:3])
-        per_family: dict[str, list] = {}
-        for key, g in objs.items():
-            per_family.setdefault(key.entity, []).append((key, g))
-        queried = set(perfsvc.MODEL.ENTITIES if scope is None else scope)
-        wanted = {f for f in expected if f in queried}
-        missing = sorted(wanted - set(per_family))
-        extra = sorted(set(per_family) - wanted)
-        check(f"collect[{scope_name}]: every data family returned objects", not missing, missing)
-        check(f"collect[{scope_name}]: no family the live service lacked", not extra, extra)
-        bad_labels = []
-        for fam, items in per_family.items():
-            keep = set(perfsvc.MODEL.ENTITIES[fam]["metrics"])
-            if scope is not None:
-                keep &= scope.get(fam, set())
-            want = expected_gauges(expected.get(fam, []), keep)
-            for key, g in items:
-                got = set(g.gauges)
-                if got != want:
-                    bad_labels.append((fam, sorted(want - got)[:5], sorted(got - want)[:5]))
-                    break
-        check(f"collect[{scope_name}]: gauge label set per family equals the live set", not bad_labels, bad_labels[:3])
-        unresolved = [key.display(names) for key in objs if any(
-            re.fullmatch(r"[0-9a-f-]{36}", v) for v in key.display(names).split(" ")[:1])]
-        check(f"collect[{scope_name}]: every object name resolved", not unresolved, unresolved[:3])
-        orphans = []
-        for key in objs:
-            idents = dict(key.idents)
-            found = False
-            for bucket, ident in (("hosts", "host_uuid"), ("vms", "vm_uuid"), ("disks", "disk_uuid"), ("vdisks", "vdisk_uuid"), ("clusters", "cluster_uuid")):
-                v = idents.get(ident)
-                if v and v in parents.get(bucket, {}):
-                    found = True
-                    break
-            if not found:
-                orphans.append(key.display(names))
-        check(f"collect[{scope_name}]: every object has a vCenter parent", not orphans, orphans[:3])
-        counts = {f: len(v) for f, v in per_family.items()}
-        results[scope_name] = {"objects": len(objs), "families": len(per_family), "counts": counts}
-        print(f"  {scope_name}: {len(objs)} objects in {len(per_family)} families")
+    report["clusters"] = []
+    for cluster in clusters:
+        cname = cluster.name
+        hosts = list(cluster.host)
+        check(f"{cname}: vsan_enabled", perfsvc.vsan_enabled(cluster) is True, perfsvc.vsan_enabled(cluster))
+        n, problem = perfsvc.probe(perf, cluster)
+        check(f"{cname}: probe returns one cluster-domclient object", n == 1 and problem is None, (n, problem))
+        claimed = 0
+        uplinks = 0
+        threads = 0
+        for h in hosts:
+            threads += int(h.hardware.cpuInfo.numCpuThreads)
+            for p in h.config.network.proxySwitch:
+                uplinks += len(p.pnic)
+            for d in h.configManager.vsanSystem.QueryDisksForVsan():
+                if d.vsanUuid:
+                    claimed += 1
+        results = {}
+        for scope_name, scope in (("all", None), ("dashboard", dashboard)):
+            objs, problems = perfsvc.collect(perf, cluster, scope=scope)
+            check(f"{cname}: collect[{scope_name}]: zero problems", not problems, problems[:3])
+            per_family: dict[str, list] = {}
+            for key, g in objs.items():
+                per_family.setdefault(key.entity, []).append((key, g))
+            queried = set(perfsvc.MODEL.ENTITIES if scope is None else scope)
+            wanted = {f for f in expected if f in queried}
+            # the ESA dedup families carry data only where dedup is on
+            dedup_on = bool(getattr(mos["vsan-cluster-config-system"].VsanClusterGetConfig(cluster).dataEfficiencyConfig, "dedupEnabled", False))
+            if not dedup_on:
+                wanted = {f for f in wanted if "-esa-dedup-" not in f}
+            missing = sorted(wanted - set(per_family))
+            extra = sorted(set(per_family) - wanted)
+            check(f"{cname}: collect[{scope_name}]: every data family returned objects", not missing, missing)
+            check(f"{cname}: collect[{scope_name}]: no family the live service lacked", not extra, extra)
+            bad_labels = []
+            for fam, items in per_family.items():
+                keep = set(perfsvc.MODEL.ENTITIES[fam]["metrics"])
+                if scope is not None:
+                    keep &= scope.get(fam, set())
+                want = expected_gauges(expected.get(fam, []), keep)
+                for key, g in items:
+                    got = set(g.gauges)
+                    if got != want:
+                        bad_labels.append((fam, sorted(want - got)[:5], sorted(got - want)[:5]))
+                        break
+            check(f"{cname}: collect[{scope_name}]: gauge label set per family equals the live set", not bad_labels, bad_labels[:3])
+            unresolved = [key.display(names) for key in objs if any(
+                re.fullmatch(r"[0-9a-f-]{36}", v) for v in key.display(names).split(" ")[:1])]
+            check(f"{cname}: collect[{scope_name}]: every object name resolved", not unresolved, unresolved[:3])
+            orphans = []
+            for key in objs:
+                idents = dict(key.idents)
+                found = False
+                for bucket, ident in (("hosts", "host_uuid"), ("vms", "vm_uuid"), ("disks", "disk_uuid"), ("vdisks", "vdisk_uuid"), ("clusters", "cluster_uuid")):
+                    v = idents.get(ident)
+                    if v and v in parents.get(bucket, {}):
+                        found = True
+                        break
+                if not found:
+                    orphans.append(key.display(names))
+            check(f"{cname}: collect[{scope_name}]: every object has a vCenter parent", not orphans, orphans[:3])
+            counts = {f: len(v) for f, v in per_family.items()}
+            results[scope_name] = {"objects": len(objs), "families": len(per_family), "counts": counts}
+            print(f"  {cname} {scope_name}: {len(objs)} objects in {len(per_family)} families")
 
-    counts = results["all"]["counts"]
-    nh = len(hosts)
-    view = content.viewManager.CreateContainerView(content.rootFolder, [perfsvc.vim.VirtualMachine], True)
-    vms_expected = len(list(view.view))
-    view.DestroyView()
-    check("cardinality: host families = hosts", counts.get("host-domclient") == nh and counts.get("vsan-cpu") == nh, counts.get("host-domclient"))
-    check("cardinality: cluster families = 1", counts.get("cluster-domclient") == 1)
-    check("cardinality: virtual-machine = VMs in inventory", counts.get("virtual-machine") == vms_expected, (counts.get("virtual-machine"), vms_expected))
-    check("cardinality: vsan-pnic-net = hosts x 2 uplinks", counts.get("vsan-pnic-net") == nh * 2, counts.get("vsan-pnic-net"))
-    check("cardinality: host-cpu = hosts x (threads + aggregate)", counts.get("host-cpu") == nh * 17, counts.get("host-cpu"))
-    check("cardinality: vsan-esa-disk-layer = claimed disks", counts.get("vsan-esa-disk-layer") == len(parents["disks"]), counts.get("vsan-esa-disk-layer"))
+        counts = results["all"]["counts"]
+        nh = len(hosts)
+        view = content.viewManager.CreateContainerView(cluster, [perfsvc.vim.VirtualMachine], True)
+        vms_expected = len(list(view.view))
+        view.DestroyView()
+        check(f"{cname}: cardinality: host families = hosts", counts.get("host-domclient") == nh and counts.get("vsan-cpu") == nh, counts.get("host-domclient"))
+        check(f"{cname}: cardinality: cluster families = 1", counts.get("cluster-domclient") == 1)
+        check(f"{cname}: cardinality: virtual-machine = VMs in the cluster", counts.get("virtual-machine") == vms_expected, (counts.get("virtual-machine"), vms_expected))
+        check(f"{cname}: cardinality: vsan-pnic-net = vDS uplinks", counts.get("vsan-pnic-net") == uplinks, (counts.get("vsan-pnic-net"), uplinks))
+        check(f"{cname}: cardinality: host-cpu = threads + one aggregate per host", counts.get("host-cpu") == threads + nh, (counts.get("host-cpu"), threads + nh))
+        check(f"{cname}: cardinality: vsan-esa-disk-layer = claimed disks", counts.get("vsan-esa-disk-layer") == claimed, (counts.get("vsan-esa-disk-layer"), claimed))
 
-    # Second collection: same keys.
-    objs2, problems2 = perfsvc.collect(perf, cluster, scope=None)
-    objs1, _ = perfsvc.collect(perf, cluster, scope=None)
-    check("second collect: same object keys", set(objs1) == set(objs2) and not problems2, (len(objs1), len(objs2)))
+        # Second collection: same keys.
+        objs2, problems2 = perfsvc.collect(perf, cluster, scope=None)
+        objs1, _ = perfsvc.collect(perf, cluster, scope=None)
+        check(f"{cname}: second collect: same object keys", set(objs1) == set(objs2) and not problems2, (len(objs1), len(objs2)))
+        report["clusters"].append({"name": cname, "hosts": nh, "vms": vms_expected, "results": results})
     report["timing_s"] = round(time.time() - t0, 2)
-    report["results"] = results
     perfsvc.Disconnect(si)
 
     # After logout, /vsanHealth must refuse the session (post-logout fixture).
@@ -196,7 +214,7 @@ def main() -> int:
     if args.ca:
         pem = open(args.ca).read()
         si2, clusters2, _ = perfsvc.connect(host, args.user, args.password, verify=True, accepted_pems=[pem], port=port)
-        check("connect (verify on, accepted PEM pinned)", len(clusters2) == 1)
+        check("connect (verify on, accepted PEM pinned)", len(clusters2) == len(clusters))
         perfsvc.Disconnect(si2)
 
     if args.report:
