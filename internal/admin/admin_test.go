@@ -24,7 +24,7 @@ func newAdmin(t *testing.T) (*httptest.Server, *control.Controller) {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Close)
-	srv := httptest.NewServer(Handler(c))
+	srv := httptest.NewServer(Handler(c, []string{"console.example.net"}))
 	t.Cleanup(srv.Close)
 	return srv, c
 }
@@ -135,5 +135,43 @@ func TestEditReviewApplyOverHTTP(t *testing.T) {
 	}
 	if code, _ := do(t, "POST", srv.URL+"/api/apply", j, `{"when":"now"}`, nil); code != http.StatusConflict {
 		t.Errorf("apply with nothing pending: %d", code)
+	}
+}
+
+func TestHostHeaderIsValidated(t *testing.T) {
+	srv, _ := newAdmin(t)
+	j := "application/json"
+	host := func(method, path, ctype, body, h string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		req.Host = h
+		if ctype != "" {
+			req.Header.Set("Content-Type", ctype)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for _, h := range []string{"evil.example", "evil.example:9090", "127.0.0.1.evil.example", "console.example.net.evil.example"} {
+		if code := host("GET", "/api/state", "", "", h); code != http.StatusForbidden {
+			t.Errorf("read with Host %q: %d, want 403", h, code)
+		}
+		if code := host("GET", "/", "", "", h); code != http.StatusForbidden {
+			t.Errorf("UI with Host %q: %d, want 403", h, code)
+		}
+		if code := host("POST", "/api/pause", j, `{"paused":true}`, h); code != http.StatusForbidden {
+			t.Errorf("write with Host %q: %d, want 403", h, code)
+		}
+	}
+	for _, h := range []string{"localhost", "localhost:9090", "LOCALHOST:9090", "127.0.0.1", "127.0.0.1:9090", "[::1]", "[::1]:9090", "console.example.net", "console.example.net:8080"} {
+		if code := host("GET", "/api/state", "", "", h); code != 200 {
+			t.Errorf("read with Host %q: %d, want 200", h, code)
+		}
+		if code := host("POST", "/api/pause", j, `{"paused":false}`, h); code != 200 {
+			t.Errorf("write with Host %q: %d, want 200", h, code)
+		}
 	}
 }

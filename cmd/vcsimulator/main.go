@@ -69,6 +69,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	describe := flag.Bool("describe", false, "print the scenario's cardinality as JSON (clusters, hosts, VMs, devices, per cluster) and exit without serving; needs no data directory")
 	adminAddr := flag.String("admin", "127.0.0.1:9090", "address for the control console (plain HTTP, no login; keep it on loopback or behind your own ingress; empty disables; env VCSIM_ADMIN)")
+	adminHosts := flag.String("admin-allowed-hosts", "", "comma-separated Host names the control console answers to besides localhost, 127.0.0.1 and ::1; any other Host gets 403 (env VCSIM_ADMIN_ALLOWED_HOSTS)")
 	sessionTimeout := flag.Duration("session-timeout", 0, "idle session timeout (0: sessions never expire)")
 	flag.Parse()
 	adminSet := false
@@ -79,6 +80,9 @@ func main() {
 	})
 	if v, ok := os.LookupEnv("VCSIM_ADMIN"); ok && !adminSet {
 		*adminAddr = v
+	}
+	if *adminHosts == "" {
+		*adminHosts = os.Getenv("VCSIM_ADMIN_ALLOWED_HOSTS")
 	}
 	if *username == "" {
 		*username = os.Getenv("VCSIM_USERNAME")
@@ -162,7 +166,7 @@ func main() {
 			fmt.Printf("vcsimulator: control console not started: %v (set -admin to another address)\n", err)
 			*adminAddr = ""
 		default:
-			adminSrv = &http.Server{Handler: admin.Handler(ctl), ReadHeaderTimeout: 30 * time.Second}
+			adminSrv = &http.Server{Handler: admin.Handler(ctl, strings.Split(*adminHosts, ",")), ReadHeaderTimeout: 30 * time.Second}
 			go func() {
 				if err := adminSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					fmt.Println("admin:", err)

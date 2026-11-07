@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,8 +24,9 @@ import (
 //go:embed ui
 var uiFiles embed.FS
 
-// Handler returns the admin plane's handler.
-func Handler(c *control.Controller) http.Handler {
+// Handler returns the admin plane's handler. Requests are served only for the
+// Host names localhost, 127.0.0.1 and ::1 (any port) and for allowedHosts.
+func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 	a := &api{c: c}
 	mux := http.NewServeMux()
 	get := func(p string, h func(*http.Request) (any, error)) { mux.HandleFunc("GET "+p, a.wrap(h)) }
@@ -139,7 +141,7 @@ func Handler(c *control.Controller) http.Handler {
 		sub, _ = fs.Sub(uiFiles, "ui")
 	}
 	mux.Handle("GET /", noCache(http.FileServerFS(sub)))
-	return guard(mux)
+	return guard(mux, allowedHosts)
 }
 
 type api struct{ c *control.Controller }
@@ -181,12 +183,33 @@ func (a *api) wrap(h func(*http.Request) (any, error)) http.HandlerFunc {
 	}
 }
 
-// guard refuses cross-site writes: a state-changing request must be JSON
-// (which a browser only sends cross-origin after a preflight this server
-// never grants) and, when it names an Origin, must come from the page's own
-// host.
-func guard(next http.Handler) http.Handler {
+// hostName is the name part of a Host header value, lower-cased, without port
+// or brackets.
+func hostName(hostport string) string {
+	h, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		h = strings.Trim(hostport, "[]")
+	}
+	return strings.ToLower(h)
+}
+
+// guard refuses requests that were not addressed to the console by a name the
+// operator chose (a DNS-rebinding page arrives under its own name), and
+// cross-site writes: a state-changing request must be JSON (which a browser
+// only sends cross-origin after a preflight this server never grants) and,
+// when it names an Origin, must come from the page's own host.
+func guard(next http.Handler, allowedHosts []string) http.Handler {
+	allowed := map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
+	for _, h := range allowedHosts {
+		if h = hostName(strings.TrimSpace(h)); h != "" {
+			allowed[h] = true
+		}
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowed[hostName(r.Host)] {
+			http.Error(w, `{"error":"host not allowed; add it to -admin-allowed-hosts"}`, http.StatusForbidden)
+			return
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if o := r.Header.Get("Origin"); o != "" {
 				if u, err := url.Parse(o); err != nil || u.Host != r.Host {

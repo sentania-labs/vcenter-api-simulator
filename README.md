@@ -46,6 +46,7 @@ go build ./cmd/vcsimulator
 | `-session-timeout` | idle session timeout; sessions never expire by default |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
 | `-admin ADDR` | the control console (plain HTTP, no login); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
+| `-admin-allowed-hosts NAMES` | comma-separated Host names the console answers to besides `localhost`, `127.0.0.1` and `::1` (any port); every other Host gets 403, which stops a web page from reaching the console through DNS rebinding. Add the name your proxy or ingress forwards; env `VCSIM_ADMIN_ALLOWED_HOSTS` |
 
 What the scenario controls, and what the simulator guarantees:
 
@@ -88,7 +89,11 @@ way to change a running simulator without editing YAML: it shows the
 service, projects what a topology costs a collector per five-minute cycle,
 edits clusters and the generator, loads scenario presets, sets latency and
 fault rules, and shows every request the simulator served. It follows the
-Lattice design system, in light and dark.
+Lattice design system, in light and dark. It answers only to the Host names
+`localhost`, `127.0.0.1` and `::1` (any port, so a port-forward and
+`docker compose` work) plus those in `-admin-allowed-hosts`; behind a proxy,
+add the name the proxy forwards. Helm: `admin.allowedHosts`; the console
+listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
 
 - **Nothing reaches the API by accident.** Every edit goes into one pending
   draft. *Review & apply* shows what is kept, added and removed (hosts,
