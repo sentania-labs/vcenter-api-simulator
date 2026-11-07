@@ -36,7 +36,9 @@ python3 tools/probe/probe.py "$VCENTER_URL" --out /tmp
 | `--zip` | keep the work directory (`raw/` and `sanitized/`) next to the tarball |
 
 Credentials are read from `VCENTER_USER` and `VCENTER_PASSWORD`, and a missing
-one is asked for interactively (the password is not echoed). `VCENTER_URL` is
+one is asked for interactively (the password is not echoed). Surrounding
+whitespace is trimmed from the username only; the password is used exactly as
+given. `VCENTER_URL` is
 read only when the target is `vcsim`. The password is never written; only the
 tarball is written (plus the work directory with `--zip`).
 
