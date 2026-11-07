@@ -39,10 +39,16 @@ func main() {
 	tlsDir := flag.String("tls-dir", "data/tls", "directory holding the persisted certificate (cert.pem, key.pem)")
 	seed := flag.String("seed", "phase1", "identity seed; the same seed reproduces every MoRef, UUID and metric value")
 	names := flag.String("tls-names", "", "comma-separated extra DNS names or IPs for a newly created certificate")
-	username := flag.String("username", os.Getenv("VCSIM_USERNAME"), "only user name Login accepts; empty accepts any (env VCSIM_USERNAME)")
-	password := flag.String("password", os.Getenv("VCSIM_PASSWORD"), "password for -username (env VCSIM_PASSWORD)")
+	username := flag.String("username", "", "only user name Login accepts; empty accepts any (env VCSIM_USERNAME)")
+	password := flag.String("password", "", "password for -username (env VCSIM_PASSWORD)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *username == "" {
+		*username = os.Getenv("VCSIM_USERNAME")
+	}
+	if *password == "" {
+		*password = os.Getenv("VCSIM_PASSWORD")
+	}
 	if *showVersion {
 		fmt.Printf("vcsimulator %s (%s)\n", version, commit)
 		return
