@@ -219,6 +219,15 @@ def main() -> int:
         check("read-only privileges confirmed",
               summary["readonly_privileges"] == ["System.Anonymous", "System.Read", "System.View"],
               summary["readonly_privileges"])
+        other_dir = os.path.join(raw, "other")
+        other = set(os.listdir(other_dir)) if os.path.isdir(other_dir) else set()
+        wanted_other = {"pbm.RetrieveServiceContent.json", "sms.QueryStorageManager.json",
+                        "vslm.RetrieveContent.json", "eam.QueryAgency.json"}
+        check("every other SOAP endpoint is called and leaves a record, answer or fault",
+              wanted_other <= other, sorted(wanted_other - other))
+        check("sms, vslm and eam answered with a version through the vCenter host name",
+              all("version" in summary["endpoints"].get(e, {}) for e in ("sms", "vslm", "eam")),
+              summary["endpoints"])
         counts = summary["counts"]
         check("inventory: one cluster, four hosts, four VMs, five datastores",
               counts.get("ClusterComputeResource") == 1 and counts.get("HostSystem") == 4

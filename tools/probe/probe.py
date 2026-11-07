@@ -270,10 +270,10 @@ def _walk(base: str, creds: dict, cap: Capture, timeout: int, sessions: list):
     _SER = make_serializer()
     ctx = ssl._create_unverified_context()
     parts = urlsplit(base if "//" in base else f"//{base}")
-    host, port = parts.hostname, parts.port or 443
+    vc_host, port = parts.hostname, parts.port or 443
 
     # Step 0: connect, about, read-only confirmation.
-    si = SmartConnect(host=host, port=port, user=creds["VCENTER_USER"],
+    si = SmartConnect(host=vc_host, port=port, user=creds["VCENTER_USER"],
                       pwd=creds["VCENTER_PASSWORD"], disableSslCertValidation=True)
     sessions.append(si)
     content = si.RetrieveContent()
@@ -508,7 +508,7 @@ def _walk(base: str, creds: dict, cap: Capture, timeout: int, sessions: list):
     # Step 1c: other SOAP endpoints, read-only, with the shared session cookie.
     def stub_for(path, ns):
         version = VmomiSupport.newestVersions.Get(ns)
-        stub = SoapStubAdapter(host=host, port=port, version=version, path=path, sslContext=ctx)
+        stub = SoapStubAdapter(host=vc_host, port=port, version=version, path=path, sslContext=ctx)
         stub.cookie = cookie
         return stub, version
 
