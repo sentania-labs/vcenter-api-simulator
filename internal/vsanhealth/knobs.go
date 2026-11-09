@@ -203,22 +203,9 @@ func (e *Env) Hold(body []byte) time.Duration {
 		return 0
 	}
 	method := string(m[1])
-	cluster := ""
-	if c := clusterRe.FindSubmatch(body); c != nil {
-		if cl := e.clusterByValue(string(c[1])); cl != nil {
-			cluster = cl.Key
-		}
-	} else if h := hostRe.FindSubmatch(body); h != nil {
-		if _, cl := e.Host(vim25types.ManagedObjectReference{Type: "HostSystem", Value: string(h[1])}); cl != nil {
-			cluster = cl.Key
-		}
-	}
+	family, cluster := e.Target(body)
 	var hold time.Duration
 	if method == "VsanPerfQueryPerf" {
-		family := ""
-		if f := familyRe.FindSubmatch(body); f != nil {
-			family = string(f[1])
-		}
 		hold += k.delay(family)
 		if cluster != "" {
 			if f := k.FamilyFault(family, cluster); f != nil && f.Fault == scenario.FaultTimeout {

@@ -206,6 +206,8 @@ func guard(next http.Handler, allowedHosts []string) http.Handler {
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		if !allowed[hostName(r.Host)] {
 			http.Error(w, `{"error":"host not allowed; add it to -admin-allowed-hosts"}`, http.StatusForbidden)
 			return

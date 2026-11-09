@@ -177,6 +177,26 @@ func TestHostHeaderIsValidated(t *testing.T) {
 	}
 }
 
+func TestConsoleRefusesFraming(t *testing.T) {
+	srv, _ := newAdmin(t)
+	for _, path := range []string{"/", "/api/state"} {
+		res, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != 200 {
+			t.Fatalf("GET %s: %d", path, res.StatusCode)
+		}
+		if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
+			t.Errorf("%s X-Frame-Options = %q, want DENY", path, got)
+		}
+		if got := res.Header.Get("Content-Security-Policy"); got != "frame-ancestors 'none'" {
+			t.Errorf("%s Content-Security-Policy = %q", path, got)
+		}
+	}
+}
+
 // The console's draft-save behaviour is tested in JavaScript against a fake
 // admin API; this runs it with node when node is installed.
 func TestConsoleScriptTests(t *testing.T) {
