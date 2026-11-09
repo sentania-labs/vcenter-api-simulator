@@ -13,6 +13,10 @@ This is an outcome-based roadmap; stages have exit gates, not dates. Build an ES
 | 6 — Delivery | Docker, Helm, Argo CD example, persistent identity/seeds, Prometheus, documentation and CI | Installation/restart/upgrade/release acceptance tests |
 | 7 — Expansion | vSphere perf counters, richer vDS/VMFS/NFS, generic vCenter adapter realism, optional OSA, multi-instance management | Additional MP scenario demonstrates value; separate planning review |
 
+Phase 3's first collection gate was demonstrated on 2026-11-07 as a standalone
+adapter test; native-vCenter attachment and the Java Content Factory pack remain
+unverified. See the [acceptance procedure and result](OPERATIONS-ACCEPTANCE.md).
+
 ## Immediate worker work packets
 
 1. **Discovery:** write a read-only probe plan, obtain credential-source direction from user, inspect reference repository at pinned SHA.

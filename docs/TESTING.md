@@ -45,7 +45,13 @@ For each scenario sweep dashboard-only vs all modeled entity families, 5/10/15-m
 | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow, local | the reference pack's collector against every cluster of a scenario |
 | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow, local | `mp-test connect` and two collects through the Operations integration SDK |
 
-Live-vCenter and VCF Operations checks (steps 4 and 5 below) remain unverified gates.
+The first real VCF Operations collection gate passed with the installed Python
+vSAN Host Metrics 2.0.0 pack; scope, procedure and measured result are in
+[OPERATIONS-ACCEPTANCE](OPERATIONS-ACCEPTANCE.md). Native-vCenter attachment,
+dashboards, the Java Content Factory pack, and live scenario-change and
+failure tests (steps 5 and 7 above) remain unverified.
+
+Comparison against a live vCenter was never run and remains unverified.
 
 ## Determinism tests
 Given the same seed, entityRefId, metric and 5-minute UTC slot, return equal values regardless of request order or process restart. Different entities should not accidentally alias. Configured changes must take effect at a defined bucket boundary. Time window requests must contain only relevant bucket timestamps and honor unavailable or not-yet-populated bins.
