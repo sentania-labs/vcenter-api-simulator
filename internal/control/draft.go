@@ -746,7 +746,11 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog, previous *regis
 	}
 	for id := range nfsAfter {
 		if !nfsBefore[id] {
-			nfsRow.Added++
+			if previous != nil && previous.Has(id.key) && previous.Serial(id.key) == id.serial {
+				nfsRow.Restored++
+			} else {
+				nfsRow.Added++
+			}
 		}
 	}
 	rows := []IdentityRow{

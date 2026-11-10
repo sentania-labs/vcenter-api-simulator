@@ -1319,3 +1319,107 @@ func TestReviewAccountsForNFSDatastoresAcrossDraftPaths(t *testing.T) {
 	}
 	check("dc-01/shared-nfs", "removes")
 }
+
+func TestNFSReviewAndIDsAfterRemoveAndRestore(t *testing.T) {
+	sc, err := scenario.Parse([]byte(`seed: nfs-restored
+datacenters:
+  - name: dc
+    clusters: 1
+    nfs:
+      - {name: first-nfs, remoteHost: nfs.sim.invalid, remotePath: /first, capacity: 1000, freeSpace: 800}
+      - {name: second-nfs, remoteHost: nfs.sim.invalid, remotePath: /second, capacity: 1000, freeSpace: 800}
+defaults: {hosts: 3, vms: {perHost: 1}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newCtl(t, sc, "", "same")
+	datastoreIDs := func() map[string]string {
+		t.Helper()
+		srv := httptest.NewServer(c.applied().sim.Handler)
+		defer srv.Close()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
+		req.SetBasicAuth("reader", "password")
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var token string
+		if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/vcenter/datastore", nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err = srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("datastore list: %s", res.Status)
+		}
+		var rows []struct {
+			Name string `json:"name"`
+			ID   string `json:"datastore"`
+		}
+		if err := json.NewDecoder(res.Body).Decode(&rows); err != nil {
+			t.Fatal(err)
+		}
+		ids := map[string]string{}
+		for _, r := range rows {
+			ids[r.Name] = r.ID
+		}
+		return ids
+	}
+	before := datastoreIDs()
+	if before["first-nfs"] == "" || before["second-nfs"] == "" {
+		t.Fatal("initial NFS datastores missing")
+	}
+	firstUUID := c.applied().topo.Datacenters[0].NFS[0].UUID
+	removed := editable(t, c)
+	removed.Datacenters[0].NFS = removed.Datacenters[0].NFS[1:]
+	put(t, c, removed)
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	afterRemove := datastoreIDs()
+	for name, id := range before {
+		if name != "first-nfs" && afterRemove[name] != id {
+			t.Errorf("%s changed after removal: %s -> %s", name, id, afterRemove[name])
+		}
+	}
+	restored := editable(t, c)
+	restored.Datacenters[0].NFS = append(restored.Datacenters[0].NFS, sc.Datacenters[0].NFS[0], scenario.NFSDatastore{Name: "third-nfs", RemoteHost: "nfs.sim.invalid", RemotePath: "/third", Capacity: 1000, FreeSpace: 800})
+	put(t, c, restored)
+	review, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range review.Identities {
+		if row.Label == "NFS datastore identities" {
+			found = true
+			if row.Kept != 1 || row.Restored != 1 || row.Added != 1 || row.Removed != 0 {
+				t.Errorf("NFS identity accounting: %+v", row)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("NFS identity row missing")
+	}
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	afterRestore := datastoreIDs()
+	for name, id := range before {
+		if afterRestore[name] != id {
+			t.Errorf("%s changed after restore: %s -> %s", name, id, afterRestore[name])
+		}
+	}
+	for _, n := range c.applied().topo.Datacenters[0].NFS {
+		if n.Spec.Name == "first-nfs" && n.UUID != firstUUID {
+			t.Errorf("NFS UUID changed: %s -> %s", firstUUID, n.UUID)
+		}
+	}
+}
