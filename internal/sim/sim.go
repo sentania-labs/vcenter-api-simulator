@@ -642,6 +642,16 @@ type handler struct {
 var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		switch r.URL.Path {
+		case "/sdk", "/sdk/":
+			http.NotFound(w, r)
+			return
+		case "/vsanHealth", "/vsanHealth/":
+			w.WriteHeader(http.StatusNotImplemented)
+			return
+		}
+	}
 	switch r.URL.Path {
 	case "/sdk/vimServiceVersions.xml":
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")

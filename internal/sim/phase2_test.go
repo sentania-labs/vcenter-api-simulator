@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -1059,5 +1060,32 @@ func TestOSAHostViews(t *testing.T) {
 	smart, err := vsanmethods.VsanQueryVcClusterSmartStatsSummary(ctx, vc.Client, &vsantypes.VsanQueryVcClusterSmartStatsSummary{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
 	if err != nil || len(smart.Returnval) != 3 || len(smart.Returnval[0].SmartStats) == 0 || len(smart.Returnval[0].SmartStats[0].Stats) != 7 {
 		t.Fatalf("smart: %v %v", smart, err)
+	}
+}
+
+func TestOSACapturedFaultsAndHTTP(t *testing.T) {
+	sc := scenario.Phase1("osa-faults")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"VsanVitGetIscsiTargets", "VsanVitGetIscsiLUNs", "VsanVitGetIscsiInitiatorGroups", "VsanVitGetHomeObject"} {
+		req := `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body><` + name + ` xmlns="urn:vsan"><_this type="VsanIscsiTargetSystem">vsan-cluster-iscsi-target-system</_this><cluster type="ClusterComputeResource">` + e.cl().Ref.Value + `</cluster></` + name + `></Body></Envelope>`
+		status, body := e.post("/vsanHealth", req)
+		got := parseShape(t, body)
+		if status != 500 || got.fault != "VsanFaultFault" || got.text["key"] != "com.vmware.vsan.iscsi.msg.notEnabled" {
+			t.Errorf("%s: %d %+v", name, status, got)
+		}
+	}
+	for path, want := range map[string]int{"/sdk": 404, "/sdk/": 404, "/vsanHealth": 501, "/vsanHealth/": 501} {
+		res, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("%s: %d", path, res.StatusCode)
+		}
 	}
 }

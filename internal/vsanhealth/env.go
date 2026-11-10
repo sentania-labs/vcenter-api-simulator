@@ -91,6 +91,7 @@ var (
 	ConfigSystemRef     = vim25types.ManagedObjectReference{Type: "VsanVcClusterConfigSystem", Value: "vsan-cluster-config-system"}
 	DiskMgmtRef         = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcDiskManagementSystem", Value: "vsan-disk-management-system"}
 	HealthSystemRef     = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
+	IscsiSystemRef      = vim25types.ManagedObjectReference{Type: "VsanIscsiTargetSystem", Value: "vsan-cluster-iscsi-target-system"}
 	StretchSystemRef    = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcStretchedClusterSystem", Value: "vsan-stretched-cluster-system"}
 	CapabilitySystemRef = vim25types.ManagedObjectReference{Type: "VsanCapabilitySystem", Value: "vsan-vc-capability-system"}
 	SpaceSystemRef      = vim25types.ManagedObjectReference{Type: "VsanSpaceReportSystem", Value: "vsan-cluster-space-report-system"}
@@ -108,6 +109,7 @@ func Install(s *simulator.Service, env *Env) {
 	r.Put(&ClusterHealthSystem{ManagedObjectReference: HealthSystemRef, env: env})
 	r.Put(&SpaceReportSystem{ManagedObjectReference: SpaceSystemRef, env: env})
 	r.Put(&StretchSystem{ManagedObjectReference: StretchSystemRef, env: env})
+	r.Put(&IscsiSystem{ManagedObjectReference: IscsiSystemRef, env: env})
 	r.Put(&CapabilitySystem{ManagedObjectReference: CapabilitySystemRef, env: env})
 	s.RegisterSDK(r)
 }
