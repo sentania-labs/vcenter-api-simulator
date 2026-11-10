@@ -1,16 +1,8 @@
-// Package vsanhealth serves the /vsanHealth managed objects the reference
-// management pack's collection path calls, registered on the vcsim service so
-// one session store covers /sdk and /vsanHealth:
-//
-//	VsanPerformanceManager      VsanPerfQueryNodeInformation, VsanPerfGetSupportedEntityTypes, VsanPerfQueryPerf
-//	VsanVcClusterConfigSystem   VsanClusterGetConfig
-//	VsanVcDiskManagementSystem  QueryVsanManagedDisks
-//	VsanVcClusterHealthSystem   VsanQueryVcClusterHealthSummary (hclInfo)
-//
-// Nothing else is registered, so any other managed object on /vsanHealth
-// (vcsim's stock stretched-cluster system included) is ManagedObjectNotFound.
-// vcsim's own vsan/simulator package must stay unimported. Response shapes
-// follow fixtures/live/9.1.1.
+// Package vsanhealth serves the modeled /vsanHealth managed objects on the
+// vcsim service, sharing the /sdk session store. The handlers cover performance,
+// configuration, capacity, health, disks, capabilities, witness and iSCSI
+// reads. Unmodeled objects remain ManagedObjectNotFound. Response shapes use
+// sanitized live captures; vcsim's own vsan/simulator stays unimported.
 package vsanhealth
 
 import (

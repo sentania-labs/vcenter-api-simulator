@@ -49,7 +49,7 @@ type Datacenter struct {
 // vmkernel NICs attach to the first three; VMs to the last.
 var Portgroups = []string{"pg-mgmt", "pg-vmotion", "pg-vsan", "pg-vm"}
 
-// Cluster is a vSAN ESA cluster.
+// Cluster is a vSAN ESA or OSA cluster.
 type Cluster struct {
 	Name       string
 	Key        string // "<datacenter>/<cluster>", the scenario's override and fault selector
