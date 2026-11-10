@@ -173,6 +173,35 @@ sample queries return `NotFound` with the
 online, populated families use five-minute CSV samples, and the observed
 empty and faulting families retain their captured outcomes.
 
+The sanitized primary-online walk contains 74 wildcard family calls: **30
+returned samples, 26 returned an empty wildcard echo, and 18 returned typed
+faults**. Thus 56 calls answered successfully, but 26 of those successes had
+no samples. The simulator implements the 30 populated families, with their
+captured labels and entity patterns:
+
+`cache-disk`, `capacity-disk`, `cluster-domclient`, `cluster-domcompmgr`,
+`cluster-domowner`, `cluster-esa-dedup-domclient-io`,
+`cluster-rdt-network-latency`, `cluster-resync`, `cmmds-net`, `disk-group`,
+`dom-world-cpu`, `host-cpu`, `host-domclient`, `host-domcompmgr`,
+`host-domowner`, `host-esa-dedup-domclient-io`, `host-vsansparse`,
+`lsom-world-cpu`, `rdt-net`, `rdt-network-latency`, `system-mem`,
+`vnic-rdt-network-latency`, `vsan-cluster-capacity`, `vsan-cpu`,
+`vsan-distribution`, `vsan-host-net`, `vsan-memory`, `vsan-pnic-net`,
+`vsan-tcpip-stats`, and `vsan-vnic-net`.
+
+The 26 empty outcomes are `cluster-esa-dedup-domcompmgr-io`,
+`cluster-esa-dedup-domowner-io`, `cluster-esa-dedup-store-chunksvc`,
+`cluster-esa-dedup-store-hashsvc`, `cluster-remotedomclient`,
+`cluster-zdom-top-stats`, `computeHost-remotedomclient`,
+`host-esa-dedup-domcompmgr-io`, `host-esa-dedup-domowner-io`,
+`host-esa-dedup-store-chunksvc`, `host-esa-dedup-store-hashsvc`,
+`host-remotedomclient`, `host-zdom-top-stats`, `ioinsight`, `virtual-disk`,
+`virtual-machine`, `vsan-direct-cluster`, `vsan-direct-host`,
+`vsan-esa-disk-layer`, `vsan-esa-disk-scsifw`, `vsan-file-service`,
+`vsan-iscsi-host`, `vsan-iscsi-lun`, `vsan-iscsi-target`, `vscsi`, and
+`zdom-vtx`. Those empty outcomes are evidence of no samples in this walk,
+not evidence of populated data for these families.
+
 The walk did not contain live samples for VM-level families, stretched
 clusters, multiple disk groups per host, dedup enabled, or populated iSCSI.
 Those cases are schema-only and are not validated as live OSA behavior.
