@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const maxBody = 32 << 20
+
 type logger struct {
 	next http.Handler
 	mu   sync.Mutex
@@ -47,7 +49,9 @@ func (w *response) Write(b []byte) (int, error) {
 }
 
 // Wrap emits one JSON line per request. SOAP bodies are deliberately omitted for
-// login operations; the log contains no HTTP headers, cookies or passwords.
+// any SessionManager operation (logins, clone tickets, impersonation) and for
+// requests that name no target; the log
+// contains no HTTP headers, cookies or passwords.
 // Enable only in a controlled environment: other SOAP requests can contain
 // inventory identifiers.
 func Wrap(next http.Handler, dst io.Writer) http.Handler {
@@ -57,10 +61,19 @@ func (l *logger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	var data []byte
 	if r.Body != nil {
-		data, _ = io.ReadAll(r.Body)
+		var err error
+		data, err = io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+		if err != nil {
+			http.Error(w, "cannot read request body", http.StatusBadRequest)
+			return
+		}
+		if len(data) > maxBody {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		r.Body = io.NopCloser(bytes.NewReader(data))
 	}
-	op := ""
+	op, target := "", ""
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	inBody := false
 	for {
@@ -69,8 +82,16 @@ func (l *logger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if s, ok := t.(xml.StartElement); ok {
-			if inBody {
+			if inBody && op == "" {
 				op = s.Name.Local
+				continue
+			}
+			if op != "" && s.Name.Local == "_this" {
+				for _, a := range s.Attr {
+					if a.Name.Local == "type" {
+						target = a.Value
+					}
+				}
 				break
 			}
 			if s.Name.Local == "Body" {
@@ -78,11 +99,8 @@ func (l *logger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// Do not persist any authentication request, including alternate logins.
 	request := ""
-	switch op {
-	case "", "Login", "LoginByToken", "LoginBySSPI", "LoginExtensionByCertificate", "LoginExtensionBySubjectName":
-	default:
+	if target != "" && target != "SessionManager" {
 		request = string(data)
 	}
 	rw := &response{ResponseWriter: w}

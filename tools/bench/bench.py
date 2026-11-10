@@ -223,8 +223,8 @@ def one_pass(described, catalog, base, user, pw):
     from datetime import datetime, timezone, timedelta
     fixture = json.load(open(os.path.join(HERE, "fixtures", "collector-v2.0.0-rc.2.json")))
     calls = []
-    # Discover identities using the simulator inventory. Discovery calls are not
-    # included in the replay timing; they only supply substitutions.
+    # Discover identities using the simulator inventory. Discovery calls count
+    # toward the pass wall time but not toward the replay call count.
     _, _, _, cookie = call(base, "/sdk", sdk_login(user, pw))
     refs = {}
     for typ in ("ClusterComputeResource", "HostSystem", "VirtualMachine"):
