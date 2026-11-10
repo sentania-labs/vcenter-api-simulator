@@ -79,9 +79,13 @@ What the scenario controls, and what the simulator guarantees:
 
 Known gaps: the vDS is served under vcsim's base type
 `DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
-metric labels the live service only ever answered with `None` get generic
-values; no OSA, iSCSI target service, file service, NFS/FC/iSCSI datastores
-or REST `/api` yet (see [ROADMAP](docs/ROADMAP.md)).
+populated iSCSI target service, file service, NFS/FC/iSCSI datastores and
+successful REST inventory reads are not modeled (see [ROADMAP](docs/ROADMAP.md)).
+The OSA health summary covers cluster and host status and versions; many
+additional live health-detail fields are not yet modeled. The real 9.1.1
+server returns full documents for `/sdk/vimService.wsdl` and `/sdk/vim.wsdl`.
+The simulator serves the captured service descriptor but does not serve
+`vim.wsdl`; a complete sanitized capture is needed to add it.
 
 ### Control console
 
