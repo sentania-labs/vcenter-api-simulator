@@ -102,11 +102,6 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 			for _, k := range d.Regenerate {
 				newReg.Retire(k)
 			}
-			for _, k := range d.Scenario.Removed {
-				if !old.sc.IsRemoved(k) {
-					newReg.Retire(k)
-				}
-			}
 		}
 		nr, err = c.build(clone(d.Scenario), newReg, next)
 		if err != nil {

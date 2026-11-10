@@ -11,7 +11,7 @@
 //   - A draft applies at the next five-minute bucket boundary unless the
 //     operator asks for "now".
 //   - Identities (registry serials) survive an apply for every entity the
-//     draft keeps. Regenerate and Delete retire a cluster's identities;
+//     draft keeps. Regenerate retires a cluster's identities;
 //     a new seed replaces them all.
 //   - A telemetry-only change (latency, faults) swaps the knobs in place and
 //     leaves the running vCenter, its sessions and its history alone.
@@ -217,7 +217,7 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 		creds[n] = p
 	}
 	s, err := sim.New(sim.Options{
-		Topology: topo, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
+		Topology: topo, Registry: reg, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Now: c.now,
 	})
 	if err != nil {

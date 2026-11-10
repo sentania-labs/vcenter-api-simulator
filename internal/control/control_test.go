@@ -715,46 +715,54 @@ func TestUnauthenticatedQueryIsNotInjected(t *testing.T) {
 	}
 }
 
-// Removing something renumbers the MoRefs of everything created after it;
-// the review has to say so, and a telemetry edit must not move the version.
-func TestReviewReportsRenumberedMoRefs(t *testing.T) {
+// Removing something preserves surviving MoRefs; telemetry edits do not move the version.
+func TestRemovalKeepsSurvivorMoRefs(t *testing.T) {
 	c := newCtl(t, tenClusters(t), "", "t")
+	refs := func() map[string]string {
+		m := map[string]string{}
+		for _, r := range c.applied().sim.Clusters {
+			m[r.Cluster.Key] = r.Ref.Value
+			for i, h := range r.Cluster.Hosts {
+				m[h.Key] = r.Hosts[i].Value
+			}
+			for i, v := range r.Cluster.VMs {
+				m[v.Key] = r.VMs[i].Value
+			}
+		}
+		return m
+	}
+	before := refs()
 	if _, err := c.DeleteCluster("dc-01/cluster-02"); err != nil {
 		t.Fatal(err)
 	}
-	rv, _ := c.Review()
-	if rv.Renumbered.Clusters != 8 || rv.Renumbered.Hosts == 0 || rv.Renumbered.VMs == 0 || !rv.Churn {
-		t.Errorf("renumbered: %+v churn %v", rv.Renumbered, rv.Churn)
-	}
-	found := false
-	for _, w := range rv.Warnings {
-		found = found || w.Title == "MoRefs are renumbered"
-	}
-	if !found {
-		t.Errorf("warnings: %+v", rv.Warnings)
-	}
-	c.DiscardDraft()
-
-	// deleting the last cluster renumbers nobody; adding hosts renumbers nobody
-	if _, err := c.DeleteCluster("dc-01/cluster-10"); err != nil {
+	if _, err := c.Apply("now"); err != nil {
 		t.Fatal(err)
 	}
-	if rv, _ = c.Review(); rv.Renumbered.Total() != 0 {
-		t.Errorf("deleting the newest cluster renumbered %+v", rv.Renumbered)
+	after := refs()
+	if len(after) >= len(before) {
+		t.Fatalf("removal did not shrink the inventory: %d -> %d", len(before), len(after))
 	}
-	c.DiscardDraft()
+	for key, ref := range after {
+		if before[key] != ref {
+			t.Errorf("%s moved from %q to %q", key, before[key], ref)
+		}
+	}
+}
+
+func TestTelemetryOnlyChangeKeepsVersion(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
 	e := editable(t, c)
 	setHosts(e, "dc-01/cluster-02", 12)
 	put(t, c, e)
-	if rv, _ = c.Review(); rv.Renumbered.Total() != 0 || rv.Churn {
-		t.Errorf("adding hosts renumbered %+v", rv.Renumbered)
+	if rv, _ := c.Review(); rv.Churn {
+		t.Errorf("adding hosts reported identity churn: %+v", rv)
 	}
 	c.DiscardDraft()
 
 	e = editable(t, c)
 	e.Latency.SDK = &scenario.Delay{FixedMs: 5}
 	put(t, c, e)
-	rv, _ = c.Review()
+	rv, _ := c.Review()
 	if rv.To != rv.From || c.DraftState().Pending.Target != rv.From {
 		t.Errorf("a telemetry-only change moves the version: %d -> %d", rv.From, rv.To)
 	}
@@ -1045,5 +1053,206 @@ func TestOSACompatibilityAndDashboardCoverage(t *testing.T) {
 	}
 	if !flags["cache-disk"] || !flags["capacity-disk"] || flags["disk-group"] {
 		t.Errorf("dashboard scope: cache=%v capacity=%v group=%v", flags["cache-disk"], flags["capacity-disk"], flags["disk-group"])
+	}
+}
+
+// Applying a cluster removal and restarting from the saved state must expose
+// the same references and UUIDs for each surviving cluster, host and VM.
+func TestRemovalIdentityAcrossApplyAndRestart(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: apply-identity\ndatacenters: [{name: dc, clusters: 3}]\ndefaults: {hosts: 3, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	c := newCtl(t, sc, dir, "same")
+	identities := func(c *Controller) map[string]string {
+		m := map[string]string{}
+		for _, refs := range c.applied().sim.Clusters {
+			cl := refs.Cluster
+			m[cl.Key] = fmt.Sprint(refs.Ref, cl.VsanUUID, cl.StatsUUID)
+			for i, h := range cl.Hosts {
+				m[h.Key] = fmt.Sprint(refs.Hosts[i], h.HardwareUUID, h.NodeUUID)
+			}
+			for i, v := range cl.VMs {
+				m[v.Key] = fmt.Sprint(refs.VMs[i], v.UUID, v.InstanceUUID)
+			}
+		}
+		return m
+	}
+	before := identities(c)
+	if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	after := identities(c)
+	for key, value := range after {
+		if before[key] != value {
+			t.Errorf("%s changed on apply", key)
+		}
+	}
+	c.Close()
+	restarted := newCtl(t, sc, dir, "same")
+	for key, value := range identities(restarted) {
+		if after[key] != value {
+			t.Errorf("%s changed on restart", key)
+		}
+	}
+}
+
+func TestGrowingHostsKeepsMoRefsOnApplyAndRestart(t *testing.T) {
+	parse := func(devices int) *scenario.Scenario {
+		sc, err := scenario.Parse([]byte(fmt.Sprintf("seed: growth\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, host: {localDevices: %d}, vms: {perHost: 1}}\n", devices)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sc
+	}
+	refs := func(c *Controller) map[string]string {
+		m := map[string]string{}
+		for _, r := range c.applied().sim.Clusters {
+			m[r.Cluster.Key] = r.Ref.Value
+			for i, h := range r.Cluster.Hosts {
+				m[h.Key] = r.Hosts[i].Value
+			}
+			for i, v := range r.Cluster.VMs {
+				m[v.Key] = r.VMs[i].Value
+			}
+		}
+		return m
+	}
+	same := func(what string, want, got map[string]string) {
+		t.Helper()
+		if len(want) != len(got) {
+			t.Fatalf("%s: %d objects, want %d", what, len(got), len(want))
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s: %s is %q, was %q", what, k, got[k], v)
+			}
+		}
+	}
+	dir := t.TempDir()
+	c := newCtl(t, parse(1), dir, "one")
+	original := refs(c)
+
+	e := editable(t, c)
+	e.Defaults.Host.LocalDevices = scenario.IntPtr(2)
+	put(t, c, e)
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatalf("adding a device to existing hosts must apply: %v", err)
+	}
+	same("after apply", original, refs(c))
+	c.Close()
+
+	c = newCtl(t, parse(3), dir, "three")
+	same("after editing the scenario file while stopped", original, refs(c))
+}
+
+func TestReviewDistinguishesRestoredAndNewIdentities(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: review-restored\ndatacenters: [{name: dc, clusters: 1}]\ndefaults: {hosts: 4, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newCtl(t, sc, "", "same")
+	smaller := editable(t, c)
+	setHosts(smaller, "dc/cluster-01", 3)
+	put(t, c, smaller)
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	bigger := editable(t, c)
+	setHosts(bigger, "dc/cluster-01", 5)
+	put(t, c, bigger)
+	rv, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"Host", "VM", "MoRefs"} {
+		found := false
+		for _, row := range rv.Identities {
+			if strings.HasPrefix(row.Label, prefix) {
+				found = true
+				want := 1
+				if prefix == "MoRefs" {
+					want = 2
+				}
+				if row.Restored != want || row.Added != want || row.Removed != 0 {
+					t.Errorf("%s accounting: %+v", prefix, row)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing %s row", prefix)
+		}
+	}
+}
+
+func TestReviewRestorationDependsOnRetirement(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: retired\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, explicit := range []bool{false, true} {
+		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+			c := newCtl(t, sc, "", "same")
+			identities := func(c *Controller) map[string]string {
+				result := map[string]string{}
+				for _, refs := range c.applied().sim.Clusters {
+					cl := refs.Cluster
+					result[cl.Key] = fmt.Sprint(refs.Ref, cl.VsanUUID, cl.StatsUUID, cl.PolicyUUID)
+					for i, h := range cl.Hosts {
+						result[h.Key] = fmt.Sprint(refs.Hosts[i], h.HardwareUUID, h.NodeUUID)
+					}
+					for i, vm := range cl.VMs {
+						result[vm.Key] = fmt.Sprint(refs.VMs[i], vm.UUID, vm.InstanceUUID)
+					}
+				}
+				return result
+			}
+			before := identities(c)
+			if explicit {
+				if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				next := editable(t, c)
+				next.Datacenters[0].Clusters = 1
+				put(t, c, next)
+			}
+			if _, err := c.Apply("now"); err != nil {
+				t.Fatal(err)
+			}
+			next := editable(t, c)
+			next.Datacenters[0].Clusters = 2
+			next.Removed = nil
+			put(t, c, next)
+			rv, err := c.Review()
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, row := range rv.Identities {
+				if strings.HasPrefix(row.Label, "Cluster") {
+					found = true
+					if row.Added != 0 || row.Restored != 1 {
+						t.Errorf("returning: %+v", row)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing cluster row")
+			}
+			if _, err := c.Apply("now"); err != nil {
+				t.Fatal(err)
+			}
+			after := identities(c)
+			for key, value := range before {
+				if after[key] != value {
+					t.Errorf("%s changed after re-add: %s -> %s", key, value, after[key])
+				}
+			}
+		})
 	}
 }

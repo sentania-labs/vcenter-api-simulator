@@ -59,10 +59,9 @@ What the scenario controls, and what the simulator guarantees:
   a local VMFS datastore per unclaimed NVMe device, and the cluster's vSAN
   datastore.
 - **Identity.** uuids are UUID v5 of (seed namespace, kind, registry
-  serial); MoRefs follow a deterministic creation order. A restart on the
-  same data directory reproduces everything; an edit keeps every uuid it
-  did not touch and the MoRefs of everything created before the edit's
-  first removal; only a seed change plus `-regenerate` churns identities.
+  serial); the registry also reserves MoRefs. A restart on the same data
+  directory and a removal preserve the identities of surviving entities.
+  A seed change plus `-regenerate` changes identities.
 - **Metrics.** Values are a pure function of (telemetry seed, entity,
   label, bucket); nothing is stored. Each label stays inside the min..max
   the live capture showed for it, follows a business-hours day and drifts
@@ -110,8 +109,8 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
 - **Identity actions are separate and confirmed.** *Regenerate* gives one
   cluster new identities under the same seed; *Reset cluster seed* changes
   every sample of that cluster and no identity; *Delete cluster* removes it
-  (its identities stay retired). The global seed changes only in the
-  generator.
+  (its identities remain reserved for a later re-add). The global seed
+  changes only in the generator.
 - **Applied state survives a restart.** The console writes
   `<data>/console.json`; the next start resumes it unless the scenario file
   changed, in which case the file wins and the console says so in its

@@ -42,7 +42,7 @@ type Scenario struct {
 	// Removed lists cluster keys the datacenters would generate but the
 	// scenario leaves out (the console's Delete cluster). The cluster
 	// numbers of the others do not shift, and a removed cluster's
-	// identities stay retired in the registry.
+	// identities stay reserved in the registry for a later re-add.
 	Removed []string `yaml:"removed" json:"removed,omitempty"`
 
 	Auth    Auth    `yaml:"auth" json:"auth,omitempty"`

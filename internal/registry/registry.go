@@ -8,7 +8,8 @@
 // scenario edits: an entity keeps its serial for as long as it exists, a new
 // entity gets the next serial, and a retired serial is never reused. So
 // adding a cluster leaves every existing identity untouched, and removing
-// one retires its identities instead of shifting the others'.
+// an entity shifts nobody's: its serial and reserved MoRefs stay with it
+// until it is retired explicitly.
 //
 // Changing the seed changes the namespace and therefore every identity; the
 // registry refuses to load under a different seed unless the caller asks to
@@ -45,11 +46,33 @@ type Registry struct {
 }
 
 type document struct {
-	Version    int            `json:"version"`
-	Seed       string         `json:"seed"`
-	Namespace  string         `json:"namespace"`
-	NextSerial int            `json:"nextSerial"`
-	Entries    map[string]int `json:"entries"`
+	Version    int                `json:"version"`
+	Seed       string             `json:"seed"`
+	Namespace  string             `json:"namespace"`
+	NextSerial int                `json:"nextSerial"`
+	Entries    map[string]int     `json:"entries"`
+	Ranges     map[int]MorefRange `json:"morefRanges,omitempty"`
+	MorefHigh  int64              `json:"morefHigh,omitempty"`
+}
+
+// MorefRange reserves the vcsim counter interval used by one inventory step.
+type MorefRange struct{ Start, End int64 }
+
+// MorefRange returns the interval assigned to a serial.
+func (r *Registry) MorefRange(serial int) (MorefRange, bool) {
+	v, ok := r.doc.Ranges[serial]
+	return v, ok
+}
+func (r *Registry) MorefHigh() int64 { return r.doc.MorefHigh }
+func (r *Registry) SetMorefRange(serial int, v MorefRange) {
+	if r.doc.Ranges == nil {
+		r.doc.Ranges = make(map[int]MorefRange)
+	}
+	r.doc.Ranges[serial] = v
+	if v.End > r.doc.MorefHigh {
+		r.doc.MorefHigh = v.End
+	}
+	r.dirty = true
 }
 
 // Namespace derives the identity namespace of a seed.
@@ -191,6 +214,10 @@ func (r *Registry) Sub(key string) uint64 {
 // console previews a draft on a clone and saves the clone it applies.
 func (r *Registry) Clone() *Registry {
 	c := &Registry{path: r.path, dirty: true, doc: r.doc, ns: r.ns}
+	c.doc.Ranges = make(map[int]MorefRange, len(r.doc.Ranges))
+	for k, v := range r.doc.Ranges {
+		c.doc.Ranges[k] = v
+	}
 	c.doc.Entries = make(map[string]int, len(r.doc.Entries))
 	for k, v := range r.doc.Entries {
 		c.doc.Entries[k] = v

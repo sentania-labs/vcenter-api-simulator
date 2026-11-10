@@ -160,7 +160,7 @@ function input(view, id, locked) {
 function hostsTable(view) {
   const rows = view.hosts;
   const pending = rows.some((h) => h.identity !== 'unchanged');
-  const badgeFor = (h) => (h.identity === 'unchanged' ? badge('unchanged') : h.identity === 'new' ? badge('new', 'warn') : h.identity === 'renumbered' ? badge('MoRef renumbered', 'warn') : badge('removed', 'bad'));
+  const badgeFor = (h) => (h.identity === 'unchanged' ? badge('unchanged') : h.identity === 'new' ? badge('new', 'warn') : badge('removed', 'bad'));
   const one = (h) => html`<tr class="${h.identity === 'unchanged' ? '' : 'is-pending'}"><td class="ink mono">${h.name.split('.')[0]}</td><td class="mono${h.moref ? '' : ' subtle'}">${h.moref || '(derived)'}</td><td class="mono${h.moref ? '' : ' subtle'}">${h.nodeUuid}</td><td class="lat-num">${h.nvme}</td><td class="lat-num">${h.lcpu}</td><td class="lat-num">${h.vms}</td><td>${badgeFor(h)}</td></tr>`;
   const out = [];
   if (ui.allHosts || rows.length <= 8) rows.forEach((h) => out.push(one(h)));
@@ -255,7 +255,6 @@ function impactCard(ctx, d) {
     const architectureChanged = v.applied && (v.applied.architecture || 'esa') !== (v.spec.architecture || 'esa');
     if (architectureChanged) banners.push(banner('warn', html`<b>Performance identities change.</b> The review lists the performance entities added and removed by changing architecture.`));
     if (regen) banners.push(banner('warn', html`<b>Every identity in ${v.name} is replaced.</b> The cluster UUID, ${v.hosts.length} hosts, their NVMe disks and ${v.vms} VMs get new UUIDs; VCF Operations sees new objects and the old ones go stale.`));
-    else if (kept && rv && rv.renumbered && (rv.renumbered.clusters + rv.renumbered.hosts + rv.renumbered.vms) > 0) banners.push(banner('warn', html`<b>UUIDs kept, MoRefs renumbered.</b> ${kept} host${kept === 1 ? '' : 's'} here keep host, vSAN node, disk and VM UUIDs. ${int(rv.renumbered.clusters)} clusters, ${int(rv.renumbered.hosts)} hosts and ${int(rv.renumbered.vms)} VMs get new MoRefs because something this change removes was created before them.`));
     else if (kept) banners.push(banner('ok', html`<b>Host and VM identities kept.</b> ${kept} host${kept === 1 ? '' : 's'} keep MoRefs, host UUIDs, vSAN node UUIDs, disk UUIDs and VM instanceUuids.${others > 0 ? html` The other ${others - pendingOthers} cluster${others - pendingOthers === 1 ? ' is' : 's are'} untouched.` : ''}`));
     if (added && !regen) {
       const one = d.tree.pendingClusters === 1 && rv ? rv.identities : null;
@@ -263,7 +262,7 @@ function impactCard(ctx, d) {
       const nv = one ? (one.find((r) => r.label.startsWith('NVMe')) || {}).added : null;
       banners.push(banner('info', html`<b>Adds ${added} host${added === 1 ? '' : 's'}</b> with new derived identities. VCF Operations will discover ${added} host${added === 1 ? '' : 's'}${vms != null ? html`, ${int(vms)} VMs and ${int(nv)} NVMe devices` : ''}.`));
     }
-    if (gone && !regen) banners.push(banner('warn', html`<b>Removes ${gone} host${gone === 1 ? '' : 's'}.</b> Every object created after a removed one gets a new MoRef (see Review for the count); UUIDs do not change. The vCenter adapter keys on MoRefs, the vSAN pack on UUIDs.`));
+    if (gone && !regen) banners.push(banner('warn', html`<b>Removes ${gone} host${gone === 1 ? '' : 's'}.</b> The remaining hosts and VMs keep their MoRefs and UUIDs; the removed hosts' objects go stale in VCF Operations.`));
     if (v.seedEpoch > 0 && v.state) banners.push(banner('warn', html`<b>Cluster seed reset.</b> Every synthetic sample of ${v.name}, including its history, changes. Identities do not.`));
     banners.push(banner('', html`Telemetry history and seeds elsewhere are preserved. ${added ? html`New hosts start reporting at the next bucket, <span class="mono">${hm(st.clock.nextBoundary)}:00Z</span>.` : html`The change lands at the next bucket, <span class="mono">${hm(st.clock.nextBoundary)}:00Z</span>, if you apply at the boundary.`}`));
   }
@@ -394,7 +393,7 @@ const actions = {
       body: html`<ul>
         <li><b>Removed:</b> ${int(c.hosts)} hosts${v.applied && v.hostsApplied !== c.hosts ? ` (${v.hostsApplied} applied, ${c.hosts} in the draft)` : ''}, ${int(c.vms)} VMs, ${int(c.nvme)} NVMe devices and ${int(c.ent)} perf entities. ${v.datastores[0].name} is deleted with it, and the local VMFS datastores of its hosts.</li>
         <li>Per cycle: ${nc} → ${nc - 1} clusters, and PerfQuery calls drop from ${int(kinds * nc)} to ${int(kinds * (nc - 1))}.</li>
-        <li>The other clusters keep their names and UUIDs. Every cluster, host and VM created after the deleted one gets a new MoRef (the review gives the count); the VCF Operations vCenter adapter keys on MoRefs and sees those as new objects.</li>
+        <li>Other clusters, hosts and VMs keep their IDs. Deleted objects are removed. Re-adding them with the same seed and names restores their previous IDs, provided the registry has not been regenerated.</li>
         ${joins}<li>Until you apply, <b>Undo delete</b> on this cluster, or Discard, brings it back as it is applied now; its pending edits are dropped.</li></ul>`,
       confirmLabel: `Delete ${v.key}`, danger: true,
     });

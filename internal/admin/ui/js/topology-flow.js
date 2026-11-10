@@ -162,9 +162,9 @@ function genRender(ctx, data) {
         <span class="anno">dedup off: the *-esa-dedup-* kinds answer empty</span></div>`}
       <h2 class="lat-card-title">Identity</h2>
       <div class="fields c2"><div><label class="lat-label" for="gen-seed">Global seed</label><input class="lat-input mono" id="gen-seed" data-k="gen-seed" autocomplete="off" spellcheck="false" data-inp="gen.seed" value="${form.seed}">
-        <div class="lat-hint">same seed + shape → same identities; the only place to change it</div></div></div>
+        <div class="lat-hint">Changing the seed replaces identities.</div></div></div>
       ${sameSeed
-        ? banner('info', html`<b>Same seed: clusters that keep their number and shape keep their identities.</b> Anything the new shape adds gets new identities and anything it drops is retired. The review lists exactly which.`)
+        ? banner('info', html`<b>Same seed: existing objects keep their IDs when their shape changes.</b> A removed object gets its previous IDs back if it returns with the same name and seed, and its registry entry has not been retired. Regenerate retires a cluster’s IDs. The review separates additions, restorations and removals.`)
         : banner('info', html`<b>Applying a generated draft with a new seed replaces every identity.</b> VCF Operations will see every cluster as new and stop receiving data for the v${st?.topology.version} objects. To grow an existing topology without churn, edit clusters instead.`)}
     </section>
 
@@ -243,7 +243,7 @@ let showAll = false;
 const CAP = 10;
 let applying = false;
 
-const effectKind = (e) => (/new identit|replaces|removes|renumber|changes samples|changes performance identities/.test(e) ? 'warn' : '');
+const effectKind = (e) => (/new identit|replaces|removes|changes samples|changes performance identities/.test(e) ? 'warn' : '');
 
 function delta(a, b) {
   const d = b - a;
@@ -271,7 +271,7 @@ function reviewRender(ctx, data) {
   <section class="lat-card" aria-labelledby="rev-title">
     <div class="row"><span class="page-title" id="rev-title">Review before apply</span>${badge(rv.to === rv.from ? `telemetry only · topology v${rv.from} stays` : `topology v${rv.from} → v${rv.to}`, 'warn')}${originText ? badge(originText) : ''}<span class="grow"></span><span class="anno">Step 2 of 2 · nothing has changed yet</span></div>
     ${rv.discarded ? banner('warn', html`<b>Replaces a pending draft.</b> ${rv.discarded}`) : ''}
-    ${newDraft && rv.identityChurn && cl && (cl.removed > 0 || cl.added > 0) ? banner('warn', html`<b>${cl && cl.kept === 0 ? 'Every identity is replaced.' : 'Identities change.'}</b> ${cl ? html`${int(cl.removed)} cluster${cl.removed === 1 ? '' : 's'} removed → ${int(cl.added)} new.` : ''} Anything not listed under kept gets a new identity.`) : ''}
+    ${newDraft && cl && (cl.removed > 0 || cl.added > 0 || cl.restored > 0) ? banner('info', html`<b>Cluster changes.</b> ${int(cl.removed)} removed, ${int(cl.added)} added and ${int(cl.restored)} restored. Restored objects regain their previous IDs; removed objects are no longer present.`) : ''}
     <div class="g" style="grid-template-columns: 1.25fr 1fr;">
       <div class="stack" style="gap:10px">
         <h2 class="lat-card-title">Changes <span class="aside">${int(rv.topologyChanges)} topology · ${int(rv.telemetryChanges)} telemetry</span></h2>
@@ -282,8 +282,8 @@ function reviewRender(ctx, data) {
             ${showAll && rv.changes.length > CAP ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show fewer</button></td></tr>` : ''}</tbody></table>
         ${topoOnly && ids.length ? html`
           <h2 class="lat-card-title">Identity consequences</h2>
-          <table class="lat-table"><thead><tr><th>Identity</th><th class="r">Kept</th><th class="r">Added</th><th class="r">Removed</th>${ids.some((r) => r.renumbered) ? html`<th class="r" title="Kept objects that get a new MoRef">Renumbered</th>` : ''}</tr></thead>
-            <tbody>${ids.map((r, i) => html`<tr class="${i === ids.length - 1 ? '' : ''}">${i === ids.length - 1 ? html`<td class="ink"><b>${r.label === 'Performance entities' ? 'All perf entities' : r.label}</b></td>` : html`<td>${r.label}</td>`}<td class="num r">${int(r.kept)}</td><td class="num r">${int(r.added)}</td><td class="num r">${int(r.removed)}</td>${ids.some((x) => x.renumbered) ? html`<td class="num r">${r.renumbered ? int(r.renumbered) : ''}</td>` : ''}</tr>`)}</tbody></table>` : ''}
+          <table class="lat-table"><thead><tr><th>Identity</th><th class="r">Kept</th><th class="r">Added</th><th class="r">Restored</th><th class="r">Removed</th></tr></thead>
+            <tbody>${ids.map((r, i) => html`<tr class="${i === ids.length - 1 ? '' : ''}">${i === ids.length - 1 ? html`<td class="ink"><b>${r.label === 'Performance entities' ? 'All perf entities' : r.label}</b></td>` : html`<td>${r.label}</td>`}<td class="num r">${int(r.kept)}</td><td class="num r">${int(r.added)}</td><td class="num r">${int(r.restored)}</td><td class="num r">${int(r.removed)}</td></tr>`)}</tbody></table><p class="anno">Restored counts cover registry-tracked clusters, hosts, VMs and NVMe disks. Added virtual disk and performance identities may include previously seen identities.</p>` : ''}
         ${(rv.warnings || []).filter((w) => w.title !== 'Replaces a pending draft').map((w) => banner(w.severity === 'ok' ? 'ok' : w.severity === 'warn' ? 'warn' : 'info', html`<b>${w.title}.</b> ${w.text}`))}
         ${topoOnly && !rv.identityChurn && !hasChurnCard && ids.length ? banner('ok', html`<b>No identity churn.</b> Nothing is removed or renamed.`) : ''}
         ${!topoOnly && !(rv.warnings || []).some((w) => w.title === 'Telemetry only') ? banner('ok', html`<b>Telemetry only.</b> The running vCenter is not rebuilt. Sessions, history and identities are untouched.`) : ''}

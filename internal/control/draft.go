@@ -286,12 +286,11 @@ type Change struct {
 
 // IdentityRow counts the identities one kind keeps, adds and removes.
 type IdentityRow struct {
-	Label   string `json:"label"`
-	Kept    int    `json:"kept"`
-	Added   int    `json:"added"`
-	Removed int    `json:"removed"`
-	// Renumbered counts kept objects that get a new MoRef (MoRef row only).
-	Renumbered int `json:"renumbered,omitempty"`
+	Label    string `json:"label"`
+	Kept     int    `json:"kept"`
+	Added    int    `json:"added"`
+	Restored int    `json:"restored"`
+	Removed  int    `json:"removed"`
 }
 
 // Warning is a note the operator should read before applying.
@@ -299,102 +298,6 @@ type Warning struct {
 	Severity string `json:"severity"` // warn | info | ok
 	Title    string `json:"title"`
 	Text     string `json:"text"`
-}
-
-// Renumbered counts the retained objects that get a new MoRef: vcsim numbers
-// MoRefs in creation order, which is registry serial order, so every object
-// created after the first removed one is numbered again. UUIDs do not change.
-type Renumbered struct {
-	Clusters int `json:"clusters"`
-	Hosts    int `json:"hosts"`
-	VMs      int `json:"vms"`
-}
-
-// Total is every renumbered object.
-func (r Renumbered) Total() int { return r.Clusters + r.Hosts + r.VMs }
-
-// firstRemoved is the lowest registry serial among objects that o has and n
-// does not (0 when nothing is removed): everything created after it is
-// numbered again.
-func firstRemoved(o, n *topology.Topology) int {
-	type id struct {
-		key    string
-		serial int
-	}
-	have := map[id]bool{}
-	for _, c := range n.Clusters() {
-		have[id{c.Key, c.Serial}] = true
-		for _, h := range c.Hosts {
-			have[id{h.Key, h.Serial}] = true
-			for _, d := range h.Devices {
-				have[id{d.Key, d.Serial}] = true
-			}
-		}
-		for _, v := range c.VMs {
-			have[id{v.Key, v.Serial}] = true
-		}
-	}
-	first := 0
-	note := func(k id) {
-		if !have[k] && (first == 0 || k.serial < first) {
-			first = k.serial
-		}
-	}
-	for _, c := range o.Clusters() {
-		note(id{c.Key, c.Serial})
-		for _, h := range c.Hosts {
-			note(id{h.Key, h.Serial})
-			for _, d := range h.Devices {
-				note(id{d.Key, d.Serial})
-			}
-		}
-		for _, v := range c.VMs {
-			note(id{v.Key, v.Serial})
-		}
-	}
-	return first
-}
-
-// renumbered compares the creation order of two topologies.
-func renumbered(o, n *topology.Topology) Renumbered {
-	type id struct {
-		key    string
-		serial int
-	}
-	oldIDs := map[id]bool{}
-	for _, c := range o.Clusters() {
-		oldIDs[id{c.Key, c.Serial}] = true
-		for _, h := range c.Hosts {
-			oldIDs[id{h.Key, h.Serial}] = true
-		}
-		for _, v := range c.VMs {
-			oldIDs[id{v.Key, v.Serial}] = true
-		}
-	}
-	first := firstRemoved(o, n)
-	var r Renumbered
-	if first == 0 {
-		return r
-	}
-	for _, c := range n.Clusters() {
-		if !oldIDs[id{c.Key, c.Serial}] {
-			continue // new objects are created last
-		}
-		if c.Serial > first {
-			r.Clusters++
-		}
-		for _, h := range c.Hosts {
-			if oldIDs[id{h.Key, h.Serial}] && h.Serial > first {
-				r.Hosts++
-			}
-		}
-		for _, v := range c.VMs {
-			if oldIDs[id{v.Key, v.Serial}] && v.Serial > first {
-				r.VMs++
-			}
-		}
-	}
-	return r
 }
 
 // Review is what applying a draft would do.
@@ -410,7 +313,6 @@ type Review struct {
 	RebuildsVCenter  bool          `json:"rebuildsVcenter"`
 	Identities       []IdentityRow `json:"identities"`
 	Churn            bool          `json:"identityChurn"`
-	Renumbered       Renumbered    `json:"renumbered"`
 	NotAffected      []string      `json:"notAffected"`
 	Warnings         []Warning     `json:"warnings"`
 	Scope            string        `json:"scope"`
@@ -450,11 +352,6 @@ func (c *Controller) previewTopology(d *Draft) (*topology.Topology, *registry.Re
 		for _, k := range d.Regenerate {
 			reg.Retire(k)
 		}
-		for _, k := range d.Scenario.Removed {
-			if !old.sc.IsRemoved(k) {
-				reg.Retire(k)
-			}
-		}
 	}
 	return topology.Generate(d.Scenario, reg), reg
 }
@@ -481,11 +378,12 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 
 	if topoChanged {
 		rv.Changes = append(rv.Changes, topologyChanges(old, nt, d, oldProj, newProj)...)
-		rv.Identities = identityRows(old.topo, nt, c.cat)
+		var previous *registry.Registry
 		if old.sc.Seed == d.Scenario.Seed {
-			rv.Renumbered = renumbered(old.topo, nt)
+			previous = c.reg
 		}
-		rv.Identities = withMoRefRow(rv.Identities, rv.Renumbered)
+		rv.Identities = identityRows(old.topo, nt, c.cat, previous)
+		rv.Identities = withMoRefRow(rv.Identities)
 	}
 	if teleChanged {
 		rv.Changes = append(rv.Changes, telemetryChanges(old.sc, d.Scenario)...)
@@ -516,14 +414,11 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 			}
 		}
 	}
-	if rv.Renumbered.Total() > 0 {
-		rv.Churn = true
-	}
 	if len(rv.Changes) > 120 {
 		rv.More = len(rv.Changes) - 120
 		rv.Changes = rv.Changes[:120]
 	}
-	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged, rv.Renumbered)
+	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged)
 	rv.Warnings = warnings(old, nt, d, rv, newProj)
 	return rv, nil
 }
@@ -734,7 +629,7 @@ func telemetryChanges(o, n *scenario.Scenario) []Change {
 }
 
 // identityRows compares two topologies by (key, serial).
-func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
+func identityRows(o, n *topology.Topology, cat *catalog.Catalog, previous *registry.Registry) []IdentityRow {
 	type id struct {
 		key    string
 		serial int
@@ -748,7 +643,7 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 		}
 		return m
 	}
-	row := func(label string, pick func(*topology.Cluster) []id) IdentityRow {
+	row := func(label, prefix string, pick func(*topology.Cluster) []id) IdentityRow {
 		a, b := set(o, pick), set(n, pick)
 		r := IdentityRow{Label: label}
 		for k := range a {
@@ -760,19 +655,24 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 		}
 		for k := range b {
 			if !a[k] {
-				r.Added++
+				key := prefix + k.key
+				if prefix != "" && previous != nil && previous.Has(key) && previous.Serial(key) == k.serial {
+					r.Restored++
+				} else {
+					r.Added++
+				}
 			}
 		}
 		return r
 	}
 	rows := []IdentityRow{
-		row("Host UUIDs · vSAN node UUIDs", func(c *topology.Cluster) (out []id) {
+		row("Host UUIDs · vSAN node UUIDs", "host/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				out = append(out, id{h.Key, h.Serial})
 			}
 			return
 		}),
-		row("NVMe disk UUIDs", func(c *topology.Cluster) (out []id) {
+		row("NVMe disk UUIDs", "device/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				for _, d := range h.Devices {
 					if d.Claimed {
@@ -782,13 +682,13 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 			}
 			return
 		}),
-		row("VM UUIDs · instanceUuid", func(c *topology.Cluster) (out []id) {
+		row("VM UUIDs · instanceUuid", "vm/", func(c *topology.Cluster) (out []id) {
 			for _, v := range c.VMs {
 				out = append(out, id{v.Key, v.Serial})
 			}
 			return
 		}),
-		row("Virtual disk identities", func(c *topology.Cluster) (out []id) {
+		row("Virtual disk identities", "", func(c *topology.Cluster) (out []id) {
 			for _, v := range c.VMs {
 				for i := range v.Disks {
 					out = append(out, id{fmt.Sprintf("%s#%d", v.Key, i), v.Serial})
@@ -796,7 +696,7 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 			}
 			return
 		}),
-		row("Cluster UUIDs · vSAN datastores", func(c *topology.Cluster) []id { return []id{{c.Key, c.Serial}} }),
+		row("Cluster UUIDs · vSAN datastores", "cluster/", func(c *topology.Cluster) []id { return []id{{c.Key, c.Serial}} }),
 	}
 	// Compare actual family/ref pairs for clusters that changed, so
 	// architecture changes account for replaced disk and performance
@@ -864,7 +764,7 @@ func sameCluster(o, c *topology.Cluster) bool {
 		fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed
 }
 
-func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool, rn Renumbered) []string {
+func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool) []string {
 	var out []string
 	if topoChanged {
 		touched := map[string]bool{}
@@ -881,11 +781,7 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 			}
 		}
 		if kept > 0 {
-			if rn.Total() > 0 {
-				out = append(out, fmt.Sprintf("UUIDs of %d other clusters", kept))
-			} else {
-				out = append(out, fmt.Sprintf("%d other clusters", kept))
-			}
+			out = append(out, fmt.Sprintf("%d other clusters", kept))
 		}
 		if old.sc.Seed == d.Scenario.Seed {
 			out = append(out, "seed "+d.Scenario.Seed)
@@ -905,11 +801,6 @@ func warnings(old *running, nt *topology.Topology, d *Draft, rv *Review, np *Pro
 	if rv.Churn && old.sc.Seed != d.Scenario.Seed {
 		w = append(w, Warning{"warn", "Applying replaces every identity",
 			"A new seed gives every cluster, host, disk and VM a new identity. VCF Operations will see new objects and stop receiving data for the old ones."})
-	}
-	if rn := rv.Renumbered; rn.Total() > 0 {
-		w = append(w, Warning{"warn", "MoRefs are renumbered",
-			fmt.Sprintf("%s clusters, %s hosts and %s VMs that already exist are created after something this change removes, so they get new MoRefs. Their UUIDs do not change. The VCF Operations vCenter adapter keys on MoRefs and will see them as new objects; the vSAN pack keys on UUIDs and will not.",
-				num(rn.Clusters), num(rn.Hosts), num(rn.VMs))})
 	}
 	if rv.RebuildsVCenter && rv.After.Entities > 20000 {
 		w = append(w, Warning{"warn", "Large fan-out",
@@ -942,10 +833,8 @@ func num(n int) string {
 	return s
 }
 
-// withMoRefRow inserts the MoRef row after the host row. MoRefs are a
-// different thing from UUIDs: vcsim numbers them in creation order, so
-// kept UUIDs do not mean kept MoRefs.
-func withMoRefRow(rows []IdentityRow, rn Renumbered) []IdentityRow {
+// withMoRefRow inserts the MoRef row after the host row.
+func withMoRefRow(rows []IdentityRow) []IdentityRow {
 	var hostRow IdentityRow
 	var vmRow IdentityRow
 	var clRow IdentityRow
@@ -960,9 +849,8 @@ func withMoRefRow(rows []IdentityRow, rn Renumbered) []IdentityRow {
 		}
 	}
 	row := IdentityRow{Label: "MoRefs · clusters, hosts, VMs",
-		Added: clRow.Added + hostRow.Added + vmRow.Added, Removed: clRow.Removed + hostRow.Removed + vmRow.Removed,
-		Renumbered: rn.Total()}
-	row.Kept = clRow.Kept + hostRow.Kept + vmRow.Kept - row.Renumbered
+		Kept:  clRow.Kept + hostRow.Kept + vmRow.Kept,
+		Added: clRow.Added + hostRow.Added + vmRow.Added, Restored: clRow.Restored + hostRow.Restored + vmRow.Restored, Removed: clRow.Removed + hostRow.Removed + vmRow.Removed}
 	out := make([]IdentityRow, 0, len(rows)+1)
 	for _, r := range rows {
 		out = append(out, r)
