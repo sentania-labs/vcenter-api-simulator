@@ -91,6 +91,7 @@ var (
 	ConfigSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterConfigSystem", Value: "vsan-cluster-config-system"}
 	DiskMgmtRef     = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcDiskManagementSystem", Value: "vsan-disk-management-system"}
 	HealthSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
+	SpaceSystemRef  = vim25types.ManagedObjectReference{Type: "VsanSpaceReportSystem", Value: "vsan-cluster-space-report-system"}
 )
 
 // Install registers the /vsanHealth endpoint on the service. It must run after
@@ -103,6 +104,7 @@ func Install(s *simulator.Service, env *Env) {
 	r.Put(&ClusterConfigSystem{ManagedObjectReference: ConfigSystemRef, env: env})
 	r.Put(&DiskManagementSystem{ManagedObjectReference: DiskMgmtRef, env: env})
 	r.Put(&ClusterHealthSystem{ManagedObjectReference: HealthSystemRef, env: env})
+	r.Put(&SpaceReportSystem{ManagedObjectReference: SpaceSystemRef, env: env})
 	s.RegisterSDK(r)
 }
 

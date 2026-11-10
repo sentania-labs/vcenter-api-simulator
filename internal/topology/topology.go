@@ -68,6 +68,29 @@ type Cluster struct {
 	Spec          scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
 }
 
+// VsanCapacity and VsanUsed are shared by datastore and vSAN capacity reads.
+func VsanCapacity(cl *Cluster) int64 {
+	var total int64
+	for _, h := range cl.Hosts {
+		for _, d := range h.Devices {
+			if d.Claimed {
+				total += d.CapacityBytes
+			}
+		}
+	}
+	return total
+}
+
+func VsanUsed(cl *Cluster) int64 {
+	var used int64
+	for _, vm := range cl.VMs {
+		for _, d := range vm.Disks {
+			used += d.CapacityKB << 10 / 2
+		}
+	}
+	return used
+}
+
 // VDS is the datacenter's vDS name; VDSUUID its uuid; Portgroup the VM
 // portgroup. Kept as methods so the /vsanHealth and network code reads one
 // place.

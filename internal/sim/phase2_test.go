@@ -3,6 +3,7 @@ package sim_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -831,5 +832,40 @@ clusters:
 				t.Errorf("cluster %d host ESA mismatch", i)
 			}
 		}
+	}
+}
+
+func TestOSACapacityReads(t *testing.T) {
+	sc := scenario.Phase1("osa-capacity")
+	sc.Defaults.Architecture = "osa"
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	e := startWith(t, topo, sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	cl := e.cl()
+	vc, err := vsan.NewClient(context.Background(), e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage, err := vsanmethods.VsanQuerySpaceUsage(context.Background(), vc.Client, &vsantypes.VsanQuerySpaceUsage{This: vsanhealth.SpaceSystemRef, Cluster: cl.Ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := vsanmethods.QueryClusterDataEfficiencyCapacityState(context.Background(), vc.Client, &vsantypes.QueryClusterDataEfficiencyCapacityState{This: vsanhealth.DiskMgmtRef, Cluster: cl.Ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capacity, used := topology.VsanCapacity(cl.Cluster), topology.VsanUsed(cl.Cluster)
+	if usage.Returnval.TotalCapacityB != capacity || usage.Returnval.FreeCapacityB != capacity-used || state.Returnval.PhysicalCapacity != capacity || state.Returnval.PhysicalCapacityUsed != used {
+		t.Fatalf("inconsistent capacity: %+v %+v", usage.Returnval, state.Returnval)
+	}
+	if state.Returnval.LogicalCapacity != 0 || usage.Returnval.SpaceOverview == nil || usage.Returnval.SpaceDetail == nil {
+		t.Fatal("missing OSA space fields")
+	}
+	req := `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body><VsanClusterGetClaimedCapacity xmlns="urn:vsan"><_this type="VsanVcClusterConfigSystem">vsan-cluster-config-system</_this><cluster type="ClusterComputeResource">` + cl.Ref.Value + `</cluster></VsanClusterGetClaimedCapacity></Body></Envelope>`
+	status, body := e.post("/vsanHealth", req)
+	if status != 200 || !strings.Contains(string(body), fmt.Sprintf("<returnval>%d</returnval>", capacity)) {
+		t.Fatalf("claimed capacity: %d %s", status, body)
 	}
 }
