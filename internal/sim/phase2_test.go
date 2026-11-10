@@ -869,3 +869,30 @@ func TestOSACapacityReads(t *testing.T) {
 		t.Fatalf("claimed capacity: %d %s", status, body)
 	}
 }
+
+func TestOSAPerfSupplementarySchema(t *testing.T) {
+	sc := scenario.Phase1("osa-schema")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	vc, err := vsan.NewClient(context.Background(), e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aggregate, err := vsanmethods.VsanPerfGetAggregatedEntityTypes(context.Background(), vc.Client, &vsantypes.VsanPerfGetAggregatedEntityTypes{This: vsanhealth.PerfManagerRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aggregate.Returnval) != 1 || aggregate.Returnval[0].Name != "aggregate" || len(aggregate.Returnval[0].Graphs) == 0 {
+		t.Fatalf("aggregate: %+v", aggregate.Returnval)
+	}
+	diagnostics, err := vsanmethods.VsanPerfGetSupportedDiagnosticExceptions(context.Background(), vc.Client, &vsantypes.VsanPerfGetSupportedDiagnosticExceptions{This: vsanhealth.PerfManagerRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostics.Returnval) != 20 || diagnostics.Returnval[0].ExceptionId == "" || diagnostics.Returnval[0].ExceptionDetails == "" {
+		t.Fatalf("diagnostics: %+v", diagnostics.Returnval)
+	}
+}

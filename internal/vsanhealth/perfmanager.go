@@ -1,6 +1,8 @@
 package vsanhealth
 
 import (
+	_ "embed"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -13,6 +15,32 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
 )
+
+// The schema is service-wide: the OSA walk and the ESA capture advertise
+// the same graphs and metric labels. These two supplementary catalogs come
+// from the sanitized OSA walk.
+//
+//go:embed fixtures/aggregate.json
+var aggregateSchema []byte
+
+//go:embed fixtures/diagnostics.json
+var diagnosticSchema []byte
+
+func (m *PerfManager) VsanPerfGetAggregatedEntityTypes(ctx *simulator.Context, req *vsantypes.VsanPerfGetAggregatedEntityTypes) soap.HasFault {
+	res := &vsantypes.VsanPerfGetAggregatedEntityTypesResponse{}
+	if err := json.Unmarshal(aggregateSchema, &res.Returnval); err != nil {
+		return &methods.VsanPerfGetAggregatedEntityTypesBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
+	}
+	return &methods.VsanPerfGetAggregatedEntityTypesBody{Res: res}
+}
+
+func (m *PerfManager) VsanPerfGetSupportedDiagnosticExceptions(ctx *simulator.Context, req *vsantypes.VsanPerfGetSupportedDiagnosticExceptions) soap.HasFault {
+	res := &vsantypes.VsanPerfGetSupportedDiagnosticExceptionsResponse{}
+	if err := json.Unmarshal(diagnosticSchema, &res.Returnval); err != nil {
+		return &methods.VsanPerfGetSupportedDiagnosticExceptionsBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
+	}
+	return &methods.VsanPerfGetSupportedDiagnosticExceptionsBody{Res: res}
+}
 
 // maxWildcardWindow is the live limit on a wildcard query's window.
 const maxWildcardWindow = 12 * time.Hour
