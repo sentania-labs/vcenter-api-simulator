@@ -466,6 +466,40 @@ func TestTreeAndClusterView(t *testing.T) {
 	}
 }
 
+// A mixed ESA and OSA topology must be labelled per cluster: the datastore
+// type follows the cluster's architecture and the projection counts OSA
+// clusters so the console does not call every cluster ESA.
+func TestArchitectureIsLabelledPerCluster(t *testing.T) {
+	sc := tenClusters(t)
+	c := newCtl(t, sc, "", "t")
+	if got := Project(c.cat, c.applied().topo).OSAClusters; got != 0 {
+		t.Fatalf("ESA-only topology: %d OSA clusters", got)
+	}
+	e := editable(t, c)
+	for i := range e.Clusters {
+		if e.Clusters[i].Key == "dc-01/cluster-01" {
+			e.Clusters[i].Architecture = "osa"
+		}
+	}
+	if e.Defaults.Architecture != "" {
+		t.Fatalf("test assumes an ESA default, got %q", e.Defaults.Architecture)
+	}
+	put(t, c, e)
+	mixed, _ := c.previewTopology(c.draft)
+	if got := Project(c.cat, mixed).OSAClusters; got != 1 {
+		t.Errorf("mixed topology: %d OSA clusters, want 1", got)
+	}
+	for key, want := range map[string]string{"dc-01/cluster-01": "vSAN OSA", "dc-01/cluster-02": "vSAN ESA"} {
+		cv, err := c.Cluster(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cv.Datastores[0].Type; got != want {
+			t.Errorf("%s datastore type %q, want %q", key, got, want)
+		}
+	}
+}
+
 // ---- the API plane ------------------------------------------------------------
 
 const soapEnv = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Body>%s</soapenv:Body></soapenv:Envelope>`

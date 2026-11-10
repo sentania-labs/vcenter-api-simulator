@@ -64,7 +64,7 @@ export default {
 
       <section class="lat-card" aria-labelledby="ov-inv"><h2 class="lat-card-title" id="ov-inv">Inventory <span class="aside">topology v${st.topology.version} · ${int(st.topology.datacenters)} datacenter${st.topology.datacenters === 1 ? '' : 's'}</span></h2>
         <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
-          ${tile('Clusters', int(p.clusters), `vSAN ESA${st.overriddenClusters ? ' · ' + st.overriddenClusters + ' overridden' : ''}`)}
+          ${tile('Clusters', int(p.clusters), `${p.osaClusters === 0 ? 'vSAN ESA' : p.osaClusters === p.clusters ? 'vSAN OSA' : `vSAN mixed · ${p.osaClusters} OSA, ${p.clusters - p.osaClusters} ESA`}${st.overriddenClusters ? ' · ' + st.overriddenClusters + ' overridden' : ''}`)}
           ${tile('Hosts', int(p.hosts), p.clusters ? `${(p.hosts / p.clusters).toFixed(1)} per cluster` : '')}
           ${tile('VMs', int(p.vms), p.hosts ? `${(p.vms / p.hosts).toFixed(1)} per host` : '')}
           ${tile('Virtual disks', int(p.vdisks), p.vms ? `${(p.vdisks / p.vms).toFixed(1)} per VM` : '')}

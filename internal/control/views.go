@@ -569,7 +569,11 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		}
 	}
 	claimed := cl.Spec.Host.ClaimedDevices
-	v.Datastores = append(v.Datastores, DatastoreRow{Name: cl.Datastore, Type: "vSAN ESA", Backing: fmt.Sprintf("%d NVMe / host", claimed),
+	vsanType := "vSAN ESA"
+	if cl.Spec.Architecture == "osa" {
+		vsanType = "vSAN OSA"
+	}
+	v.Datastores = append(v.Datastores, DatastoreRow{Name: cl.Datastore, Type: vsanType, Backing: fmt.Sprintf("%d NVMe / host", claimed),
 		Mounted: len(cl.Hosts), Perf: "queried"})
 	if local > 0 {
 		v.Datastores = append(v.Datastores, DatastoreRow{Name: "local VMFS", Type: "VMFS · local", Backing: fmt.Sprintf("%d / host", scenario.Int(cl.Spec.Host.LocalDevices)),

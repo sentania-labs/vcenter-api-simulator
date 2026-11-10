@@ -18,7 +18,7 @@ const FIELDS = {
   disksPerVM: { label: 'Virtual disks / VM', path: ['vms', 'disksPerVM'], min: 1, src: 'disksPerVM' },
   threads: { label: 'Logical CPUs', path: ['host', 'threads'], min: 1, src: 'threads', hint: 'host-cpu objects' },
   domWorlds: { label: 'DOM worlds', path: ['host', 'domWorlds'], min: 0, src: 'domWorlds', hint: 'dom-world-cpu objects' },
-  claimedDevices: { label: 'NVMe devices', path: ['host', 'claimedDevices'], min: 1, src: 'claimedDevices', hint: 'claimed by vSAN ESA' },
+  claimedDevices: { label: 'NVMe devices', path: ['host', 'claimedDevices'], min: 1, src: 'claimedDevices', hint: 'claimed by vSAN' },
   localDevices: { label: 'Local devices', path: ['host', 'localDevices'], min: 0, src: 'localDevices', hint: 'local VMFS, inventory only' },
   vsanPnics: { label: 'pNICs (vSAN)', path: ['host', 'vsanPnics'], min: 1, src: 'vsanPnics', hint: 'vsan-pnic-net objects' },
   dedup: { label: 'Dedup', path: ['dedup'], bool: true, src: 'dedup' },
@@ -197,7 +197,7 @@ function editorCard(ctx, d) {
   return html`<section class="lat-card" aria-labelledby="ed-title">
     <div class="row">
       <h2 class="page-title mono" id="ed-title" style="font-size:16px;white-space:nowrap;margin:0">${v.name} <span class="muted" style="font-size:12px;font-weight:400">${v.datacenter}</span></h2>
-      ${badge('vSAN ESA')}${stateBadge}${regen ? badge('new identity generation', 'warn') : ''}${v.seedEpoch > 0 ? badge(`seed epoch ${v.seedEpoch}`, 'warn') : ''}
+      ${badge(v.spec.architecture === 'osa' ? 'vSAN OSA' : 'vSAN ESA')}${stateBadge}${regen ? badge('new identity generation', 'warn') : ''}${v.seedEpoch > 0 ? badge(`seed epoch ${v.seedEpoch}`, 'warn') : ''}
       <span class="grow"></span><span class="anno" style="white-space:nowrap">${v.moref ? html`MoRef <span class="mono">${v.moref}</span> · ` : ''}${v.vsanUuid ? html`UUID <span class="mono">${v.vsanUuid}</span>` : html`<span class="subtle">identities are derived at apply</span>`}</span>
     </div>
     ${sched ? banner('info', html`A change is scheduled. Editing is locked until it lands or you cancel it from the banner above.`) : ''}
@@ -208,10 +208,10 @@ function editorCard(ctx, d) {
       ${input(v, 'dedup', locked)}${input(v, 'compression', locked)}
       <div><span class="lat-label">vDS</span><div class="mono ink" style="padding:5px 0">${v.vds}</div><div class="lat-hint">${v.portgroups} port groups · ${v.datacenter}</div></div>
     </div>
-    <h2 class="lat-card-title">Storage <span class="aside">vSAN ESA is what the MP collects; the other rows are /sdk inventory only</span></h2>
+    <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; the other rows are /sdk inventory only</span></h2>
     <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>MP Perf Service</th></tr></thead><tbody>
       ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td class="${s.perfService === 'queried' ? 'ink' : 'muted'}">${s.perfService}</td></tr>`)}</tbody></table>
-    <div class="anno">vSAN ESA is the only architecture the simulator models. OSA, NFS, FC and iSCSI datastores are not editable yet.</div>
+    <div class="anno">The simulator models vSAN ESA and OSA clusters. A cluster's architecture is set in the scenario file; OSA clusters are not editable in the console yet. NFS, FC and iSCSI datastores are not editable yet.</div>
     <h2 class="lat-card-title">Per-host defaults <span class="aside">applies to every host in ${v.name}</span></h2>
     <div class="fields c6">${['threads', 'domWorlds', 'claimedDevices', 'localDevices', 'vsanPnics'].map((id) => input(v, id, locked))}</div>
     <h2 class="lat-card-title">Hosts <span class="aside">${v.state === 'removed' ? 0 : v.spec.hosts} after apply · identities derive from seed ${ctx.state.topology.seed} + cluster + host ordinal</span></h2>

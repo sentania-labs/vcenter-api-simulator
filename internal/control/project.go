@@ -65,6 +65,7 @@ type Load struct {
 // topology and the catalog and never measured.
 type Projection struct {
 	Clusters    int `json:"clusters"`
+	OSAClusters int `json:"osaClusters"`
 	Hosts       int `json:"hosts"`
 	VMs         int `json:"vms"`
 	VDisks      int `json:"vdisks"`
@@ -124,6 +125,9 @@ func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 	}
 	for _, cl := range t.Clusters() {
 		p.Clusters++
+		if cl.Spec.Architecture == "osa" {
+			p.OSAClusters++
+		}
 		p.Hosts += len(cl.Hosts)
 		p.VMs += len(cl.VMs)
 		p.Datastores++ // the cluster's vSAN datastore
