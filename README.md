@@ -1,6 +1,6 @@
 # vCenter API Simulator
 
-A configurable, deployable vCenter and vSAN ESA API simulator for **VCF Operations management-pack compatibility and scale testing**.
+A configurable, deployable vCenter and vSAN ESA/OSA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
 > Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack) with the Phase 5 control console. No production-grade vCenter emulation is claimed.
 
@@ -20,7 +20,7 @@ Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service
 
 The simulator is a Go service on [govmomi vcsim](https://github.com/vmware/govmomi/tree/main/vcsim)
 with an out-of-tree `/vsanHealth` extension. A **scenario file** describes
-the simulated vCenter: datacenters, many vSAN ESA clusters with their own
+the simulated vCenter: datacenters, vSAN ESA and OSA clusters with their own
 host, device, VM, CPU, DOM-world and uplink counts, who may log in, the
 certificate, and failure and latency knobs. An **identity registry** in the
 data directory keeps every MoRef and uuid stable across restarts and
@@ -179,8 +179,11 @@ the Docker bridge gateway, so bind the simulator to `0.0.0.0`. It needs a TTY
 and gets a pty from the runner. `attach_to_vcenter` must be off under
 `mp-test`, which has no Operations Suite API to resolve vCenter objects.
 
-Out of scope for this milestone: OSA and non-vSAN storage, the REST
-`/api` surface, and any live vCenter access.
+The OSA scenario and its evidence limits are described in the
+[scenario reference](docs/SCENARIO.md#osa-evidence-and-limits). The REST
+surface currently models sessions and selected captured failure statuses;
+successful inventory REST reads are not implemented. Non-vSAN storage and
+live vCenter access remain outside this milestone.
 
 ## Running it
 

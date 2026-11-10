@@ -164,6 +164,22 @@ Ten clusters of the example scenario (82 hosts, 446 VMs) build in under a
 second and the process uses tens of megabytes; nothing is stored per metric
 sample.
 
+## OSA evidence and limits
+
+[`osa.yaml`](../examples/scenarios/osa.yaml) selects OSA for a three-host
+cluster. Set `statsPrimary: false` to reproduce the missing stats primary:
+sample queries return `NotFound` with the
+`com.vmware.vsan.perfsvc.fault.masternotfound` message. With the primary
+online, populated families use five-minute CSV samples, and the observed
+empty and faulting families retain their captured outcomes.
+
+The walk did not contain live samples for VM-level families, stretched
+clusters, multiple disk groups per host, dedup enabled, or populated iSCSI.
+Those cases are schema-only and are not validated as live OSA behavior.
+OSA models one disk-group identity per host; disk mappings were empty in
+both walks. Capacity and telemetry values are synthetic, not recordings of
+the source cluster.
+
 ## Editing a running simulator: the control console
 
 The console (`-admin`, default `http://127.0.0.1:9090/`) edits the same
