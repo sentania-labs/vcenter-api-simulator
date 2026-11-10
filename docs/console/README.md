@@ -27,9 +27,9 @@ Only where the backend has no data or behaviour for it:
 - **API Activity**: no history-depth/restart diagram, backfill, recent-cycles table, "Same cycle", "Copy as fixture" or "Open rule". The trace column is the call's sequence number. Request bodies are kept for `/vsanHealth` only, never `/sdk`. Authentication refusals are their own `denied` result.
 - **Compatibility**: a static matrix of what is verified against the captured fixtures, plus counts seen in traffic; no fixture browser.
 - **Topology**: no topology log, so a discarded draft cannot be restored; the review has no cluster-tree column and adds a "Discard draft…" button. Pages scroll rather than fitting 900 px.
-- **Added**: scenario presets, a scheduled-apply banner with Cancel, a paused banner, a persistent apply-failure banner, a MoRef-renumbering warning in the review.
+- **Added**: scenario presets, a scheduled-apply banner with Cancel, a paused banner, a persistent apply-failure banner.
 
-Known limitation shown honestly in the review: removing an object renumbers the MoRefs of everything created after it (UUIDs are unchanged), because vcsim numbers MoRefs in creation order. See [SCENARIO](../SCENARIO.md#identity-seed-registry-regenerate).
+Removing a cluster, host or VM keeps the MoRefs of everything that remains, so the review does not warn about renumbering. See [SCENARIO](../SCENARIO.md#identity-seed-registry-regenerate).
 
 ## Independent UX walkthrough
 
@@ -37,8 +37,8 @@ An evaluation agent that had not seen the code walked workflows A to F of [UX-RE
 
 | Round | Score | High | Notes |
 |---|---:|---:|---|
-| 1 | 68 | 3 | review said other clusters were unaffected when MoRefs are renumbered; lost clicks from a periodic re-render; a telemetry edit bumped the topology version |
+| 1 | 68 | 3 | review said other clusters were unaffected when MoRefs were renumbered (since fixed: removal no longer renumbers); lost clicks from a periodic re-render; a telemetry edit bumped the topology version |
 | 2 | 76 | 0 | 15 medium findings (contradictory identity table, focus loss, 1024 px layout, auth failures counted as faults, …) |
-| 3 | 70 | 3 | diagnosis merged two collections; an apply that failed because the disk was full was only a toast; MoRef renumbering on removal |
+| 3 | 70 | 3 | diagnosis merged two collections; an apply that failed because the disk was full was only a toast; MoRef renumbering on removal (since fixed) |
 
-After each round the findings were fixed (each fix has a test where it is logic, and the third round's diagnosis and failure-banner findings are fixed), except removal-driven MoRef renumbering (a Phase 2 design limit) and per-cluster latency. The target of 85 with no high finding was **not reached in any round**, and the last fixes were not re-scored. The score is a design-assessment target, not proof of usability; it needs the owner's review.
+After each round the findings were fixed (each fix has a test where it is logic, and the third round's diagnosis and failure-banner findings are fixed), except per-cluster latency (removal-driven MoRef renumbering was fixed afterwards). The target of 85 with no high finding was **not reached in any round**, and the last fixes were not re-scored. The score is a design-assessment target, not proof of usability; it needs the owner's review.

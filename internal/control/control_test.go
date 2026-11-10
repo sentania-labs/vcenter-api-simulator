@@ -716,44 +716,53 @@ func TestUnauthenticatedQueryIsNotInjected(t *testing.T) {
 }
 
 // Removing something preserves surviving MoRefs; telemetry edits do not move the version.
-func TestReviewPreservesMoRefs(t *testing.T) {
+func TestRemovalKeepsSurvivorMoRefs(t *testing.T) {
 	c := newCtl(t, tenClusters(t), "", "t")
+	refs := func() map[string]string {
+		m := map[string]string{}
+		for _, r := range c.applied().sim.Clusters {
+			m[r.Cluster.Key] = r.Ref.Value
+			for i, h := range r.Cluster.Hosts {
+				m[h.Key] = r.Hosts[i].Value
+			}
+			for i, v := range r.Cluster.VMs {
+				m[v.Key] = r.VMs[i].Value
+			}
+		}
+		return m
+	}
+	before := refs()
 	if _, err := c.DeleteCluster("dc-01/cluster-02"); err != nil {
 		t.Fatal(err)
 	}
-	rv, _ := c.Review()
-	if rv.Renumbered.Total() != 0 {
-		t.Errorf("renumbered: %+v churn %v", rv.Renumbered, rv.Churn)
-	}
-	found := false
-	for _, w := range rv.Warnings {
-		found = found || w.Title == "MoRefs are renumbered"
-	}
-	if found {
-		t.Errorf("unexpected warning: %+v", rv.Warnings)
-	}
-	c.DiscardDraft()
-
-	// deleting the last cluster renumbers nobody; adding hosts renumbers nobody
-	if _, err := c.DeleteCluster("dc-01/cluster-10"); err != nil {
+	if _, err := c.Apply("now"); err != nil {
 		t.Fatal(err)
 	}
-	if rv, _ = c.Review(); rv.Renumbered.Total() != 0 {
-		t.Errorf("deleting the newest cluster renumbered %+v", rv.Renumbered)
+	after := refs()
+	if len(after) >= len(before) {
+		t.Fatalf("removal did not shrink the inventory: %d -> %d", len(before), len(after))
 	}
-	c.DiscardDraft()
+	for key, ref := range after {
+		if before[key] != ref {
+			t.Errorf("%s moved from %q to %q", key, before[key], ref)
+		}
+	}
+}
+
+func TestTelemetryOnlyChangeKeepsVersion(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
 	e := editable(t, c)
 	setHosts(e, "dc-01/cluster-02", 12)
 	put(t, c, e)
-	if rv, _ = c.Review(); rv.Renumbered.Total() != 0 || rv.Churn {
-		t.Errorf("adding hosts renumbered %+v", rv.Renumbered)
+	if rv, _ := c.Review(); rv.Churn {
+		t.Errorf("adding hosts reported identity churn: %+v", rv)
 	}
 	c.DiscardDraft()
 
 	e = editable(t, c)
 	e.Latency.SDK = &scenario.Delay{FixedMs: 5}
 	put(t, c, e)
-	rv, _ = c.Review()
+	rv, _ := c.Review()
 	if rv.To != rv.From || c.DraftState().Pending.Target != rv.From {
 		t.Errorf("a telemetry-only change moves the version: %d -> %d", rv.From, rv.To)
 	}
