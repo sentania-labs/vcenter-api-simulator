@@ -27,6 +27,18 @@ type osaDataEfficiency struct {
 type osaConfig struct {
 	vsantypes.VsanConfigInfoEx
 	DataEfficiency osaDataEfficiency `xml:"dataEfficiencyConfig"`
+	Rdma           struct {
+		Enabled bool `xml:"rdmaEnabled"`
+	} `xml:"rdmaConfig"`
+	Esa    struct{} `xml:"vsanEsaConfigInfo"`
+	Health struct {
+		Historical struct {
+			Enabled bool `xml:"enabled"`
+		} `xml:"historicalHealthConfig"`
+	} `xml:"vsanHealthConfig"`
+	PMem struct {
+		Enabled bool `xml:"enabled"`
+	} `xml:"vsanPMemConfig"`
 }
 
 type osaConfigResponse struct {
@@ -75,7 +87,9 @@ func (s *ClusterConfigSystem) VsanClusterGetConfig(ctx *simulator.Context, req *
 		info.DataInTransitEncryptionConfig = &vsantypes.VsanDataInTransitEncryptionConfig{}
 	}
 	if cl != nil && cl.Spec.Architecture == "osa" {
-		return &osaConfigBody{Res: &osaConfigResponse{Returnval: osaConfig{VsanConfigInfoEx: info, DataEfficiency: osaDataEfficiency{Type: "VsanDataEfficiencyConfigEx"}}}}
+		config := osaConfig{VsanConfigInfoEx: info, DataEfficiency: osaDataEfficiency{Type: "VsanDataEfficiencyConfigEx"}}
+		config.Health.Historical.Enabled = true
+		return &osaConfigBody{Res: &osaConfigResponse{Returnval: config}}
 	}
 	return &methods.VsanClusterGetConfigBody{Res: &vsantypes.VsanClusterGetConfigResponse{Returnval: info}}
 }

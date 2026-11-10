@@ -17,16 +17,41 @@ func (s *DiskManagementSystem) QueryDiskMappings(ctx *simulator.Context, req *vs
 	}
 	return &methods.QueryDiskMappingsBody{Res: &vsan.QueryDiskMappingsResponse{}}
 }
+
+type repairTimerInfo struct {
+	Max          int `xml:"maxTimeToRepair"`
+	Min          int `xml:"minTimeToRepair"`
+	Objects      int `xml:"objectCount"`
+	TimedObjects int `xml:"objectCountWithRepairTimer"`
+}
+type runtimeStats struct {
+	vsan.VsanHostRuntimeStats
+	Repair repairTimerInfo `xml:"repairTimerInfo"`
+}
+type runtimeHost struct {
+	Host  vim.ManagedObjectReference `xml:"host"`
+	Stats runtimeStats               `xml:"stats"`
+}
+type runtimeResponse struct {
+	Returnval []runtimeHost `xml:"returnval"`
+}
+type runtimeBody struct {
+	Res    *runtimeResponse `xml:"urn:vsan VsanClusterGetRuntimeStatsResponse,omitempty"`
+	Fault_ *soap.Fault      `xml:"http://schemas.xmlsoap.org/soap/envelope/ Fault,omitempty"`
+}
+
+func (b *runtimeBody) Fault() *soap.Fault { return b.Fault_ }
+
 func (s *ClusterConfigSystem) VsanClusterGetRuntimeStats(ctx *simulator.Context, req *vsan.VsanClusterGetRuntimeStats) soap.HasFault {
-	res := &vsan.VsanClusterGetRuntimeStatsResponse{}
+	res := &runtimeResponse{}
 	cl := s.env.Cluster(&req.Cluster)
 	if cl == nil {
-		return &methods.VsanClusterGetRuntimeStatsBody{Fault_: simulator.Fault("cluster not found", &vim.ManagedObjectNotFound{Obj: req.Cluster})}
+		return &runtimeBody{Fault_: simulator.Fault("cluster not found", &vim.ManagedObjectNotFound{Obj: req.Cluster})}
 	}
 	for _, h := range cl.Hosts {
-		res.Returnval = append(res.Returnval, vsan.VsanRuntimeStatsHostMap{Host: s.env.hostRefs[h], Stats: &vsan.VsanHostRuntimeStats{ResyncIopsInfo: &vsan.ResyncIopsInfo{}, ConfigGeneration: &vsan.VsanConfigGeneration{VcUuid: s.env.Topo.InstanceUUID, GenNum: 1, GenTime: s.env.Now().UnixMilli()}, SupportedClusterSize: 64, RepairTimerInfo: &vsan.RepairTimerInfo{}, ComponentLimitPerCluster: 1000, MaxWitnessClusters: 48}})
+		res.Returnval = append(res.Returnval, runtimeHost{Host: s.env.hostRefs[h], Stats: runtimeStats{VsanHostRuntimeStats: vsan.VsanHostRuntimeStats{ResyncIopsInfo: &vsan.ResyncIopsInfo{}, ConfigGeneration: &vsan.VsanConfigGeneration{VcUuid: s.env.Topo.InstanceUUID, GenNum: 1, GenTime: s.env.Now().UnixMilli()}, SupportedClusterSize: 64, ComponentLimitPerCluster: 1000, MaxWitnessClusters: 48}}})
 	}
-	return &methods.VsanClusterGetRuntimeStatsBody{Res: res}
+	return &runtimeBody{Res: res}
 }
 
 type StretchSystem struct {

@@ -1079,7 +1079,7 @@ func TestOSACapturedFaultsAndHTTP(t *testing.T) {
 			t.Errorf("%s: %d %+v", name, status, got)
 		}
 	}
-	for path, want := range map[string]int{"/sdk": 404, "/sdk/": 404, "/vsanHealth": 501, "/vsanHealth/": 501} {
+	for path, want := range map[string]int{"/sdk": 404, "/sdk/": 404, "/sdk/vimService.wsdl": 200, "/vsanHealth": 501, "/vsanHealth/": 501, "/vsanHealth/vsanServiceVersions.xml": 501} {
 		res, err := http.Get(e.srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
