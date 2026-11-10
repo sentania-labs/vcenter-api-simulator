@@ -243,7 +243,7 @@ let showAll = false;
 const CAP = 10;
 let applying = false;
 
-const effectKind = (e) => (/new identit|replaces|removes|renumber|changes samples|changes performance identities/.test(e) ? 'warn' : '');
+const effectKind = (e) => (/new identit|replaces|removes|changes samples|changes performance identities/.test(e) ? 'warn' : '');
 
 function delta(a, b) {
   const d = b - a;
@@ -282,8 +282,8 @@ function reviewRender(ctx, data) {
             ${showAll && rv.changes.length > CAP ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show fewer</button></td></tr>` : ''}</tbody></table>
         ${topoOnly && ids.length ? html`
           <h2 class="lat-card-title">Identity consequences</h2>
-          <table class="lat-table"><thead><tr><th>Identity</th><th class="r">Kept</th><th class="r">Added</th><th class="r">Removed</th>${ids.some((r) => r.renumbered) ? html`<th class="r" title="Kept objects that get a new MoRef">Renumbered</th>` : ''}</tr></thead>
-            <tbody>${ids.map((r, i) => html`<tr class="${i === ids.length - 1 ? '' : ''}">${i === ids.length - 1 ? html`<td class="ink"><b>${r.label === 'Performance entities' ? 'All perf entities' : r.label}</b></td>` : html`<td>${r.label}</td>`}<td class="num r">${int(r.kept)}</td><td class="num r">${int(r.added)}</td><td class="num r">${int(r.removed)}</td>${ids.some((x) => x.renumbered) ? html`<td class="num r">${r.renumbered ? int(r.renumbered) : ''}</td>` : ''}</tr>`)}</tbody></table>` : ''}
+          <table class="lat-table"><thead><tr><th>Identity</th><th class="r">Kept</th><th class="r">Added</th><th class="r">Removed</th></tr></thead>
+            <tbody>${ids.map((r, i) => html`<tr class="${i === ids.length - 1 ? '' : ''}">${i === ids.length - 1 ? html`<td class="ink"><b>${r.label === 'Performance entities' ? 'All perf entities' : r.label}</b></td>` : html`<td>${r.label}</td>`}<td class="num r">${int(r.kept)}</td><td class="num r">${int(r.added)}</td><td class="num r">${int(r.removed)}</td></tr>`)}</tbody></table>` : ''}
         ${(rv.warnings || []).filter((w) => w.title !== 'Replaces a pending draft').map((w) => banner(w.severity === 'ok' ? 'ok' : w.severity === 'warn' ? 'warn' : 'info', html`<b>${w.title}.</b> ${w.text}`))}
         ${topoOnly && !rv.identityChurn && !hasChurnCard && ids.length ? banner('ok', html`<b>No identity churn.</b> Nothing is removed or renamed.`) : ''}
         ${!topoOnly && !(rv.warnings || []).some((w) => w.title === 'Telemetry only') ? banner('ok', html`<b>Telemetry only.</b> The running vCenter is not rebuilt. Sessions, history and identities are untouched.`) : ''}

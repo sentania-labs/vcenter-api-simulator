@@ -8,7 +8,8 @@
 // scenario edits: an entity keeps its serial for as long as it exists, a new
 // entity gets the next serial, and a retired serial is never reused. So
 // adding a cluster leaves every existing identity untouched, and removing
-// one retires its identities instead of shifting the others'.
+// an entity shifts nobody's: its serial and reserved MoRefs stay with it
+// until it is retired explicitly.
 //
 // Changing the seed changes the namespace and therefore every identity; the
 // registry refuses to load under a different seed unless the caller asks to
@@ -72,19 +73,6 @@ func (r *Registry) SetMorefRange(serial int, v MorefRange) {
 		r.doc.MorefHigh = v.End
 	}
 	r.dirty = true
-}
-
-// RetireMissing removes identities absent from a successfully built inventory.
-// Ranges remain reserved by serial so a later addition cannot reuse a MoRef.
-func (r *Registry) RetireMissing(live map[string]bool) {
-	for k := range r.doc.Entries {
-		if strings.HasPrefix(k, "cluster/") || strings.HasPrefix(k, "host/") || strings.HasPrefix(k, "vm/") || strings.HasPrefix(k, "device/") {
-			if !live[k] {
-				delete(r.doc.Entries, k)
-				r.dirty = true
-			}
-		}
-	}
 }
 
 // Namespace derives the identity namespace of a seed.

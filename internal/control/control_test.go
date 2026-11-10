@@ -1100,3 +1100,52 @@ func TestRemovalIdentityAcrossApplyAndRestart(t *testing.T) {
 		}
 	}
 }
+
+func TestGrowingHostsKeepsMoRefsOnApplyAndRestart(t *testing.T) {
+	parse := func(devices int) *scenario.Scenario {
+		sc, err := scenario.Parse([]byte(fmt.Sprintf("seed: growth\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, host: {localDevices: %d}, vms: {perHost: 1}}\n", devices)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sc
+	}
+	refs := func(c *Controller) map[string]string {
+		m := map[string]string{}
+		for _, r := range c.applied().sim.Clusters {
+			m[r.Cluster.Key] = r.Ref.Value
+			for i, h := range r.Cluster.Hosts {
+				m[h.Key] = r.Hosts[i].Value
+			}
+			for i, v := range r.Cluster.VMs {
+				m[v.Key] = r.VMs[i].Value
+			}
+		}
+		return m
+	}
+	same := func(what string, want, got map[string]string) {
+		t.Helper()
+		if len(want) != len(got) {
+			t.Fatalf("%s: %d objects, want %d", what, len(got), len(want))
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s: %s is %q, was %q", what, k, got[k], v)
+			}
+		}
+	}
+	dir := t.TempDir()
+	c := newCtl(t, parse(1), dir, "one")
+	original := refs(c)
+
+	e := editable(t, c)
+	e.Defaults.Host.LocalDevices = scenario.IntPtr(2)
+	put(t, c, e)
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatalf("adding a device to existing hosts must apply: %v", err)
+	}
+	same("after apply", original, refs(c))
+	c.Close()
+
+	c = newCtl(t, parse(3), dir, "three")
+	same("after editing the scenario file while stopped", original, refs(c))
+}

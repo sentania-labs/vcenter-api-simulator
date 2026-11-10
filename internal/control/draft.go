@@ -290,8 +290,6 @@ type IdentityRow struct {
 	Kept    int    `json:"kept"`
 	Added   int    `json:"added"`
 	Removed int    `json:"removed"`
-	// Renumbered counts kept objects that get a new MoRef (MoRef row only).
-	Renumbered int `json:"renumbered,omitempty"`
 }
 
 // Warning is a note the operator should read before applying.
@@ -300,16 +298,6 @@ type Warning struct {
 	Title    string `json:"title"`
 	Text     string `json:"text"`
 }
-
-// Renumbered is retained for compatibility with review clients.
-type Renumbered struct {
-	Clusters int `json:"clusters"`
-	Hosts    int `json:"hosts"`
-	VMs      int `json:"vms"`
-}
-
-// Total is every renumbered object.
-func (r Renumbered) Total() int { return r.Clusters + r.Hosts + r.VMs }
 
 // Review is what applying a draft would do.
 type Review struct {
@@ -324,7 +312,6 @@ type Review struct {
 	RebuildsVCenter  bool          `json:"rebuildsVcenter"`
 	Identities       []IdentityRow `json:"identities"`
 	Churn            bool          `json:"identityChurn"`
-	Renumbered       Renumbered    `json:"renumbered"`
 	NotAffected      []string      `json:"notAffected"`
 	Warnings         []Warning     `json:"warnings"`
 	Scope            string        `json:"scope"`
@@ -396,7 +383,7 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	if topoChanged {
 		rv.Changes = append(rv.Changes, topologyChanges(old, nt, d, oldProj, newProj)...)
 		rv.Identities = identityRows(old.topo, nt, c.cat)
-		rv.Identities = withMoRefRow(rv.Identities, rv.Renumbered)
+		rv.Identities = withMoRefRow(rv.Identities)
 	}
 	if teleChanged {
 		rv.Changes = append(rv.Changes, telemetryChanges(old.sc, d.Scenario)...)
@@ -427,14 +414,11 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 			}
 		}
 	}
-	if rv.Renumbered.Total() > 0 {
-		rv.Churn = true
-	}
 	if len(rv.Changes) > 120 {
 		rv.More = len(rv.Changes) - 120
 		rv.Changes = rv.Changes[:120]
 	}
-	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged, rv.Renumbered)
+	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged)
 	rv.Warnings = warnings(old, nt, d, rv, newProj)
 	return rv, nil
 }
@@ -775,7 +759,7 @@ func sameCluster(o, c *topology.Cluster) bool {
 		fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed
 }
 
-func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool, rn Renumbered) []string {
+func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool) []string {
 	var out []string
 	if topoChanged {
 		touched := map[string]bool{}
@@ -792,11 +776,7 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 			}
 		}
 		if kept > 0 {
-			if rn.Total() > 0 {
-				out = append(out, fmt.Sprintf("UUIDs of %d other clusters", kept))
-			} else {
-				out = append(out, fmt.Sprintf("%d other clusters", kept))
-			}
+			out = append(out, fmt.Sprintf("%d other clusters", kept))
 		}
 		if old.sc.Seed == d.Scenario.Seed {
 			out = append(out, "seed "+d.Scenario.Seed)
@@ -816,11 +796,6 @@ func warnings(old *running, nt *topology.Topology, d *Draft, rv *Review, np *Pro
 	if rv.Churn && old.sc.Seed != d.Scenario.Seed {
 		w = append(w, Warning{"warn", "Applying replaces every identity",
 			"A new seed gives every cluster, host, disk and VM a new identity. VCF Operations will see new objects and stop receiving data for the old ones."})
-	}
-	if rn := rv.Renumbered; rn.Total() > 0 {
-		w = append(w, Warning{"warn", "MoRefs are renumbered",
-			fmt.Sprintf("%s clusters, %s hosts and %s VMs that already exist are created after something this change removes, so they get new MoRefs. Their UUIDs do not change. The VCF Operations vCenter adapter keys on MoRefs and will see them as new objects; the vSAN pack keys on UUIDs and will not.",
-				num(rn.Clusters), num(rn.Hosts), num(rn.VMs))})
 	}
 	if rv.RebuildsVCenter && rv.After.Entities > 20000 {
 		w = append(w, Warning{"warn", "Large fan-out",
@@ -854,7 +829,7 @@ func num(n int) string {
 }
 
 // withMoRefRow inserts the MoRef row after the host row.
-func withMoRefRow(rows []IdentityRow, rn Renumbered) []IdentityRow {
+func withMoRefRow(rows []IdentityRow) []IdentityRow {
 	var hostRow IdentityRow
 	var vmRow IdentityRow
 	var clRow IdentityRow
@@ -869,9 +844,8 @@ func withMoRefRow(rows []IdentityRow, rn Renumbered) []IdentityRow {
 		}
 	}
 	row := IdentityRow{Label: "MoRefs · clusters, hosts, VMs",
-		Added: clRow.Added + hostRow.Added + vmRow.Added, Removed: clRow.Removed + hostRow.Removed + vmRow.Removed,
-		Renumbered: rn.Total()}
-	row.Kept = clRow.Kept + hostRow.Kept + vmRow.Kept - row.Renumbered
+		Kept:  clRow.Kept + hostRow.Kept + vmRow.Kept,
+		Added: clRow.Added + hostRow.Added + vmRow.Added, Removed: clRow.Removed + hostRow.Removed + vmRow.Removed}
 	out := make([]IdentityRow, 0, len(rows)+1)
 	for _, r := range rows {
 		out = append(out, r)

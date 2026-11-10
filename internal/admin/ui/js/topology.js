@@ -160,7 +160,7 @@ function input(view, id, locked) {
 function hostsTable(view) {
   const rows = view.hosts;
   const pending = rows.some((h) => h.identity !== 'unchanged');
-  const badgeFor = (h) => (h.identity === 'unchanged' ? badge('unchanged') : h.identity === 'new' ? badge('new', 'warn') : h.identity === 'renumbered' ? badge('MoRef renumbered', 'warn') : badge('removed', 'bad'));
+  const badgeFor = (h) => (h.identity === 'unchanged' ? badge('unchanged') : h.identity === 'new' ? badge('new', 'warn') : badge('removed', 'bad'));
   const one = (h) => html`<tr class="${h.identity === 'unchanged' ? '' : 'is-pending'}"><td class="ink mono">${h.name.split('.')[0]}</td><td class="mono${h.moref ? '' : ' subtle'}">${h.moref || '(derived)'}</td><td class="mono${h.moref ? '' : ' subtle'}">${h.nodeUuid}</td><td class="lat-num">${h.nvme}</td><td class="lat-num">${h.lcpu}</td><td class="lat-num">${h.vms}</td><td>${badgeFor(h)}</td></tr>`;
   const out = [];
   if (ui.allHosts || rows.length <= 8) rows.forEach((h) => out.push(one(h)));
@@ -255,7 +255,6 @@ function impactCard(ctx, d) {
     const architectureChanged = v.applied && (v.applied.architecture || 'esa') !== (v.spec.architecture || 'esa');
     if (architectureChanged) banners.push(banner('warn', html`<b>Performance identities change.</b> The review lists the performance entities added and removed by changing architecture.`));
     if (regen) banners.push(banner('warn', html`<b>Every identity in ${v.name} is replaced.</b> The cluster UUID, ${v.hosts.length} hosts, their NVMe disks and ${v.vms} VMs get new UUIDs; VCF Operations sees new objects and the old ones go stale.`));
-    else if (kept && rv && rv.renumbered && (rv.renumbered.clusters + rv.renumbered.hosts + rv.renumbered.vms) > 0) banners.push(banner('warn', html`<b>UUIDs kept, MoRefs renumbered.</b> ${kept} host${kept === 1 ? '' : 's'} here keep host, vSAN node, disk and VM UUIDs. ${int(rv.renumbered.clusters)} clusters, ${int(rv.renumbered.hosts)} hosts and ${int(rv.renumbered.vms)} VMs get new MoRefs because something this change removes was created before them.`));
     else if (kept) banners.push(banner('ok', html`<b>Host and VM identities kept.</b> ${kept} host${kept === 1 ? '' : 's'} keep MoRefs, host UUIDs, vSAN node UUIDs, disk UUIDs and VM instanceUuids.${others > 0 ? html` The other ${others - pendingOthers} cluster${others - pendingOthers === 1 ? ' is' : 's are'} untouched.` : ''}`));
     if (added && !regen) {
       const one = d.tree.pendingClusters === 1 && rv ? rv.identities : null;

@@ -5,8 +5,9 @@
 //
 // The inventory is created through vcsim's own method handlers
 // (CreateDatacenter, CreateClusterEx, AddHost_Task, CreateVM_Task) in
-// registry serial order. Each creation step reserves its counter interval in
-// the identity registry so removals leave gaps instead of shifting survivors.
+// registry serial order. Each creation step (including each local datastore)
+// reserves its counter interval in the identity registry, so removals leave
+// gaps and additions take fresh space instead of shifting survivors.
 package sim
 
 import (
@@ -90,7 +91,8 @@ type Simulator struct {
 	tasks    *taskWaiter
 	registry *registry.Registry
 
-	dcs map[*topology.Datacenter]*dcRefs
+	dcs   map[*topology.Datacenter]*dcRefs
+	hosts map[*topology.Host]*simulator.HostSystem
 }
 
 type dcRefs struct {
@@ -118,7 +120,7 @@ func New(opts Options) (*Simulator, error) {
 	if err := m.Create(); err != nil {
 		return nil, fmt.Errorf("sim: create model: %w", err)
 	}
-	s := &Simulator{Topology: topo, Catalog: cat, model: m, registry: opts.Registry, dcs: map[*topology.Datacenter]*dcRefs{}}
+	s := &Simulator{Topology: topo, Catalog: cat, model: m, registry: opts.Registry, dcs: map[*topology.Datacenter]*dcRefs{}, hosts: map[*topology.Host]*simulator.HostSystem{}}
 	s.home, err = os.MkdirTemp("", "vcsimulator-")
 	if err != nil {
 		m.Remove()
@@ -211,6 +213,13 @@ func (s *Simulator) build() error {
 			for _, h := range cl.Hosts {
 				h := h
 				steps = append(steps, step{h.Serial, func() error { return s.createHost(ctx, refs, h) }})
+				for _, d := range h.Devices {
+					d := d
+					if d.Claimed {
+						continue
+					}
+					steps = append(steps, step{d.Serial, func() error { return s.createLocalDatastore(ctx, refs, h, d) }})
+				}
 			}
 			for _, vm := range cl.VMs {
 				vm := vm
@@ -241,9 +250,6 @@ func (s *Simulator) build() error {
 			target = reserved.Start
 		} else if high := s.registry.MorefHigh(); high > target {
 			target = high
-		}
-		if target < start {
-			return fmt.Errorf("sim: counter overlap for serial %d: %d > %d", st.serial, start, target)
 		}
 		if err := setCounter(ctx, target); err != nil {
 			return err
@@ -281,23 +287,6 @@ func (s *Simulator) build() error {
 		}
 		s.finishCluster(ctx, refs)
 	}
-	if s.registry != nil {
-		live := make(map[string]bool)
-		for _, refs := range s.Clusters {
-			cl := refs.Cluster
-			live["cluster/"+cl.Key] = true
-			for _, h := range cl.Hosts {
-				live["host/"+h.Key] = true
-				for _, d := range h.Devices {
-					live["device/"+d.Key] = true
-				}
-			}
-			for _, vm := range cl.VMs {
-				live["vm/"+vm.Key] = true
-			}
-		}
-		s.registry.RetireMissing(live)
-	}
 	return nil
 }
 
@@ -322,7 +311,7 @@ func counter(ctx *simulator.Context) (int64, error) {
 // Validate the upstream layout before accessing the counter, and only do this
 // during the single-threaded inventory build after each task has completed.
 func setCounter(ctx *simulator.Context, n int64) error {
-	field, ok := reflect.TypeOf(*ctx.Map).FieldByName("counter")
+	field, ok := reflect.TypeOf(ctx.Map).Elem().FieldByName("counter")
 	if !ok || field.Type.Kind() != reflect.Int64 || field.Offset != 0 {
 		return fmt.Errorf("sim: unsupported vcsim registry counter layout")
 	}
@@ -563,34 +552,41 @@ func (s *Simulator) createHost(ctx *simulator.Context, refs *ClusterRefs, h *top
 	hs.Datastore = nil
 	vsan := ctx.Map.Get(refs.Datastore).(*simulator.Datastore)
 	mount(ctx, hs, vsan, "/vmfs/volumes/vsan:"+cl.ContainerID)
-	var mounts []types.HostFileSystemMountInfo
-	mounts = append(mounts, vsanMount(cl))
-	for _, d := range h.Devices {
-		if d.Claimed {
-			continue
-		}
-		name := fmt.Sprintf("local-%s-%s", cl.Name, strings.SplitN(h.Name, ".", 2)[0])
-		if d.Index > 0 {
-			name = fmt.Sprintf("%s-%d", name, d.Index)
-		}
-		ds, err := s.createDatastore(ctx, dc, name, vmfsDatastoreInfo(name, d), string(types.HostFileSystemVolumeFileSystemTypeVMFS))
-		if err != nil {
-			return err
-		}
-		ds.Capability = vmfsDatastoreCapability
-		ds.IormConfiguration = iorm
-		shapeVMFSDatastoreSummary(ds, d)
-		mount(ctx, hs, ds, "/vmfs/volumes/"+d.VMFSUUID)
-		ctx.Map.AddReference(ctx, ccr, &ccr.Datastore, ds.Self)
-		mounts = append(mounts, vmfsMount(name, d))
-	}
 	hs.Config.FileSystemVolume = &types.HostFileSystemVolumeInfo{
 		VolumeTypeList: []string{"VMFS", "NFS", "NFS41", "vsan", "VVOL", "VFFS", "OTHER", "PMEM"},
-		MountInfo:      mounts,
+		MountInfo:      []types.HostFileSystemMountInfo{vsanMount(cl)},
 	}
 
+	s.hosts[h] = hs
 	refs.Hosts = append(refs.Hosts, ref)
 	s.Env.RegisterHost(ref, cl, h)
+	return nil
+}
+
+// createLocalDatastore makes the local VMFS datastore of one unclaimed
+// device and mounts it on the device's host. It is its own inventory step so
+// a device added later takes MoRefs from fresh space instead of growing the
+// host's reserved range.
+func (s *Simulator) createLocalDatastore(ctx *simulator.Context, refs *ClusterRefs, h *topology.Host, d *topology.Device) error {
+	cl := refs.Cluster
+	dc := s.dcs[cl.Datacenter]
+	hs := s.hosts[h]
+	ccr := ctx.Map.Get(refs.Ref).(*simulator.ClusterComputeResource)
+	name := fmt.Sprintf("local-%s-%s", cl.Name, strings.SplitN(h.Name, ".", 2)[0])
+	if d.Index > 0 {
+		name = fmt.Sprintf("%s-%d", name, d.Index)
+	}
+	ds, err := s.createDatastore(ctx, dc, name, vmfsDatastoreInfo(name, d), string(types.HostFileSystemVolumeFileSystemTypeVMFS))
+	if err != nil {
+		return err
+	}
+	ds.Capability = vmfsDatastoreCapability
+	ds.IormConfiguration = iorm
+	shapeVMFSDatastoreSummary(ds, d)
+	mount(ctx, hs, ds, "/vmfs/volumes/"+d.VMFSUUID)
+	ctx.Map.AddReference(ctx, ccr, &ccr.Datastore, ds.Self)
+	fsv := hs.Config.FileSystemVolume
+	fsv.MountInfo = append(fsv.MountInfo, vmfsMount(name, d))
 	return nil
 }
 

@@ -24,15 +24,15 @@ serial it was first given. Serials are never reused.
 |---|---|---|
 | restart on the same data directory | unchanged | unchanged |
 | add clusters, hosts or VMs | existing ones unchanged; new ones get new serials | existing ones unchanged; new objects are created last (VMs that rebalance onto a new host keep their MoRef: they are created in their own order and moved afterwards) |
-| add devices to an existing host | existing ones unchanged | adding local datastores can exceed the host's reserved creation range and the apply is rejected |
-| remove entities | the rest unchanged; the removed serials stay retired | the rest unchanged; removed references are never reused |
+| add devices to an existing host | existing ones unchanged | existing ones unchanged; each new local datastore takes MoRefs from fresh space past every reservation |
+| remove entities | the rest unchanged; a removed host, VM or device keeps its serial for a later re-add (a cluster deleted in the console is retired) | the rest unchanged; a removed object's references stay reserved for it |
 | change `seed` | refused at start unless `-regenerate` is given; then every identity changes | all change |
 | change `telemetrySeed` | unchanged (every metric value changes) | unchanged |
 
 UUIDs are derived from the seed and registry serials. The registry also
-reserves the vcsim counter interval for each inventory creation step, so a
-removal leaves a gap and survivors keep their MoRefs across applies and restarts.
-Re-adding a removed entity allocates new identities. `-regenerate` discards
+reserves the vcsim counter interval for each inventory creation step (one per datacenter, cluster, host, VM and local datastore), so a
+removal leaves a gap, an addition is created in fresh space, and existing objects keep their MoRefs across applies and restarts.
+A host, VM or device that is removed and later added back keeps its serial, so it gets its previous UUIDs and MoRefs back; removing a cluster in the console retires its identities, so a cluster added again under that name is new. `-regenerate` discards
 the registry; the same seed reproduces the same identities, so change the seed
 to mint new ones.
 
