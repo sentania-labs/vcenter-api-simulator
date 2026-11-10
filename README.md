@@ -81,11 +81,12 @@ Known gaps: the vDS is served under vcsim's base type
 populated iSCSI target service, file service, and FC/iSCSI-backed datastores
 are not modeled because the walk captured no populated examples. Shared NFS
 v3 datastores can be configured in a scenario. REST inventory reads share
-SOAP inventory identities. List endpoints honour the `names` and parent filters
-(`clusters`, `datacenters`, `hosts`, `folders`, `resource_pools`, `types`,
-`power_states`, `connection_states`, and the id filter of each kind) in both the
-plain and `filter.`-prefixed spellings; any other parameter returns a 400
-`INVALID_ARGUMENT`. Some nested VM and OSA health details remain partial. The real 9.1.1
+SOAP inventory identities. List endpoints honour `names`, the parent and state
+filters that apply to each kind (for example `clusters`, `datacenters`,
+`hosts`, `folders`, `resource_pools`, `power_states`) and the id filter of each
+kind, in both the plain and `filter.`-prefixed spellings; any other parameter
+returns a 400 `INVALID_ARGUMENT`. Some nested VM and OSA health details remain
+partial. The real 9.1.1
 server returns full documents for `/sdk/vimService.wsdl` and `/sdk/vim.wsdl`.
 The simulator serves the captured service descriptor but does not serve
 `vim.wsdl`; a complete sanitized capture is needed to add it.
