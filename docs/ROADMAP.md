@@ -17,6 +17,11 @@ Phase 3's first collection gate was demonstrated on 2026-11-07 as a standalone
 adapter test; native-vCenter attachment and the Java Content Factory pack remain
 unverified. See the [acceptance procedure and result](OPERATIONS-ACCEPTANCE.md).
 
+Phase 4's scale profiles and replay harness are in place and the replay was
+tested to 400 clusters on a shared host under a 4 GiB cap without reaching a
+failure criterion; the ceiling was not found. See the
+[measured results](../tools/bench/README.md#measured-results).
+
 ## Immediate worker work packets
 
 1. **Discovery:** write a read-only probe plan, obtain credential-source direction from user, inspect reference repository at pinned SHA.

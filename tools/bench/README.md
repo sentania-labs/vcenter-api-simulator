@@ -61,15 +61,26 @@ pass each, with scenarios made from `scale-100.yaml` by changing only the seed
 and `clusters`.
 
 The ramp was run with these failure criteria: any unexpected HTTP status or
-aborted run, p99 above 1 s, or the simulator hitting the 4 GiB memory cap. No
-criterion was met through 400 clusters (3,200 hosts, 12,800 VMs, 152,000 replay
-calls in one 495 s pass). Because of that, **400 clusters is the highest tested
-point, not a failure ceiling**: the next step, 800 clusters, would take at least about
-17 minutes per pass at the observed rate and was not run. Within the tested
-range the simulator's RSS grew roughly 2.6 MiB per cluster, which would reach
-the 4 GiB cap near 1,500 clusters if the trend holds; that is an extrapolation,
-not a measurement. Throughput fell and pass time grew faster than cluster
-count past 106 clusters (200 to 400 clusters took 2.6 times as long for twice
-the calls), so a sequential single-collector pass of this shape slows as the
-vCenter grows. Treat the numbers as one shared-host sample, not sustained
+aborted run, p99 above 1 s, or the simulator hitting the 4 GiB memory cap.
+**Tested to 400 clusters (3,200 hosts, 12,800 VMs, 152,000 replay calls in one
+495 s pass) without reaching a failure criterion; the ceiling was not found.**
+400 clusters is the highest tested point, four times the 100+ target, and is
+not a ceiling. The next step, 800 clusters, would take at least about 17
+minutes per pass at the observed rate and was not run.
+
+Estimate, not a measurement: within the tested range the simulator's RSS grew
+roughly 2.6 MiB per cluster, which would reach the 4 GiB cap near 1,500
+clusters if the trend holds. Throughput fell and pass time grew faster than
+cluster count past 106 clusters (200 to 400 clusters took 2.6 times as long for
+twice the calls), so a sequential single-collector pass of this shape slows as
+the vCenter grows. Treat the numbers as one shared-host sample, not sustained
 capacity, and rerun on the target host.
+
+To continue the ramp on a quieter host, make a scenario from `scale-100.yaml`
+with a new seed and cluster count, then run one pass under the same cap and
+step up until a criterion above is met:
+
+```sh
+sed 's/clusters: 106/clusters: 800/; s/^seed: .*/seed: scale-ramp-800/' examples/scenarios/scale-100.yaml > /tmp/ramp-800.yaml
+systemd-run --user --scope -p MemoryMax=4G -- python3 tools/bench/bench.py /tmp/ramp-800.yaml --runs 1 --out /tmp/vcs-bench-800
+```
