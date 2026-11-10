@@ -33,7 +33,7 @@ Known limitation shown honestly in the review: removing an object renumbers the 
 
 ## Independent UX walkthrough
 
-An evaluation agent that had not seen the code walked workflows A to H of [UX-REQUIREMENTS](../UX-REQUIREMENTS.md) against the built UI three times:
+An evaluation agent that had not seen the code walked workflows A to F of [UX-REQUIREMENTS](../UX-REQUIREMENTS.md) against the built UI three times:
 
 | Round | Score | High | Notes |
 |---|---:|---:|---|

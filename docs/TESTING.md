@@ -59,7 +59,7 @@ Comparison against a live vCenter was never run and remains unverified.
 Given the same seed, entityRefId, metric and 5-minute UTC slot, return equal values regardless of request order or process restart. Different entities should not accidentally alias. Configured changes must take effect at a defined bucket boundary. Time window requests must contain only relevant bucket timestamps and honor unavailable or not-yet-populated bins.
 
 ## UX acceptance
-The control console was built from the owner-approved Rev 2.1 mockups. Screenshots of every screen in light and dark, taken from the running app, are in [`docs/console/`](console/), and an independent evaluation agent walked workflows A-G of [UX-REQUIREMENTS](UX-REQUIREMENTS.md) against the built UI (scores and findings in [`docs/console/`](console/README.md)). The original gate:
+The control console was built from the owner-approved Rev 2.1 mockups. Screenshots of every screen in light and dark, taken from the running app, are in [`docs/console/`](console/), and an independent evaluation agent walked workflows A-F of [UX-REQUIREMENTS](UX-REQUIREMENTS.md) against the built UI (scores and findings in [`docs/console/`](console/README.md)). The original gate:
 Before building UI, provide real desktop mockups, walk through generation, topology editing, scenario injection, query inspection and export flow using an independent end-user agent. Test novice and expert paths and require operator review.
 
 ## CI gates
