@@ -194,6 +194,7 @@ func aboutInfo(cat *catalog.Catalog, topo *topology.Topology) types.AboutInfo {
 // step is one inventory creation, ordered by registry serial.
 type step struct {
 	serial int
+	order  int
 	run    func() error
 }
 
@@ -202,23 +203,30 @@ func (s *Simulator) build() error {
 	ctx := s.model.Service.Context
 	s.tasks = newTaskWaiter(ctx)
 	var steps []step
+	// Registries predating reservations created every local datastore during
+	// its host step, even when its device serial was allocated much later.
+	legacyOrder := s.registry == nil || s.registry.MorefHigh() == 0
 	for _, dc := range s.Topology.Datacenters {
 		dc := dc
-		steps = append(steps, step{dc.Serial, func() error { return s.createDatacenter(ctx, dc) }})
+		steps = append(steps, step{dc.Serial, dc.Serial, func() error { return s.createDatacenter(ctx, dc) }})
 		for _, cl := range dc.Clusters {
 			cl := cl
 			refs := &ClusterRefs{Cluster: cl}
 			s.Clusters = append(s.Clusters, refs)
-			steps = append(steps, step{cl.Serial, func() error { return s.createCluster(ctx, refs) }})
+			steps = append(steps, step{cl.Serial, cl.Serial, func() error { return s.createCluster(ctx, refs) }})
 			for _, h := range cl.Hosts {
 				h := h
-				steps = append(steps, step{h.Serial, func() error { return s.createHost(ctx, refs, h) }})
+				steps = append(steps, step{h.Serial, h.Serial, func() error { return s.createHost(ctx, refs, h) }})
 				for _, d := range h.Devices {
 					d := d
 					if d.Claimed {
 						continue
 					}
-					steps = append(steps, step{d.Serial, func() error { return s.createLocalDatastore(ctx, refs, h, d) }})
+					order := d.Serial
+					if legacyOrder {
+						order = h.Serial
+					}
+					steps = append(steps, step{d.Serial, order, func() error { return s.createLocalDatastore(ctx, refs, h, d) }})
 				}
 			}
 			for _, vm := range cl.VMs {
@@ -228,11 +236,11 @@ func (s *Simulator) build() error {
 				// never reorders VM creation (and so never changes a VM's
 				// MoRef); finishCluster then moves each VM to the host the
 				// topology places it on
-				steps = append(steps, step{vm.Serial, func() error { return s.createVM(ctx, refs, vm) }})
+				steps = append(steps, step{vm.Serial, vm.Serial, func() error { return s.createVM(ctx, refs, vm) }})
 			}
 		}
 	}
-	sort.SliceStable(steps, func(i, j int) bool { return steps[i].serial < steps[j].serial })
+	sort.SliceStable(steps, func(i, j int) bool { return steps[i].order < steps[j].order })
 	for _, st := range steps {
 		if s.registry == nil {
 			if err := st.run(); err != nil {

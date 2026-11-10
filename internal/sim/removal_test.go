@@ -215,3 +215,59 @@ func TestAddingDeviceKeepsExistingMoRefs(t *testing.T) {
 		}
 	}
 }
+
+// These references were observed from the simulator before reservations were
+// introduced (e42ccbf), after adding a local device to an existing scenario.
+func TestUpgradeLegacyRegistryWithAddedDevices(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: legacy\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, host: {localDevices: 1}, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "registry.json")
+	r, err := registry.Open(path, sc.Seed, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topology.Generate(sc, r)
+	sc.Defaults.Host.LocalDevices = scenario.IntPtr(2)
+	topology.Generate(sc, r)
+	if err := r.Save(); err != nil {
+		t.Fatal(err)
+	} // legacy JSON has no MoRef ranges
+	want := map[string]string{
+		"dc/cluster-01": "domain-c18", "dc/cluster-02": "domain-c64",
+		"dc/cluster-01/esx01": "host-28", "dc/cluster-01/esx02": "host-40", "dc/cluster-01/esx03": "host-52",
+		"dc/cluster-02/esx01": "host-74", "dc/cluster-02/esx02": "host-86", "dc/cluster-02/esx03": "host-98",
+		"dc/cluster-01/cluster-01-vm-001": "vm-57", "dc/cluster-01/cluster-01-vm-002": "vm-59", "dc/cluster-01/cluster-01-vm-003": "vm-61",
+		"dc/cluster-02/cluster-02-vm-001": "vm-103", "dc/cluster-02/cluster-02-vm-002": "vm-105", "dc/cluster-02/cluster-02-vm-003": "vm-107",
+	}
+	for pass := 0; pass < 2; pass++ {
+		r, err = registry.Open(path, sc.Seed, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := sim.New(sim.Options{Topology: topology.Generate(sc, r), Registry: r})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, c := range s.Clusters {
+			got[c.Cluster.Key] = c.Ref.Value
+			for i, h := range c.Cluster.Hosts {
+				got[h.Key] = c.Hosts[i].Value
+			}
+			for i, v := range c.Cluster.VMs {
+				got[v.Key] = c.VMs[i].Value
+			}
+		}
+		s.Close()
+		for key, value := range want {
+			if got[key] != value {
+				t.Errorf("pass %d: %s = %s, want legacy %s", pass, key, got[key], value)
+			}
+		}
+		if err := r.Save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
