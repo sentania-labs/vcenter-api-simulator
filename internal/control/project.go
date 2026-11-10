@@ -165,11 +165,10 @@ func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 				p.EmptyCalls++
 				continue
 			}
-			refs, err := vsanhealth.PerfEntities(cat, cl, n)
-			if err != nil {
-				panic(err)
-			}
-			objs, metrics := len(refs), len(f.Labels)
+			// A family the engine cannot enumerate answers with a fault,
+			// which counts as an empty call.
+			objs, _ := vsanhealth.PerfEntityCount(cat, cl, n)
+			metrics := len(f.Labels)
 			if objs == 0 {
 				p.EmptyCalls++
 			}

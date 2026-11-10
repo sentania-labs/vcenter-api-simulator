@@ -65,6 +65,71 @@ func PerfEntities(c *catalog.Catalog, cl *topology.Cluster, family string) ([]st
 	return Entities(c, cl, family)
 }
 
+// PerfEntityCount is len(PerfEntities) without building the identifiers.
+func PerfEntityCount(c *catalog.Catalog, cl *topology.Cluster, family string) (int, error) {
+	f, known := EffectiveFamily(c, cl, family)
+	if !known || f.Behaviour != catalog.Data || cl == nil {
+		return 0, nil
+	}
+	if cl.Spec.Architecture == "osa" {
+		if _, ok := osaFamilyFor(family); ok {
+			return osaEntityCount(cl, family), nil
+		}
+	}
+	base, ok := c.Families[family]
+	if !ok || base.Behaviour != catalog.Data {
+		return 0, nil
+	}
+	n := 0
+	for _, shape := range base.RefShapes {
+		k, err := shapeCount(shape, cl)
+		if err != nil {
+			return 0, fmt.Errorf("family %s: %w", family, err)
+		}
+		n += k
+	}
+	return n, nil
+}
+
+func shapeCount(shape string, cl *topology.Cluster) (int, error) {
+	n := 0
+	switch shape {
+	case "cluster":
+		return 1, nil
+	case "node", "node|defaultTcpipStack", "node|defaultTcpipStack|vmkN", "node|vmkN":
+		return len(cl.Hosts), nil
+	case "node|cpu-N":
+		for _, h := range cl.Hosts {
+			n += h.Threads
+		}
+	case "node|VSAN_0xHEX_NAME|N":
+		for _, h := range cl.Hosts {
+			n += len(h.Worlds)
+		}
+	case "node|vmnicN":
+		for _, h := range cl.Hosts {
+			n += len(h.Pnics)
+		}
+	case "disk":
+		for _, h := range cl.Hosts {
+			for _, d := range h.Devices {
+				if d.Claimed {
+					n++
+				}
+			}
+		}
+	case "vm":
+		return len(cl.VMs), nil
+	case "vm|scsiN:M", "vdisk-path":
+		for _, vm := range cl.VMs {
+			n += len(vm.Disks)
+		}
+	default:
+		return 0, fmt.Errorf("no enumerator for identifier shape %q", shape)
+	}
+	return n, nil
+}
+
 // Entities enumerates the entityRefIds of a family on a cluster, driven by
 // the identifier shapes the catalog derived from the capture, so the
 // simulator can only emit the shapes the live service did.

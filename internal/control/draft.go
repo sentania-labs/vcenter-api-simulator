@@ -798,44 +798,70 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 		}),
 		row("Cluster UUIDs · vSAN datastores", func(c *topology.Cluster) []id { return []id{{c.Key, c.Serial}} }),
 	}
-	// Compare actual family/ref pairs, so architecture changes account for
-	// replaced disk and performance entities rather than assuming a count
-	// overlap means those identities are unchanged.
+	// Compare actual family/ref pairs for clusters that changed, so
+	// architecture changes account for replaced disk and performance
+	// entities. Clusters that did not change keep every entity.
 	pe := IdentityRow{Label: "Performance entities"}
-	perfSet := func(t *topology.Topology) map[string]bool {
+	oc := map[string]*topology.Cluster{}
+	for _, c := range o.Clusters() {
+		oc[c.Key] = c
+	}
+	perfSet := func(cl *topology.Cluster) map[string]bool {
 		out := map[string]bool{}
-		for _, cl := range t.Clusters() {
-			// A missing stats primary hides samples, but does not destroy
-			// the underlying performance identities.
-			visible := *cl
-			visible.Spec = cl.Spec
-			visible.Spec.StatsPrimary = nil
-			for _, family := range vsanhealth.PerfFamilyNames(cat, &visible) {
-				refs, err := vsanhealth.PerfEntities(cat, &visible, family)
-				if err != nil {
-					panic(err)
-				}
-				for _, ref := range refs {
-					out[cl.Key+"/"+ref] = true
-				}
+		// A missing stats primary hides samples, but does not destroy
+		// the underlying performance identities.
+		visible := *cl
+		visible.Spec.StatsPrimary = nil
+		for _, family := range vsanhealth.PerfFamilyNames(cat, &visible) {
+			refs, _ := vsanhealth.PerfEntities(cat, &visible, family)
+			for _, ref := range refs {
+				out[ref] = true
 			}
 		}
 		return out
 	}
-	before, after := perfSet(o), perfSet(n)
-	for ref := range before {
-		if after[ref] {
-			pe.Kept++
-		} else {
-			pe.Removed++
+	seen := map[string]bool{}
+	for _, c := range n.Clusters() {
+		seen[c.Key] = true
+		old, ok := oc[c.Key]
+		if ok && sameCluster(old, c) {
+			visible := *c
+			visible.Spec.StatsPrimary = nil
+			for _, family := range vsanhealth.PerfFamilyNames(cat, &visible) {
+				k, _ := vsanhealth.PerfEntityCount(cat, &visible, family)
+				pe.Kept += k
+			}
+			continue
+		}
+		after := perfSet(c)
+		var before map[string]bool
+		if ok {
+			before = perfSet(old)
+		}
+		for ref := range before {
+			if after[ref] {
+				pe.Kept++
+			} else {
+				pe.Removed++
+			}
+		}
+		for ref := range after {
+			if !before[ref] {
+				pe.Added++
+			}
 		}
 	}
-	for ref := range after {
-		if !before[ref] {
-			pe.Added++
+	for key, old := range oc {
+		if !seen[key] {
+			pe.Removed += len(perfSet(old))
 		}
 	}
 	return append(rows, pe)
+}
+
+func sameCluster(o, c *topology.Cluster) bool {
+	return o.Serial == c.Serial && len(o.Hosts) == len(c.Hosts) && len(o.VMs) == len(c.VMs) &&
+		fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed
 }
 
 func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool, rn Renumbered) []string {
@@ -848,8 +874,7 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && o.Serial == c.Serial && len(o.Hosts) == len(c.Hosts) && len(o.VMs) == len(c.VMs) &&
-				fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) {
 				kept++
 			} else {
 				touched[c.Key] = true

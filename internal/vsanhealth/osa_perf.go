@@ -90,6 +90,39 @@ func osaEntities(cl *topology.Cluster, family string) []string {
 	return refs
 }
 
+// osaEntityCount is len(osaEntities) without building the identifiers.
+func osaEntityCount(cl *topology.Cluster, family string) int {
+	switch family {
+	case "cluster-domclient", "cluster-domcompmgr", "cluster-domowner", "cluster-esa-dedup-domclient-io", "cluster-rdt-network-latency", "cluster-resync", "vsan-cluster-capacity":
+		return 1
+	}
+	n := 0
+	for _, h := range cl.Hosts {
+		switch family {
+		case "capacity-disk", "lsom-world-cpu":
+			claimed := 0
+			for _, d := range h.Devices {
+				if d.Claimed {
+					claimed++
+				}
+			}
+			if family == "lsom-world-cpu" {
+				claimed *= 4
+			}
+			n += claimed
+		case "host-cpu":
+			n += h.Threads
+		case "dom-world-cpu":
+			n += len(h.Worlds)
+		case "vsan-pnic-net":
+			n += len(h.Pnics)
+		default:
+			n++
+		}
+	}
+	return n
+}
+
 func osaValueIsNone(f osaFamily, label string) bool {
 	for _, v := range f.None {
 		if v == label {

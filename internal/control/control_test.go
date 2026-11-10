@@ -466,6 +466,35 @@ func TestTreeAndClusterView(t *testing.T) {
 	}
 }
 
+// The projection counts entities without building them; the count must equal
+// what the wildcard handler enumerates for every family on both architectures.
+func TestPerfEntityCountMatchesEnumeration(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
+	e := editable(t, c)
+	e.Clusters[0].Architecture = "osa"
+	put(t, c, e)
+	mixed, _ := c.previewTopology(c.draft)
+	osa := 0
+	for _, cl := range mixed.Clusters() {
+		if cl.Spec.Architecture == "osa" {
+			osa++
+		}
+		for _, family := range vsanhealth.PerfFamilyNames(c.cat, cl) {
+			refs, err := vsanhealth.PerfEntities(c.cat, cl, family)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := vsanhealth.PerfEntityCount(c.cat, cl, family)
+			if err != nil || got != len(refs) {
+				t.Errorf("%s %s: count %d (%v), enumerated %d", cl.Key, family, got, err, len(refs))
+			}
+		}
+	}
+	if osa != 1 {
+		t.Fatalf("%d OSA clusters, want 1", osa)
+	}
+}
+
 // A mixed ESA and OSA topology must be labelled per cluster: the datastore
 // type follows the cluster's architecture and the projection counts OSA
 // clusters so the console does not call every cluster ESA.
