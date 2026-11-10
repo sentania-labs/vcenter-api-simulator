@@ -95,3 +95,15 @@ func osaValueIsNone(f osaFamily, label string) bool {
 	return false
 }
 
+// Wildcard outcomes observed in the OSA walk with the stats primary online.
+func osaOtherBehavior(family string) (catalog.Behaviour, bool) {
+	switch family {
+	case "cluster-esa-dedup-domcompmgr-io", "cluster-esa-dedup-domowner-io", "cluster-esa-dedup-store-chunksvc", "cluster-esa-dedup-store-hashsvc", "cluster-remotedomclient", "cluster-zdom-top-stats", "computeHost-remotedomclient", "host-esa-dedup-domcompmgr-io", "host-esa-dedup-domowner-io", "host-esa-dedup-store-chunksvc", "host-esa-dedup-store-hashsvc", "host-remotedomclient", "host-zdom-top-stats", "ioinsight", "virtual-disk", "virtual-machine", "vsan-direct-cluster", "vsan-direct-host", "vsan-esa-disk-layer", "vsan-esa-disk-scsifw", "vsan-file-service", "vsan-iscsi-host", "vsan-iscsi-lun", "vsan-iscsi-target", "vscsi", "zdom-vtx":
+		return catalog.Empty, true
+	case "clom-disk", "clom-host", "cmmds-workload", "computeCluster-remotedomclient", "ddh-disk", "heap-memory", "remote-virtual-disk", "remote-virtual-machine", "remote-vscsi", "slab-memory", "vsan-dp-historical-stats", "vsan-esa-dedup-hash", "vsan-esa-dedup-journal", "vsan-esa-dedup-reorder", "vsan-esa-dedup-xip", "vsan-esa-nvme-namespace":
+		return catalog.InvalidArgument, true
+	case "host-pmem", "cluster-pmem":
+		return catalog.NotSupported, true
+	}
+	return "", false
+}

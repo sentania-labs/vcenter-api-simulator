@@ -64,6 +64,7 @@ type Datacenter struct {
 // set.
 type ClusterSpec struct {
 	Architecture string   `yaml:"architecture" json:"architecture,omitempty"`
+	StatsPrimary *bool    `yaml:"statsPrimary" json:"statsPrimary,omitempty"`
 	Hosts        int      `yaml:"hosts" json:"hosts,omitempty"`
 	Dedup        *bool    `yaml:"dedup" json:"dedup,omitempty"`
 	Compression  *bool    `yaml:"compression" json:"compression,omitempty"`
@@ -449,6 +450,9 @@ func merge(base, over ClusterSpec) ClusterSpec {
 	out := base
 	if over.Architecture != "" {
 		out.Architecture = over.Architecture
+	}
+	if over.StatsPrimary != nil {
+		out.StatsPrimary = over.StatsPrimary
 	}
 	if over.Hosts != 0 {
 		out.Hosts = over.Hosts

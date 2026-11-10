@@ -53,6 +53,28 @@ type PerfManager struct {
 	env *Env
 }
 
+func (m *PerfManager) VsanPerfQueryStatsObjectInformation(ctx *simulator.Context, req *vsantypes.VsanPerfQueryStatsObjectInformation) soap.HasFault {
+	info := vsantypes.VsanObjectInformation{DirectoryName: "unknown"}
+	cl := m.env.Cluster(req.Cluster)
+	if cl != nil && (cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary) {
+		info.DirectoryName = ".vsan.stats"
+		info.VsanObjectUuid = cl.StatsUUID
+		info.VsanHealth = "healthy"
+		for _, kv := range [][2]string{{"hostFailuresToTolerate", "1"}, {"cacheReservation", "0"}, {"stripeWidth", "1"}, {"proportionalCapacity", "0"}, {"forceProvisioning", "0"}, {"iopsLimit", "0"}, {"checksumDisabled", "0"}, {"subFailuresToTolerate", "0"}} {
+			info.PolicyAttributes = append(info.PolicyAttributes, vim25types.KeyValue{Key: kv[0], Value: kv[1]})
+		}
+	}
+	return &methods.VsanPerfQueryStatsObjectInformationBody{Res: &vsantypes.VsanPerfQueryStatsObjectInformationResponse{Returnval: info}}
+}
+
+func (m *PerfManager) VsanPerfQueryTimeRanges(ctx *simulator.Context, req *vsantypes.VsanPerfQueryTimeRanges) soap.HasFault {
+	cl := m.env.Cluster(req.Cluster)
+	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		return &methods.VsanPerfQueryTimeRangesBody{Fault_: faultStatsPrimaryMissing()}
+	}
+	return &methods.VsanPerfQueryTimeRangesBody{Res: &vsantypes.VsanPerfQueryTimeRangesResponse{}}
+}
+
 // VsanPerfQueryNodeInformation lists the cluster's hosts as the Performance
 // Service sees them (fixture nodeinfo-domain-c6004): the first host is the
 // CMMDS and stats master and carries masterInfo.
@@ -63,6 +85,7 @@ func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *
 		return &methods.VsanPerfQueryNodeInformationBody{Fault_: fault}
 	}
 	if cl != nil && len(cl.Hosts) > 0 {
+		primary := cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
 		master := cl.Hosts[0].NodeUUID
 		now := m.env.Now().UTC()
 		sinceCollect := int64(now.Sub(now.Truncate(perf.Interval)) / time.Second)
@@ -71,12 +94,12 @@ func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *
 				Version:        m.env.Catalog.About.EsxiVersion,
 				Hostname:       h.Name,
 				IsCmmdsMaster:  i == 0,
-				IsStatsMaster:  i == 0,
+				IsStatsMaster:  i == 0 && primary,
 				VsanMasterUuid: master,
 				VsanNodeUuid:   h.NodeUUID,
 				DiagnosticMode: vim25types.NewBool(false),
 			}
-			if i == 0 {
+			if i == 0 && primary {
 				n.MasterInfo = &vsantypes.VsanPerfMasterInformation{
 					SecSinceLastStatsWrite:    sinceCollect + 1,
 					SecSinceLastStatsCollect:  sinceCollect + 5,
@@ -130,6 +153,10 @@ func (b *queryPerfBody) Fault() *soap.Fault { return b.Fault_ }
 // VsanPerfQueryPerf answers wildcard and specific entity queries with the
 // bucket rule and fault shapes measured live (recon section 5.3).
 func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.VsanPerfQueryPerf) soap.HasFault {
+	cl := m.env.Cluster(req.Cluster)
+	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		return &queryPerfBody{Fault_: faultStatsPrimaryMissing()}
+	}
 	wildcards := 0
 	for _, spec := range req.QuerySpecs {
 		if strings.HasSuffix(spec.EntityRefId, ":*") {
@@ -139,7 +166,6 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 	if wildcards > 1 {
 		return &queryPerfBody{Fault_: faultWildcardLimit()}
 	}
-	cl := m.env.Cluster(req.Cluster)
 	now := m.env.Now()
 	res := &queryPerfResponse{}
 	for _, spec := range req.QuerySpecs {
@@ -153,6 +179,9 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 				known = true
 				f.Behaviour = catalog.Data
 				f.Labels = osa.Labels
+			} else if behavior, found := osaOtherBehavior(family); found {
+				known = true
+				f.Behaviour = behavior
 			}
 		}
 		if !ok || !known || tail == "" {
@@ -168,6 +197,9 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 		}
 		switch f.Behaviour {
 		case catalog.InvalidArgument:
+			if cl != nil && cl.Spec.Architecture == "osa" && family == "computeCluster-remotedomclient" {
+				return &queryPerfBody{Fault_: faultInvalidProperty(spec.EntityRefId)}
+			}
 			return &queryPerfBody{Fault_: faultInvalidRef()}
 		case catalog.NotSupported:
 			return &queryPerfBody{Fault_: faultNotSupportedPMem()}

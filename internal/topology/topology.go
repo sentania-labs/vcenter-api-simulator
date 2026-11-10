@@ -56,6 +56,7 @@ type Cluster struct {
 	Serial     int
 	Datacenter *Datacenter
 	VsanUUID   string // configurationEx.vsanConfigInfo.defaultConfig.uuid and every cluster-* entityRefId
+	StatsUUID  string // vSAN performance statistics object
 	// TelemetrySeed feeds this cluster's metric values: the scenario's
 	// telemetry seed, narrowed by the cluster's seed epoch once it was reset.
 	TelemetrySeed string
@@ -290,6 +291,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		cl.TelemetrySeed = fmt.Sprintf("%s/%s#%d", telemetrySeed, key, e)
 	}
 	cl.VsanUUID = r.UUID("vsan-cluster", cl.Serial)
+	cl.StatsUUID = r.UUID("vsan-stats-object", cl.Serial)
 	cl.ContainerID = r.Hex("vsan-container", cl.Serial, 16) + "-" + r.Hex("vsan-container-tail", cl.Serial, 16)
 	// vCenter names the first vSAN datastore in a datacenter "vsanDatastore"
 	// and the next ones "vsanDatastore (1)", "vsanDatastore (2)", ...

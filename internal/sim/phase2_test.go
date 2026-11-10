@@ -930,3 +930,59 @@ func TestOSAPerfSampleShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestOSAPerfPrimaryStates(t *testing.T) {
+	for _, primary := range []bool{false, true} {
+		t.Run(fmt.Sprintf("primary=%v", primary), func(t *testing.T) {
+			sc := scenario.Phase1("osa-primary")
+			sc.Defaults.Architecture = "osa"
+			sc.Defaults.StatsPrimary = &primary
+			e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+			if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct{ family, fault, property string }{
+				{"disk-group", "", ""}, {"virtual-machine", "", ""}, {"clom-disk", "InvalidArgumentFault", "entityRefId"}, {"computeCluster-remotedomclient", "InvalidArgumentFault", "computeCluster-remotedomclient:*"}, {"host-pmem", "NotSupportedFault", ""},
+			} {
+				status, body := e.postPerf(e.cl().Ref, tc.family)
+				got := parseShape(t, body)
+				if !primary {
+					if status != 500 || got.fault != "NotFoundFault" || got.text["key"] != "com.vmware.vsan.perfsvc.fault.masternotfound" || got.text["message"] != "Stats primary cannot be found in the cluster." {
+						t.Errorf("%s: %d %+v", tc.family, status, got)
+					}
+				} else if tc.fault != "" {
+					if status != 500 || got.fault != tc.fault || tc.property != "" && got.text["invalidProperty"] != tc.property {
+						t.Errorf("%s: %d %+v", tc.family, status, got)
+					}
+				} else if status != 200 || (tc.family == "virtual-machine" && (len(got.refs) != 1 || got.refs[0] != "virtual-machine:*" || len(got.labels) != 0)) {
+					t.Errorf("%s: %d %+v", tc.family, status, got)
+				}
+			}
+			vc, err := vsan.NewClient(context.Background(), e.client)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nodes, err := vsanmethods.VsanPerfQueryNodeInformation(context.Background(), vc.Client, &vsantypes.VsanPerfQueryNodeInformation{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, node := range nodes.Returnval {
+				want := primary && i == 0
+				if node.IsStatsMaster != want || (node.MasterInfo != nil) != want {
+					t.Errorf("node %d: %+v", i, node)
+				}
+			}
+			info, err := vsanmethods.VsanPerfQueryStatsObjectInformation(context.Background(), vc.Client, &vsantypes.VsanPerfQueryStatsObjectInformation{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if primary && (info.Returnval.DirectoryName != ".vsan.stats" || len(info.Returnval.PolicyAttributes) != 8) || !primary && info.Returnval.DirectoryName != "unknown" {
+				t.Errorf("stats object: %+v", info.Returnval)
+			}
+			ranges, err := vsanmethods.VsanPerfQueryTimeRanges(context.Background(), vc.Client, &vsantypes.VsanPerfQueryTimeRanges{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
+			if primary && (err != nil || len(ranges.Returnval) != 0) || !primary && err == nil {
+				t.Errorf("time ranges: %+v %v", ranges, err)
+			}
+		})
+	}
+}
