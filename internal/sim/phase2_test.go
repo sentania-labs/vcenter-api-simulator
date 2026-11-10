@@ -978,7 +978,7 @@ func TestOSAPerfPrimaryStates(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if primary && (info.Returnval.DirectoryName != ".vsan.stats" || len(info.Returnval.PolicyAttributes) != 8) || !primary && info.Returnval.DirectoryName != "unknown" {
+			if primary && (info.Returnval.DirectoryName != ".vsan.stats" || len(info.Returnval.PolicyAttributes) != 12) || !primary && info.Returnval.DirectoryName != "unknown" {
 				t.Errorf("stats object: %+v", info.Returnval)
 			}
 			ranges, err := vsanmethods.VsanPerfQueryTimeRanges(context.Background(), vc.Client, &vsantypes.VsanPerfQueryTimeRanges{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})

@@ -44,18 +44,18 @@ type SpaceReportSystem struct {
 }
 
 type spaceSummary struct {
-	ObjType        string `xml:"objType,omitempty"`
-	Overhead       int64  `xml:"overheadB"`
-	Temporary      int64  `xml:"temporaryOverheadB"`
-	Primary        int64  `xml:"primaryCapacityB"`
-	Provision      int64  `xml:"provisionCapacityB,omitempty"`
-	Reserved       int64  `xml:"reservedCapacityB"`
-	OverReserved   int64  `xml:"overReservedB"`
-	PhysicalUsed   int64  `xml:"physicalUsedB"`
-	Used           int64  `xml:"usedB"`
-	ObjTypeExt     string `xml:"objTypeExt,omitempty"`
-	ObjTypeExtDesc string `xml:"objTypeExtDesc,omitempty"`
-	Snapshot       int64  `xml:"snapshotUsedB"`
+	ObjType        string  `xml:"objType,omitempty"`
+	Overhead       int64   `xml:"overheadB"`
+	Temporary      int64   `xml:"temporaryOverheadB"`
+	Primary        int64   `xml:"primaryCapacityB"`
+	Provision      int64   `xml:"provisionCapacityB,omitempty"`
+	Reserved       int64   `xml:"reservedCapacityB"`
+	OverReserved   int64   `xml:"overReservedB"`
+	PhysicalUsed   int64   `xml:"physicalUsedB"`
+	Used           int64   `xml:"usedB"`
+	ObjTypeExt     *string `xml:"objTypeExt,omitempty"`
+	ObjTypeExtDesc *string `xml:"objTypeExtDesc,omitempty"`
+	Snapshot       int64   `xml:"snapshotUsedB"`
 }
 type spaceDetail struct {
 	Items []spaceSummary `xml:"spaceUsageByObjectType"`
@@ -89,6 +89,11 @@ func (s *SpaceReportSystem) VsanQuerySpaceUsage(ctx *simulator.Context, req *vsa
 		{ObjType: "checksumOverhead"}, {ObjType: "fileSystemOverhead"},
 		{ObjType: "vm", Primary: used, PhysicalUsed: used, Used: used},
 	}}
+	empty := ""
+	for i := range detail.Items {
+		detail.Items[i].ObjTypeExt = &empty
+		detail.Items[i].ObjTypeExtDesc = &empty
+	}
 	return &spaceBody{Res: &spaceResponse{Returnval: spaceUsage{Total: total, Free: total - used, Overview: summary, Detail: detail, Threshold: vsan.VsanHealthThreshold{YellowValue: total / 10 * 7, RedValue: total / 10 * 9}}}}
 }
 

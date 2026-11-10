@@ -63,6 +63,14 @@ func (m *PerfManager) VsanPerfQueryStatsObjectInformation(ctx *simulator.Context
 		for _, kv := range [][2]string{{"hostFailuresToTolerate", "1"}, {"cacheReservation", "0"}, {"stripeWidth", "1"}, {"proportionalCapacity", "0"}, {"forceProvisioning", "0"}, {"iopsLimit", "0"}, {"checksumDisabled", "0"}, {"subFailuresToTolerate", "0"}} {
 			info.PolicyAttributes = append(info.PolicyAttributes, vim25types.KeyValue{Key: kv[0], Value: kv[1]})
 		}
+		info.PolicyAttributes = append(info.PolicyAttributes,
+			vim25types.KeyValue{Key: "spbmProfileGenerationNumber", Value: "0"},
+			vim25types.KeyValue{Key: "spbmProfileId", Value: cl.PolicyUUID},
+			vim25types.KeyValue{Key: "spbmProfileName", Value: "vSAN Default Storage Policy"},
+			vim25types.KeyValue{Key: "compressionDisabled", Value: "0"})
+		info.SpbmProfileUuid, info.SpbmProfileGenerationId = cl.PolicyUUID, "0"
+		now := m.env.Now().UTC()
+		info.SpbmComplianceResult = &vsantypes.VsanStorageComplianceResult{CheckTime: &now, Profile: cl.PolicyUUID, ObjectUUID: cl.StatsUUID, ComplianceStatus: "compliant", OperationalStatus: &vsantypes.VsanStorageOperationalStatus{Healthy: vim25types.NewBool(true)}, ObjPolicyGenerationId: "0"}
 	}
 	return &methods.VsanPerfQueryStatsObjectInformationBody{Res: &vsantypes.VsanPerfQueryStatsObjectInformationResponse{Returnval: info}}
 }
@@ -77,15 +85,10 @@ func (m *PerfManager) VsanPerfQueryTimeRanges(ctx *simulator.Context, req *vsant
 
 func (m *PerfManager) VsanPerfQueryClusterHealth(ctx *simulator.Context, req *vsantypes.VsanPerfQueryClusterHealth) soap.HasFault {
 	cl := m.env.Cluster(&req.Cluster)
-	status := "green"
-	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
-		status = "yellow"
-	}
-	group := &vsantypes.VsanClusterHealthGroup{GroupId: "com.vmware.vsan.health.test.perfsvc", GroupName: "Performance service", GroupHealth: status}
-	if status == "yellow" {
-		group.GroupTests = []vsantypes.VsanClusterHealthTest{{TestId: "com.vmware.vsan.health.test.perfsvcstatus", TestName: "Performance service status", TestHealth: status}}
-	} else {
-		group.GroupTests = []vsantypes.VsanClusterHealthTest{{TestId: "com.vmware.vsan.health.test.statsdb", TestName: "Stats DB object", TestDescription: "Checks the health of the vSAN performance service statistics database object", TestHealth: status}, {TestId: "com.vmware.vsan.health.test.masterexist", TestName: "Stats primary election", TestHealth: status}, {TestId: "com.vmware.vsan.health.test.collection", TestName: "Performance data collection", TestHealth: status}}
+	primary := cl == nil || cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
+	group, err := m.perfHealthGroup(cl, primary)
+	if err != nil {
+		return &methods.VsanPerfQueryClusterHealthBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
 	}
 	return &methods.VsanPerfQueryClusterHealthBody{Res: &vsantypes.VsanPerfQueryClusterHealthResponse{Returnval: []vim25types.BaseDynamicData{group}}}
 }
