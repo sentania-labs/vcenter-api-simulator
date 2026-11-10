@@ -109,7 +109,9 @@ func (s *restSessions) attributes(l restList, id string, row map[string]any, rel
 		}
 	}
 	for _, ref := range s.ancestors(rel.pool) {
-		add("resource_pools", ref)
+		if ref.Type == "ResourcePool" {
+			add("resource_pools", ref)
+		}
 	}
 	a[l.idParam] = []string{id}
 	a["names"] = []string{row["name"].(string)}

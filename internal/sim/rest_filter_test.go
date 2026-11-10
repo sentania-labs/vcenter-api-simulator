@@ -267,6 +267,8 @@ func TestRESTListFilters(t *testing.T) {
 		{"vm powered off", "vm", "vm", q("filter.power_states", "POWERED_OFF"), none},
 		{"vm folder", "vm", "vm", q("folders", vmFolder.Value, "hosts", someHost.Value), hostVMs},
 		{"vm resource pool", "vm", "vm", q("resource_pools", vmPool.Value, "names", vmName), one(cl.VMs[0].Value)},
+		{"vm resource pool rejects cluster id", "vm", "vm", q("resource_pools", cl.Ref.Value), none},
+		{"vm resource pool rejects datacenter id", "vm", "vm", q("resource_pools", clusterDC), none},
 		{"vm other host excluded", "vm", "vm", q("hosts", otherHosts[0], "vms", cl.VMs[0].Value), none},
 		{"vm no match", "vm", "vm", q("names", "no-such-vm"), none},
 		{"folder by id", "folder", "folder", q("folders", hostFolder), one(hostFolder)},

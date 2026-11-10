@@ -1256,3 +1256,18 @@ func TestReviewRestorationDependsOnRetirement(t *testing.T) {
 		})
 	}
 }
+
+func TestGenerateKeepsNFSDatastores(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
+	nfs := scenario.NFSDatastore{Name: "shared-nfs", RemoteHost: "nfs01.example.test", RemotePath: "/vol/shared", Capacity: 5_000_000_000_000, FreeSpace: 3_000_000_000_000}
+	if _, err := c.Generate(GenParams{Seed: "nfs-1", Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1, NFS: []scenario.NFSDatastore{nfs}}}, Hosts: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	dcs := c.applied().topo.Datacenters
+	if len(dcs) != 1 || len(dcs[0].NFS) != 1 || dcs[0].NFS[0].Spec.Name != "shared-nfs" || dcs[0].NFS[0].Spec.RemoteHost != "nfs01.example.test" {
+		t.Errorf("generated topology lost NFS datastores: %+v", dcs)
+	}
+}

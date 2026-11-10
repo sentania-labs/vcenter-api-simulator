@@ -34,7 +34,7 @@ function seedForm(scn, projection) {
   }
   form = {
     seed: scn.seed || '',
-    dcs: (scn.datacenters || []).map((x) => ({ name: x.name, clusters: String(x.clusters ?? 1) })),
+    dcs: (scn.datacenters || []).map((x) => ({ name: x.name, clusters: String(x.clusters ?? 1), nfs: x.nfs || [] })),
     hosts: String(d.hosts ?? 4),
     architecture: projection?.clusters > 0 && projection.osaClusters === projection.clusters ? 'osa' : projection?.clusters > 0 && projection.osaClusters === 0 ? 'esa' : (d.architecture || 'esa'),
     statsPrimary: primaryStates.length && primaryStates.every((x) => x === primaryStates[0]) ? primaryStates[0] : d.statsPrimary !== false,
@@ -54,7 +54,7 @@ function seedForm(scn, projection) {
 function params() {
   return {
     seed: form.seed.trim(),
-    datacenters: form.dcs.map((d) => ({ name: d.name.trim(), clusters: num(d.clusters) })),
+    datacenters: form.dcs.map((d) => ({ name: d.name.trim(), clusters: num(d.clusters), ...(d.nfs?.length ? { nfs: d.nfs } : {}) })),
     hosts: num(form.hosts),
     architecture: form.architecture,
     statsPrimary: form.statsPrimary,
