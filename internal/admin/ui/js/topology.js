@@ -262,7 +262,7 @@ function impactCard(ctx, d) {
       const nv = one ? (one.find((r) => r.label.startsWith('NVMe')) || {}).added : null;
       banners.push(banner('info', html`<b>Adds ${added} host${added === 1 ? '' : 's'}</b> with new derived identities. VCF Operations will discover ${added} host${added === 1 ? '' : 's'}${vms != null ? html`, ${int(vms)} VMs and ${int(nv)} NVMe devices` : ''}.`));
     }
-    if (gone && !regen) banners.push(banner('warn', html`<b>Removes ${gone} host${gone === 1 ? '' : 's'}.</b> Every object created after a removed one gets a new MoRef (see Review for the count); UUIDs do not change. The vCenter adapter keys on MoRefs, the vSAN pack on UUIDs.`));
+    if (gone && !regen) banners.push(banner('warn', html`<b>Removes ${gone} host${gone === 1 ? '' : 's'}.</b> The remaining hosts and VMs keep their MoRefs and UUIDs; the removed hosts' objects go stale in VCF Operations.`));
     if (v.seedEpoch > 0 && v.state) banners.push(banner('warn', html`<b>Cluster seed reset.</b> Every synthetic sample of ${v.name}, including its history, changes. Identities do not.`));
     banners.push(banner('', html`Telemetry history and seeds elsewhere are preserved. ${added ? html`New hosts start reporting at the next bucket, <span class="mono">${hm(st.clock.nextBoundary)}:00Z</span>.` : html`The change lands at the next bucket, <span class="mono">${hm(st.clock.nextBoundary)}:00Z</span>, if you apply at the boundary.`}`));
   }
