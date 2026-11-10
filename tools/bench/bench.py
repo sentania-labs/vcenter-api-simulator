@@ -336,7 +336,8 @@ def git_commit():
 
 
 def run(args):
-    os.makedirs(args.out, exist_ok=True)
+    os.makedirs(args.out, mode=0o700, exist_ok=True)
+    os.chmod(args.out, 0o700)
     data_dir = os.path.join(args.out, "data")
     os.makedirs(data_dir, exist_ok=True)
     catalog = read_catalog()
@@ -399,6 +400,7 @@ def run(args):
         fh.write(txt + "\n")
     print(txt)
     shutil.copyfile(os.path.join(data_dir, "queries.jsonl"), os.path.join(args.out, "queries.jsonl"))
+    os.chmod(os.path.join(args.out, "queries.jsonl"), 0o600)
     shutil.copyfile(args.scenario, os.path.join(args.out, "scenario.yaml"))
     if not args.keep:
         shutil.rmtree(data_dir)

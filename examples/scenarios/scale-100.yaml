@@ -1,7 +1,6 @@
-# Scale profile "stress" (docs/TESTING.md scale matrix): one hundred and six
-# ESA clusters of eight hosts, 848 hosts in one simulated vCenter. The
-# cardinality-stress profile is this file with fewer clusters and the same
-# per-host fan-out; see scale-10.yaml for the field notes.
+# Scale profile "stress" (docs/TESTING.md scale matrix), named scale-100 for
+# the roadmap's 100+ cluster tier: 106 ESA clusters of eight hosts (uniform,
+# where the matrix allows 8-16), 848 hosts in one simulated vCenter.
 seed: scale-100
 datacenters:
   - name: dc-01
