@@ -119,6 +119,8 @@ func main() {
 	}
 
 	if *describe {
+		// the cardinality the scenario materializes, for scripts that need
+		// the expected counts (the acceptance harness, projections)
 		if err := json.NewEncoder(os.Stdout).Encode(describeTopology(topology.Generate(sc, registry.InMemory(sc.Seed)))); err != nil {
 			log.Fatal(err)
 		}

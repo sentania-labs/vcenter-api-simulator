@@ -50,10 +50,9 @@ func (w *response) Write(b []byte) (int, error) {
 
 // Wrap emits one JSON line per request. SOAP bodies are deliberately omitted for
 // any SessionManager operation (logins, clone tickets, impersonation) and for
-// requests that name no target; the log
-// contains no HTTP headers, cookies or passwords.
-// Enable only in a controlled environment: other SOAP requests can contain
-// inventory identifiers.
+// requests that name no target; the log contains no HTTP headers, cookies or
+// passwords. Enable only in a controlled environment: other SOAP requests can
+// contain inventory identifiers.
 func Wrap(next http.Handler, dst io.Writer) http.Handler {
 	return &logger{next: next, enc: json.NewEncoder(dst)}
 }
