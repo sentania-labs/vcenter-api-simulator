@@ -25,7 +25,7 @@ serial it was first given. Serials are never reused.
 | restart on the same data directory | unchanged | unchanged |
 | add clusters, hosts or VMs | existing ones unchanged; new ones get new serials | existing ones unchanged; new objects are created last (VMs that rebalance onto a new host keep their MoRef: they are created in their own order and moved afterwards) |
 | add devices to an existing host | existing ones unchanged | existing ones unchanged; each new local datastore takes MoRefs from fresh space past every reservation |
-| remove entities | the rest unchanged; a removed host, VM or device keeps its serial for a later re-add (a cluster deleted in the console is retired) | the rest unchanged; a removed object's references stay reserved for it |
+| remove entities | the rest unchanged; a removed cluster, host, VM or device keeps its serial for a later re-add | the rest unchanged; a removed object's references stay reserved for it |
 | change `seed` | refused at start unless `-regenerate` is given; then every identity changes | all change |
 | change `telemetrySeed` | unchanged (every metric value changes) | unchanged |
 
@@ -33,10 +33,9 @@ UUIDs are derived from the seed and registry serials. The registry also
 reserves the vcsim counter interval for each inventory creation step (one
 per datacenter, cluster, host, VM and local datastore), so a removal leaves
 a gap, an addition is created in fresh space, and existing objects keep
-their MoRefs across applies and restarts. A host, VM or device that is
-removed and later added back keeps its serial, so it gets its previous
-UUIDs and MoRefs back; removing a cluster in the console retires its
-identities, so a cluster added again under that name is new. `-regenerate`
+their MoRefs across applies and restarts. A cluster, host, VM or device removed and later added back under the same
+seed and name gets its previous UUIDs and MoRefs back, unless its registry
+entries were retired by an explicit regeneration. `-regenerate`
 discards the registry; the same seed reproduces the same identities, so
 change the seed to mint new ones.
 
@@ -83,7 +82,7 @@ clusters:                   # explicit overrides win over draws and defaults;
 
 removed:                    # generated clusters left out (the console's Delete);
   - dc-01/cluster-07        #   the others keep their numbers and the removed
-                            #   cluster's identities stay retired
+                            #   cluster's identities stay reserved
 
 auth:                       # no users: any non-empty name and password log in
   users:
@@ -224,7 +223,7 @@ changed since, in which case the file wins.
 |---|---|---|
 | edit a cluster | an entry under `clusters:` | kept; new hosts and VMs get new serials |
 | Add cluster | `datacenters[].clusters` + 1 | existing unchanged |
-| Delete cluster | the key under `removed:` | the cluster's serials are retired |
+| Delete cluster | the key under `removed:` | the cluster's serials remain reserved |
 | Regenerate | none (an apply-time action) | the cluster's serials are retired and new ones minted, same seed |
 | Reset cluster seed | `seedEpoch` + 1 on the cluster | unchanged; every sample of the cluster changes |
 | generator / new global seed | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new seed replaces every identity |

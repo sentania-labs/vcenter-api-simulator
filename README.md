@@ -109,7 +109,7 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
 - **Identity actions are separate and confirmed.** *Regenerate* gives one
   cluster new identities under the same seed; *Reset cluster seed* changes
   every sample of that cluster and no identity; *Delete cluster* removes it
-  (its identities stay retired). The global seed changes only in the
+  (its identities remain reserved for a later re-add). The global seed changes only in the
   generator.
 - **Applied state survives a restart.** The console writes
   `<data>/console.json`; the next start resumes it unless the scenario file

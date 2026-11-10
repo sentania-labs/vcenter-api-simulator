@@ -1197,6 +1197,21 @@ func TestReviewRestorationDependsOnRetirement(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
 			c := newCtl(t, sc, "", "same")
+			identities := func(c *Controller) map[string]string {
+				result := map[string]string{}
+				for _, refs := range c.applied().sim.Clusters {
+					cl := refs.Cluster
+					result[cl.Key] = fmt.Sprint(refs.Ref, cl.VsanUUID, cl.StatsUUID, cl.PolicyUUID)
+					for i, h := range cl.Hosts {
+						result[h.Key] = fmt.Sprint(refs.Hosts[i], h.HardwareUUID, h.NodeUUID)
+					}
+					for i, vm := range cl.VMs {
+						result[vm.Key] = fmt.Sprint(refs.VMs[i], vm.UUID, vm.InstanceUUID)
+					}
+				}
+				return result
+			}
+			before := identities(c)
 			if explicit {
 				if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
 					t.Fatal(err)
@@ -1217,18 +1232,27 @@ func TestReviewRestorationDependsOnRetirement(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			found := false
 			for _, row := range rv.Identities {
 				if strings.HasPrefix(row.Label, "Cluster") {
-					if explicit && (row.Added != 1 || row.Restored != 0) {
-						t.Errorf("retired: %+v", row)
-					}
-					if !explicit && (row.Added != 0 || row.Restored != 1) {
+					found = true
+					if row.Added != 0 || row.Restored != 1 {
 						t.Errorf("returning: %+v", row)
 					}
-					return
 				}
 			}
-			t.Error("missing cluster row")
+			if !found {
+				t.Fatal("missing cluster row")
+			}
+			if _, err := c.Apply("now"); err != nil {
+				t.Fatal(err)
+			}
+			after := identities(c)
+			for key, value := range before {
+				if after[key] != value {
+					t.Errorf("%s changed after re-add: %s -> %s", key, value, after[key])
+				}
+			}
 		})
 	}
 }

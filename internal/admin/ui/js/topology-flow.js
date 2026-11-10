@@ -164,7 +164,7 @@ function genRender(ctx, data) {
       <div class="fields c2"><div><label class="lat-label" for="gen-seed">Global seed</label><input class="lat-input mono" id="gen-seed" data-k="gen-seed" autocomplete="off" spellcheck="false" data-inp="gen.seed" value="${form.seed}">
         <div class="lat-hint">Changing the seed replaces identities.</div></div></div>
       ${sameSeed
-        ? banner('info', html`<b>Same seed: existing objects keep their IDs when their shape changes.</b> An object removed by reducing counts gets its previous IDs back if it returns with the same name and seed, and its registry entry has not been retired. Applying Delete or Regenerate retires a cluster’s IDs. The review separates additions, restorations and removals.`)
+        ? banner('info', html`<b>Same seed: existing objects keep their IDs when their shape changes.</b> A removed object gets its previous IDs back if it returns with the same name and seed, and its registry entry has not been retired. Regenerate retires a cluster’s IDs. The review separates additions, restorations and removals.`)
         : banner('info', html`<b>Applying a generated draft with a new seed replaces every identity.</b> VCF Operations will see every cluster as new and stop receiving data for the v${st?.topology.version} objects. To grow an existing topology without churn, edit clusters instead.`)}
     </section>
 

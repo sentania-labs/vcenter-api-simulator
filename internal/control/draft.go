@@ -352,11 +352,6 @@ func (c *Controller) previewTopology(d *Draft) (*topology.Topology, *registry.Re
 		for _, k := range d.Regenerate {
 			reg.Retire(k)
 		}
-		for _, k := range d.Scenario.Removed {
-			if !old.sc.IsRemoved(k) {
-				reg.Retire(k)
-			}
-		}
 	}
 	return topology.Generate(d.Scenario, reg), reg
 }
