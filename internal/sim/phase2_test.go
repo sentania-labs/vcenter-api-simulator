@@ -3,6 +3,7 @@ package sim_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1087,5 +1088,67 @@ func TestOSACapturedFaultsAndHTTP(t *testing.T) {
 		if res.StatusCode != want {
 			t.Errorf("%s: %d", path, res.StatusCode)
 		}
+	}
+}
+
+func TestRestCapturedFailuresRequireSession(t *testing.T) {
+	sc := scenario.Phase1("rest-faults")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{Credentials: map[string]string{"reader": "pass"}})
+	client := e.srv.Client()
+	req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/api/content/library", nil)
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 401 {
+		t.Fatalf("unauthenticated: %d", res.StatusCode)
+	}
+	req, _ = http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "pass")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 201 || token == "" {
+		t.Fatalf("session: %d", res.StatusCode)
+	}
+	for path, want := range map[string]int{"/api/content/library": 403, "/api/esx/settings/hosts/host-1/software": 403, "/api/vcenter/storage/policies": 500, "/api/vcenter/vm/vm-1/storage/policy": 500, "/api/vcenter/inventory/datastore": 400, "/api/vcenter/host/host-1": 404} {
+		req, _ = http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err = client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("%s: %d", path, res.StatusCode)
+		}
+	}
+	req, _ = http.NewRequest(http.MethodDelete, e.srv.URL+"/api/session", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 204 {
+		t.Fatal(res.StatusCode)
+	}
+	req, _ = http.NewRequest(http.MethodGet, e.srv.URL+"/api/content/library", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 401 {
+		t.Fatalf("deleted session: %d", res.StatusCode)
 	}
 }

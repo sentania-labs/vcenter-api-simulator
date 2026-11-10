@@ -142,7 +142,7 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0}
+	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0, rest: restSessions{tokens: map[string]bool{}, credentials: creds}}
 	return s, nil
 }
 
@@ -633,6 +633,7 @@ type handler struct {
 	cat         *catalog.Catalog
 	env         *vsanhealth.Env
 	strictLogin bool
+	rest        restSessions
 }
 
 // otherLogins are vcsim's alternative login methods: LoginByToken takes
@@ -642,6 +643,9 @@ type handler struct {
 var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.rest.serve(w, r) {
+		return
+	}
 	if r.Method == http.MethodGet {
 		switch r.URL.Path {
 		case "/sdk", "/sdk/":
