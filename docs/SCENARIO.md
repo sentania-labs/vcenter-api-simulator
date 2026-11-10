@@ -12,7 +12,9 @@ vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 
 
 NFS entries describe simulated inventory and do not connect to the named server.
 Capacity and free space are bytes. The configured name must be unique within
-its datacenter, and the remote path must be absolute.
+its datacenter, and the remote path must be absolute. In Topology, choose a
+datacenter under NFS datastores to add, edit, or remove mounts in the draft.
+Review lists these changes before apply, including removals from presets.
 
 ## Identity: seed, registry, regenerate
 

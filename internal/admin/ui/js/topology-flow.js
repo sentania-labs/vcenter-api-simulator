@@ -266,6 +266,10 @@ function reviewRender(ctx, data) {
   const newDraft = rv.origin && rv.origin !== 'edit';
   const sumRow = (lab) => ids.find((r) => r.label.startsWith(lab));
   const cl = sumRow('Cluster');
+  const nfsChanges = rv.changes.filter((c) => c.field === 'NFS datastore');
+  const otherChanges = rv.changes.filter((c) => c.field !== 'NFS datastore');
+  const shownChanges = showAll ? rv.changes : [...nfsChanges, ...otherChanges.slice(0, CAP)];
+  const hiddenChanges = rv.changes.length - shownChanges.length;
   const originText = rv.origin === 'generator' ? 'generated draft' : String(rv.origin).startsWith('preset:') ? 'preset ' + rv.origin.slice(7) : '';
   return html`
   <section class="lat-card" aria-labelledby="rev-title">
@@ -276,9 +280,9 @@ function reviewRender(ctx, data) {
       <div class="stack" style="gap:10px">
         <h2 class="lat-card-title">Changes <span class="aside">${int(rv.topologyChanges)} topology · ${int(rv.telemetryChanges)} telemetry</span></h2>
         <table class="lat-table"><thead><tr><th>Object</th><th>Field</th><th class="r">Before</th><th class="r">After</th><th>Effect</th></tr></thead>
-          <tbody>${(showAll ? rv.changes : rv.changes.slice(0, CAP)).map((c) => html`<tr><td class="ink mono">${c.object}</td><td>${c.field}</td><td class="num r">${c.before}</td><td class="num r">${c.after}</td><td>${badge(c.effect, effectKind(c.effect))}</td></tr>`)}
-            ${!showAll && rv.changes.length > CAP ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show all ${int(rv.changes.length + rv.moreChanges)} changes</button> <span class="subtle">· ${int(rv.changes.length - CAP + rv.moreChanges)} more</span></td></tr>` : ''}
-            ${showAll && rv.moreChanges ? html`<tr><td class="subtle" colspan="5">… ${int(rv.moreChanges)} more changes not listed</td></tr>` : ''}
+          <tbody>${shownChanges.map((c) => html`<tr><td class="ink mono">${c.object}</td><td>${c.field}</td><td class="num r">${c.before}</td><td class="num r">${c.after}</td><td>${badge(c.effect, effectKind(c.effect))}</td></tr>`)}
+            ${!showAll && hiddenChanges > 0 ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show all ${int(rv.changes.length + rv.moreChanges)} changes</button> <span class="subtle">· ${int(hiddenChanges + rv.moreChanges)} more</span></td></tr>` : ''}
+            ${(showAll || hiddenChanges === 0) && rv.moreChanges ? html`<tr><td class="subtle" colspan="5">… ${int(rv.moreChanges)} more changes not listed</td></tr>` : ''}
             ${showAll && rv.changes.length > CAP ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show fewer</button></td></tr>` : ''}</tbody></table>
         ${topoOnly && ids.length ? html`
           <h2 class="lat-card-title">Identity consequences</h2>

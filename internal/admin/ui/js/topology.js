@@ -6,7 +6,7 @@ import { api, html, raw, join, badge, banner, int, bytes, hm, clone, plural } fr
 import flow from './topology-flow.js';
 
 // ---- view state that survives re-renders ------------------------------------
-const ui = { filter: '', pill: 'all', closed: {}, expanded: {}, allHosts: false };
+const ui = { filter: '', pill: 'all', closed: {}, expanded: {}, allHosts: false, nfsForm: null, nfsDC: null };
 
 const mode = (ctx) => (['generator', 'review'].includes(ctx.route.parts[0]) ? ctx.route.parts[0] : 'editor');
 const pad = (n) => String(n).padStart(2, '0');
@@ -192,6 +192,36 @@ function changeCount(view, regen) {
   return n;
 }
 
+// NFS is a datacenter setting shared by all of its clusters. Changes are
+// written to the ordinary draft only after the complete form validates.
+function activeNfsDC(d) { return d.draft.scenario.datacenters.find((x) => x.name === ui.nfsDC) || d.draft.scenario.datacenters.find((x) => x.name === d.cluster.datacenter); }
+function nfsEditor(d, locked) {
+  const dc = activeNfsDC(d);
+  if (!dc) return '';
+  const entries = dc.nfs || [], form = ui.nfsForm?.dc === dc.name ? ui.nfsForm : null;
+  const fields = [['name', 'Name'], ['remoteHost', 'Server'], ['remotePath', 'Export path'], ['capacity', 'Capacity (bytes)'], ['freeSpace', 'Free space (bytes)']];
+  const controls = form ? html`<div class="fields c6">${fields.map(([key, label]) => html`<div><label class="lat-label" for="nfs-${key}">${label}</label><input class="lat-input${form.errors[key] ? ' is-bad' : ''}" id="nfs-${key}" data-inp="topo.nfsInput" data-f="${key}" value="${form.values[key]}" ${raw(form.errors[key] ? `aria-invalid="true" aria-describedby="nfs-error-${key}"` : '')}><div class="lat-hint" id="nfs-error-${key}" role="status">${form.errors[key] || ''}</div></div>`)}</div>
+    <div class="row"><button type="button" class="lat-btn lat-btn--primary" data-act="topo.nfsSave">Save to draft</button><button type="button" class="lat-btn" data-act="topo.nfsCancel">Cancel</button></div>` : '';
+  return html`<h2 class="lat-card-title">NFS datastores <span class="aside">${dc.name} · shared by all hosts in this datacenter</span></h2>
+    <div class="anno">Changes join the draft and take effect only after review and apply. NFS is simulated; no server connection is made.</div>
+    <label class="lat-label" for="nfs-datacenter">Datacenter</label><select id="nfs-datacenter" class="lat-input" data-chg="topo.nfsSelect" ${raw(locked ? 'disabled' : '')}>${d.draft.scenario.datacenters.map((item) => html`<option value="${item.name}" ${raw(item.name === dc.name ? 'selected' : '')}>${item.name}</option>`)}</select>
+    ${entries.length ? html`<table class="lat-table"><thead><tr><th>Name</th><th>Server and export</th><th>Capacity / free</th><th>Actions</th></tr></thead><tbody>${entries.map((n,i) => html`<tr><td>${n.name}</td><td>${n.remoteHost}:${n.remotePath}</td><td>${n.capacity} / ${n.freeSpace} B</td><td><button type="button" class="lat-btn lat-btn--sm" data-act="topo.nfsEdit" data-arg="${i}" ${raw(locked ? 'disabled' : '')} aria-label="Edit ${n.name}">Edit</button> <button type="button" class="lat-btn lat-btn--sm" data-act="topo.nfsRemove" data-arg="${i}" ${raw(locked ? 'disabled' : '')} aria-label="Remove ${n.name}">Remove</button></td></tr>`)}</tbody></table>` : html`<div class="anno">No NFS datastores configured for this datacenter.</div>`}
+    ${controls}${form ? '' : html`<button type="button" class="lat-btn lat-btn--sm" data-act="topo.nfsAdd" ${raw(locked ? 'disabled' : '')}>Add NFS datastore</button>`}`;
+}
+
+function validateNFS(values, entries, index) {
+  const errors = {}, name = values.name.trim(), host = values.remoteHost.trim(), path = values.remotePath.trim();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(name)) errors.name = 'Use lower-case letters, digits and hyphens.';
+  else if (entries.some((n, i) => i !== index && n.name === name)) errors.name = 'A datastore with this name already exists in the datacenter.';
+  if (!host) errors.remoteHost = 'Enter a server.';
+  if (!path.startsWith('/')) errors.remotePath = 'Enter an absolute export path.';
+  for (const key of ['capacity', 'freeSpace']) {
+    if (!/^\d+$/.test(String(values[key])) || !Number.isSafeInteger(Number(values[key])) || (key === 'capacity' && Number(values[key]) === 0)) errors[key] = key === 'capacity' ? 'Enter a positive whole number of bytes.' : 'Enter a whole number of bytes, zero or more.';
+  }
+  if (!errors.capacity && !errors.freeSpace && Number(values.freeSpace) > Number(values.capacity)) errors.freeSpace = 'Free space cannot exceed capacity.';
+  return errors;
+}
+
 function editorCard(ctx, d) {
   const v = d.cluster;
   if (!v) return html`<section class="lat-card"><div class="empty">No clusters. Use Quick generator… to create a topology.</div></section>`;
@@ -218,10 +248,11 @@ function editorCard(ctx, d) {
       ${v.spec.architecture === 'osa' ? '' : html`${input(v, 'dedup', locked)}${input(v, 'compression', locked)}`}
       <div><span class="lat-label">vDS</span><div class="mono ink" style="padding:5px 0">${v.vds}</div><div class="lat-hint">${v.portgroups} port groups · ${v.datacenter}</div></div>
     </div>
-    <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; the other rows are /sdk inventory only</span></h2>
+    <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; other rows are inventory only; no vSAN performance data</span></h2>
     <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>MP Perf Service</th></tr></thead><tbody>
       ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td class="${s.perfService === 'queried' ? 'ink' : 'muted'}">${s.perfService}</td></tr>`)}</tbody></table>
-    <div class="anno">${v.spec.architecture === 'osa' ? 'OSA deduplication and compression are not modeled from the capture. ' : ''}NFS, FC and iSCSI datastores are not editable yet.</div>
+    <div class="anno">${v.spec.architecture === 'osa' ? 'OSA deduplication and compression are not modeled from the capture. ' : ''}FC and iSCSI datastores are not emulated.</div>
+    ${nfsEditor(d, locked)}
     <h2 class="lat-card-title">Per-host defaults <span class="aside">applies to every host in ${v.name}</span></h2>
     <div class="fields c6">${['threads', 'domWorlds', 'claimedDevices', 'localDevices', 'vsanPnics'].map((id) => input(v, id, locked))}</div>
     <h2 class="lat-card-title">Hosts <span class="aside">${v.state === 'removed' ? 0 : v.spec.hosts} after apply · identities derive from seed ${ctx.state.topology.seed} + cluster + host ordinal</span></h2>
@@ -300,6 +331,21 @@ const actions = {
   pill(ctx, el) { ui.pill = el.dataset.arg; ctx.rerender(); },
   filter(ctx, el) { ui.filter = el.value; ctx.rerender(); },
   allHosts(ctx) { ui.allHosts = !ui.allHosts; ctx.rerender(); },
+  nfsSelect(ctx, el) { ui.nfsDC = el.value; ui.nfsForm = null; ctx.rerender(); },
+  nfsAdd(ctx, el, ev, data) { ui.nfsForm = { dc:activeNfsDC(data).name, index:-1, values:{name:'', remoteHost:'', remotePath:'', capacity:'', freeSpace:''}, errors:{} }; ctx.rerender(); },
+  nfsEdit(ctx, el, ev, data) { const dc = activeNfsDC(data); const index = Number(el.dataset.arg); ui.nfsForm = { dc:dc.name, index, values:{...dc.nfs[index]}, errors:{} }; ctx.rerender(); },
+  nfsInput(ctx, el) { if (ui.nfsForm) ui.nfsForm.values[el.dataset.f] = el.value; },
+  nfsCancel(ctx) { ui.nfsForm = null; ctx.rerender(); },
+  async nfsSave(ctx, el, ev, data) {
+    const form = ui.nfsForm; if (!form || form.dc !== activeNfsDC(data).name) return;
+    const scn = clone(data.draft.scenario), dc = scn.datacenters.find((x) => x.name === form.dc);
+    dc.nfs = dc.nfs || []; form.errors = validateNFS(form.values, dc.nfs, form.index);
+    if (Object.keys(form.errors).length) { ctx.rerender(); return; }
+    const n = {name:form.values.name.trim(), remoteHost:form.values.remoteHost.trim(), remotePath:form.values.remotePath.trim(), capacity:Number(form.values.capacity), freeSpace:Number(form.values.freeSpace)};
+    if (form.index < 0) dc.nfs.push(n); else dc.nfs[form.index] = n;
+    if (await save(ctx, scn)) { ui.nfsForm = null; ctx.rerender(); }
+  },
+  async nfsRemove(ctx, el, ev, data) { const scn = clone(data.draft.scenario), dc = scn.datacenters.find((x) => x.name === activeNfsDC(data).name); dc.nfs.splice(Number(el.dataset.arg), 1); ui.nfsForm = null; await save(ctx, scn); },
 
   async field(ctx, el, ev, data) {
     const id = el.dataset.f, f = FIELDS[id], key = data.key;

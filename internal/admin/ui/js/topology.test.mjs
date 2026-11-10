@@ -84,3 +84,31 @@ test('overview uses the biggest non-dashboard families and OSA-aware empty subti
  assert.match(text, /expected: unmodeled kinds on a cluster/);
  assert.match(text, /74 kinds × 1 cluster/);
 });
+
+test('NFS editor validates inline and stages add, edit and removal in its datacenter draft', async () => {
+ const data = editorData();
+ topology.actions['topo.nfsAdd'](ctx, null, null, data);
+ await topology.actions['topo.nfsSave'](ctx, null, null, data);
+ let markup = String(topology.render(ctx, data));
+ assert.match(markup, /Use lower-case letters/); assert.match(markup, /Enter a server/);
+ assert.match(markup, /absolute export path/); assert.match(markup, /positive whole number/);
+ for (const [f, value] of Object.entries({name:'shared-nfs', remoteHost:'nfs.sim.invalid', remotePath:'/exports/sim', capacity:'1000', freeSpace:'1001'})) topology.actions['topo.nfsInput'](ctx,{dataset:{f},value});
+ await topology.actions['topo.nfsSave'](ctx, null, null, data);
+ markup = String(topology.render(ctx, data)); assert.match(markup,/Free space cannot exceed capacity/);
+ topology.actions['topo.nfsInput'](ctx,{dataset:{f:'freeSpace'},value:'800'});
+ await topology.actions['topo.nfsSave'](ctx, null, null, data);
+ assert.deepEqual(saved.datacenters[0].nfs, [{name:'shared-nfs', remoteHost:'nfs.sim.invalid', remotePath:'/exports/sim', capacity:1000, freeSpace:800}]);
+ data.draft.scenario = clone(saved);
+ topology.actions['topo.nfsAdd'](ctx,null,null,data);
+ for (const [f, value] of Object.entries({name:'shared-nfs', remoteHost:'nfs.sim.invalid', remotePath:'/exports/sim', capacity:'1000', freeSpace:'800'})) topology.actions['topo.nfsInput'](ctx,{dataset:{f},value});
+ await topology.actions['topo.nfsSave'](ctx,null,null,data);
+ assert.match(String(topology.render(ctx,data)),/already exists/);
+ topology.actions['topo.nfsCancel'](ctx);
+ topology.actions['topo.nfsEdit'](ctx,{dataset:{arg:'0'}},null,data);
+ topology.actions['topo.nfsInput'](ctx,{dataset:{f:'remotePath'},value:'/exports/new'});
+ await topology.actions['topo.nfsSave'](ctx,null,null,data);
+ assert.equal(saved.datacenters[0].nfs[0].remotePath,'/exports/new');
+ data.draft.scenario = clone(saved);
+ await topology.actions['topo.nfsRemove'](ctx,{dataset:{arg:'0'}},null,data);
+ assert.deepEqual(saved.datacenters[0].nfs, []);
+});

@@ -707,7 +707,8 @@ func (c *Controller) Compatibility() *Compat {
 			"Behaviour on a real vCenter 9.1.1 other than the captured one",
 			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
 			"vSAN OSA beyond a single-disk-group, three-host cluster: per-VM and virtual-disk performance, multiple disk groups per host, stretched clusters and OSA deduplication",
-			"iSCSI target, file service and FC datastore inventory",
+			"FC and iSCSI datastores, populated iSCSI target and file service are not emulated: no populated sanitized captures are available",
+			"/sdk/vim.wsdl is not served: a complete sanitized capture is unavailable",
 			"The VCF Operations ingestion path (Phase 3)",
 		}}
 	listed := map[string]bool{}

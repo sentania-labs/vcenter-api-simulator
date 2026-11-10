@@ -30,8 +30,11 @@ function storage() {
     <table class="lat-table"><thead><tr><th>Type</th><th>/sdk inventory</th><th>Perf kinds</th><th>MP reads</th></tr></thead><tbody>
     ${row('vSAN ESA', badge('impl', 'ok'), 'served', 'yes')}
     ${row('vSAN OSA', badge('impl', 'ok'), 'disk-group, cache/capacity disk', 'yes · 30 of 74 wildcard families returned samples in the capture')}
-    ${row('vSAN iSCSI target', badge('planned'), 'vsan-iscsi-*', 'yes, no view')}
-    ${row('NFS · FC · iSCSI · local', badge('planned'), 'none', html`<span class="muted">no · native adapter</span>`)}
+    ${row('NFS v3', badge('implemented', 'ok'), 'none', 'Shared inventory and host mounts; no vSAN performance data')}
+    ${row('Local VMFS', badge('implemented', 'ok'), 'none', 'Per-host inventory; no vSAN performance data')}
+    ${row('FC datastores', badge('not emulated', 'bad'), 'none', 'No populated capture available')}
+    ${row('iSCSI datastores and target service', badge('not emulated', 'bad'), 'none', 'No populated capture available; captured disabled-service faults are served')}
+    ${row('vSAN file service', badge('not emulated', 'bad'), 'none', 'No populated capture available')}
     </tbody></table></section>`;
 }
 
@@ -56,7 +59,7 @@ function health(c) {
 }
 
 function pending(c) {
-  return html`<section class="lat-card" aria-labelledby="cp-pend"><h2 class="lat-card-title" id="cp-pend">Still unverified</h2>
+  return html`<section class="lat-card" aria-labelledby="cp-pend"><h2 class="lat-card-title" id="cp-pend">Limits and unverified behavior</h2>
     <ul style="margin:0;padding-left:18px;display:grid;gap:4px">${c.unverified.map((u) => html`<li>${u}</li>`)}</ul>
     <div class="anno">Fixture files are not served by the console; browse <span class="mono">fixtures/live/9.1.1</span> in the repository.</div></section>`;
 }

@@ -1271,3 +1271,51 @@ func TestGenerateKeepsNFSDatastores(t *testing.T) {
 		t.Errorf("generated topology lost NFS datastores: %+v", dcs)
 	}
 }
+
+func TestReviewAccountsForNFSDatastoresAcrossDraftPaths(t *testing.T) {
+	base := scenario.Phase1("nfs-review")
+	base.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "shared-nfs", RemoteHost: "nfs.sim.invalid", RemotePath: "/exports/a", Capacity: 1000, FreeSpace: 800}}
+	c := newCtl(t, base, "", "t")
+	check := func(wantObject, effect string) {
+		t.Helper()
+		rv, err := c.Review()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ch := range rv.Changes {
+			if ch.Object == wantObject && ch.Field == "NFS datastore" && strings.Contains(ch.Effect, effect) {
+				if !rv.RebuildsVCenter || rv.TopologyCount == 0 {
+					t.Fatalf("NFS change must rebuild: %+v", rv)
+				}
+				return
+			}
+		}
+		t.Fatalf("missing NFS %s %s in %+v", wantObject, effect, rv.Changes)
+	}
+	sc := Strip(base)
+	sc.Datacenters[0].NFS[0].RemotePath = "/exports/b"
+	if _, err := c.SetDraft(mustJSON(t, sc), ""); err != nil {
+		t.Fatal(err)
+	}
+	check("dc-01/shared-nfs", "updates")
+	sc.Datacenters[0].NFS = append(sc.Datacenters[0].NFS, scenario.NFSDatastore{Name: "new-nfs", RemoteHost: "nfs.sim.invalid", RemotePath: "/exports/new", Capacity: 2000, FreeSpace: 1000})
+	if _, err := c.SetDraft(mustJSON(t, sc), ""); err != nil {
+		t.Fatal(err)
+	}
+	check("dc-01/new-nfs", "adds")
+	sc.Datacenters[0].NFS = nil
+	if _, err := c.SetDraft(mustJSON(t, sc), ""); err != nil {
+		t.Fatal(err)
+	}
+	check("dc-01/shared-nfs", "removes")
+	c.DiscardDraft()
+	if _, err := c.ApplyPreset("phase1"); err != nil {
+		t.Fatal(err)
+	}
+	check("dc-01/shared-nfs", "removes")
+	c.DiscardDraft()
+	if _, err := c.Generate(GenParams{Seed: base.Seed, Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1}}, Hosts: 3}); err != nil {
+		t.Fatal(err)
+	}
+	check("dc-01/shared-nfs", "removes")
+}

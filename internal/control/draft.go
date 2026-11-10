@@ -415,8 +415,22 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 		}
 	}
 	if len(rv.Changes) > 120 {
-		rv.More = len(rv.Changes) - 120
-		rv.Changes = rv.Changes[:120]
+		kept := make([]Change, 0, len(rv.Changes))
+		for _, ch := range rv.Changes {
+			if ch.Field == "NFS datastore" {
+				kept = append(kept, ch)
+			}
+		}
+		for _, ch := range rv.Changes {
+			if ch.Field != "NFS datastore" {
+				if len(kept) < 120 {
+					kept = append(kept, ch)
+				} else {
+					rv.More++
+				}
+			}
+		}
+		rv.Changes = kept
 	}
 	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged)
 	rv.Warnings = warnings(old, nt, d, rv, newProj)
@@ -466,6 +480,7 @@ func specFields(s scenario.ClusterSpec) [][2]string {
 func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Projection) []Change {
 	var out []Change
 	osc, nsc := old.sc, d.Scenario
+	out = append(out, nfsChanges(osc, nsc)...)
 	if osc.Seed != nsc.Seed {
 		out = append(out, Change{Object: "Identity", Field: "Global seed", Before: osc.Seed, After: nsc.Seed,
 			Effect: "replaces every identity", Area: "Topology"})
@@ -541,6 +556,52 @@ func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Proj
 		out = append(out, Change{Object: "Scenario", Field: "Defaults or datacenters", Before: "—", After: "edited", Effect: "rebuilds the vCenter", Area: "Topology"})
 	}
 	return out
+}
+
+// nfsChanges compares every datacenter regardless of whether the draft came
+// from the editor, a generator, or a replacement preset.
+func nfsChanges(old, next *scenario.Scenario) []Change {
+	type entry struct {
+		dc   string
+		spec scenario.NFSDatastore
+	}
+	collect := func(sc *scenario.Scenario) map[string]entry {
+		out := map[string]entry{}
+		for _, dc := range sc.Datacenters {
+			for _, n := range dc.NFS {
+				out[dc.Name+"/"+n.Name] = entry{dc.Name, n}
+			}
+		}
+		return out
+	}
+	before, after := collect(old), collect(next)
+	keys := make([]string, 0, len(before)+len(after))
+	for key := range before {
+		keys = append(keys, key)
+	}
+	for key := range after {
+		if _, ok := before[key]; !ok {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	describe := func(n scenario.NFSDatastore) string {
+		return fmt.Sprintf("%s:%s · capacity %d B · free %d B", n.RemoteHost, n.RemotePath, n.Capacity, n.FreeSpace)
+	}
+	var changes []Change
+	for _, key := range keys {
+		a, had := before[key]
+		b, has := after[key]
+		switch {
+		case !had:
+			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: "—", After: describe(b.spec), Effect: "adds datastore and mounts on datacenter hosts", Area: "Topology"})
+		case !has:
+			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: describe(a.spec), After: "—", Effect: "removes datastore and host mounts", Area: "Topology"})
+		case a.spec != b.spec:
+			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: describe(a.spec), After: describe(b.spec), Effect: "updates datastore and host mounts", Area: "Topology"})
+		}
+	}
+	return changes
 }
 
 func orDash(s string) string {
@@ -665,7 +726,31 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog, previous *regis
 		}
 		return r
 	}
+	nfsIDs := func(t *topology.Topology) map[id]bool {
+		out := map[id]bool{}
+		for _, dc := range t.Datacenters {
+			for _, store := range dc.NFS {
+				out[id{"nfs/" + dc.Name + "/" + store.Spec.Name, store.Serial}] = true
+			}
+		}
+		return out
+	}
+	nfsBefore, nfsAfter := nfsIDs(o), nfsIDs(n)
+	nfsRow := IdentityRow{Label: "NFS datastore identities"}
+	for id := range nfsBefore {
+		if nfsAfter[id] {
+			nfsRow.Kept++
+		} else {
+			nfsRow.Removed++
+		}
+	}
+	for id := range nfsAfter {
+		if !nfsBefore[id] {
+			nfsRow.Added++
+		}
+	}
 	rows := []IdentityRow{
+		nfsRow,
 		row("Host UUIDs · vSAN node UUIDs", "host/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				out = append(out, id{h.Key, h.Serial})
@@ -772,9 +857,13 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		for _, c := range old.topo.Clusters() {
 			oc[c.Key] = c
 		}
+		affectedDC := map[string]bool{}
+		for _, change := range nfsChanges(old.sc, d.Scenario) {
+			affectedDC[strings.SplitN(change.Object, "/", 2)[0]] = true
+		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && sameCluster(o, c) {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] {
 				kept++
 			} else {
 				touched[c.Key] = true
