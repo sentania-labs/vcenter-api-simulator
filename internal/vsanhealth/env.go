@@ -87,11 +87,13 @@ func (e *Env) Host(ref vim25types.ManagedObjectReference) (*topology.Host, *topo
 
 // Refs of the managed objects, as the management pack's bindings name them.
 var (
-	PerfManagerRef  = vim25types.ManagedObjectReference{Type: "VsanPerformanceManager", Value: "vsan-performance-manager"}
-	ConfigSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterConfigSystem", Value: "vsan-cluster-config-system"}
-	DiskMgmtRef     = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcDiskManagementSystem", Value: "vsan-disk-management-system"}
-	HealthSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
-	SpaceSystemRef  = vim25types.ManagedObjectReference{Type: "VsanSpaceReportSystem", Value: "vsan-cluster-space-report-system"}
+	PerfManagerRef      = vim25types.ManagedObjectReference{Type: "VsanPerformanceManager", Value: "vsan-performance-manager"}
+	ConfigSystemRef     = vim25types.ManagedObjectReference{Type: "VsanVcClusterConfigSystem", Value: "vsan-cluster-config-system"}
+	DiskMgmtRef         = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcDiskManagementSystem", Value: "vsan-disk-management-system"}
+	HealthSystemRef     = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
+	StretchSystemRef    = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcStretchedClusterSystem", Value: "vsan-stretched-cluster-system"}
+	CapabilitySystemRef = vim25types.ManagedObjectReference{Type: "VsanCapabilitySystem", Value: "vsan-vc-capability-system"}
+	SpaceSystemRef      = vim25types.ManagedObjectReference{Type: "VsanSpaceReportSystem", Value: "vsan-cluster-space-report-system"}
 )
 
 // Install registers the /vsanHealth endpoint on the service. It must run after
@@ -105,6 +107,8 @@ func Install(s *simulator.Service, env *Env) {
 	r.Put(&DiskManagementSystem{ManagedObjectReference: DiskMgmtRef, env: env})
 	r.Put(&ClusterHealthSystem{ManagedObjectReference: HealthSystemRef, env: env})
 	r.Put(&SpaceReportSystem{ManagedObjectReference: SpaceSystemRef, env: env})
+	r.Put(&StretchSystem{ManagedObjectReference: StretchSystemRef, env: env})
+	r.Put(&CapabilitySystem{ManagedObjectReference: CapabilitySystemRef, env: env})
 	s.RegisterSDK(r)
 }
 

@@ -1024,3 +1024,40 @@ func TestOSAHealthReads(t *testing.T) {
 		t.Fatalf("perf group: %+v", health.Returnval[0])
 	}
 }
+
+func TestOSAHostViews(t *testing.T) {
+	sc := scenario.Phase1("osa-hosts")
+	sc.Defaults.Architecture = "osa"
+	sc.Defaults.Hosts = 3
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := vsanmethods.VsanClusterGetRuntimeStats(ctx, vc.Client, &vsantypes.VsanClusterGetRuntimeStats{This: vsanhealth.ConfigSystemRef, Cluster: e.cl().Ref})
+	if err != nil || len(runtime.Returnval) != 3 || runtime.Returnval[0].Stats.SupportedClusterSize != 64 || runtime.Returnval[0].Stats.MaxWitnessClusters != 48 {
+		t.Fatalf("runtime: %v %v", runtime, err)
+	}
+	for _, host := range e.cl().Hosts {
+		maps, err := vsanmethods.QueryDiskMappings(ctx, vc.Client, &vsantypes.QueryDiskMappings{This: vsanhealth.DiskMgmtRef, Host: host})
+		if err != nil || len(maps.Returnval) != 0 {
+			t.Fatalf("mappings: %v %v", maps, err)
+		}
+		witness, err := vsanmethods.VSANVcIsWitnessHost(ctx, vc.Client, &vsantypes.VSANVcIsWitnessHost{This: vsanhealth.StretchSystemRef, Host: host})
+		if err != nil || witness.Returnval {
+			t.Fatalf("witness: %v %v", witness, err)
+		}
+	}
+	cap, err := vsanmethods.VsanGetCapabilities(ctx, vc.Client, &vsantypes.VsanGetCapabilities{This: vsanhealth.CapabilitySystemRef, Targets: []types.ManagedObjectReference{e.cl().Ref}})
+	if err != nil || len(cap.Returnval) != 1 || len(cap.Returnval[0].Capabilities) < 60 {
+		t.Fatalf("capabilities: %v %v", cap, err)
+	}
+	smart, err := vsanmethods.VsanQueryVcClusterSmartStatsSummary(ctx, vc.Client, &vsantypes.VsanQueryVcClusterSmartStatsSummary{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
+	if err != nil || len(smart.Returnval) != 3 || len(smart.Returnval[0].SmartStats) == 0 || len(smart.Returnval[0].SmartStats[0].Stats) != 7 {
+		t.Fatalf("smart: %v %v", smart, err)
+	}
+}
