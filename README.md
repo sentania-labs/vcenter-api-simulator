@@ -41,6 +41,7 @@ go build ./cmd/vcsimulator
 | `-scenario FILE` | the scenario ([reference](docs/SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
 | `-data DIR` | holds `registry.json` (identities) and `tls/` (the self-signed certificate, created once); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
+| `-query-log PATH` | append one JSON line per request (method, path, operation, status, bytes, duration) to `PATH`, created owner-only; SOAP request bodies are included except for `SessionManager` operations, so it can hold inventory identifiers; see [scale replay](tools/bench/README.md) |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |

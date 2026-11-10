@@ -1,0 +1,1183 @@
+{
+  "source": "sentania-labs/vsanhostmetrics",
+  "commit": "af976fb9fe97bbac2fd94b666a3f79aa12656f2a",
+  "note": "One unmodified collector run on the built-in four-host scenario; identifiers and timestamps replaced with placeholders, authentication request omitted.",
+  "requests": [
+    {
+      "path": "/sdk/vimServiceVersions.xml",
+      "method": "GET",
+      "operation": "",
+      "request": "",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "RetrieveServiceContent",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><RetrieveServiceContent xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ServiceInstance\">ServiceInstance</_this></RetrieveServiceContent></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Login",
+      "request": "",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "RetrieveServiceContent",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><RetrieveServiceContent xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ServiceInstance\">ServiceInstance</_this></RetrieveServiceContent></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "CreateContainerView",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><CreateContainerView xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ViewManager\">ViewManager</_this><container versionId=\"9.0.0.0\" type=\"Folder\">group-d1</container><type>ClusterComputeResource</type><recursive versionId=\"9.0.0.0\">true</recursive></CreateContainerView></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ContainerView\">{{view0}}</_this><prop versionId=\"9.0.0.0\">view</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "DestroyView",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><DestroyView xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ContainerView\">{{view0}}</_this></DestroyView></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryNodeInformation",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryNodeInformation xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryNodeInformation></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">configurationEx</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "RetrieveServiceContent",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><RetrieveServiceContent xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ServiceInstance\">ServiceInstance</_this></RetrieveServiceContent></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "CreateContainerView",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><CreateContainerView xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ViewManager\">ViewManager</_this><container versionId=\"9.0.0.0\" type=\"Folder\">group-d1</container><type>VirtualMachine</type><recursive versionId=\"9.0.0.0\">true</recursive></CreateContainerView></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ContainerView\">{{view1}}</_this><prop versionId=\"9.0.0.0\">view</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm0}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm1}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm2}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm3}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "DestroyView",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><DestroyView xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ContainerView\">{{view1}}</_this></DestroyView></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">host</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "RetrieveServiceContent",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><RetrieveServiceContent xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ServiceInstance\">ServiceInstance</_this></RetrieveServiceContent></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">configurationEx</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">host</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan0}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan1}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan2}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan3}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryNodeInformation",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryNodeInformation xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryNodeInformation></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">host</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "QueryVsanManagedDisks",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryVsanManagedDisks xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VimClusterVsanVcDiskManagementSystem\">vsan-disk-management-system</_this><host versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</host></QueryVsanManagedDisks></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "CreateContainerView",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><CreateContainerView xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ViewManager\">ViewManager</_this><container versionId=\"9.0.0.0\" type=\"Folder\">group-d1</container><type>VirtualMachine</type><recursive versionId=\"9.0.0.0\">true</recursive></CreateContainerView></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ContainerView\">{{view2}}</_this><prop versionId=\"9.0.0.0\">view</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm0}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm0}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm1}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm1}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm2}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm2}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm3}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"VirtualMachine\">{{vm3}}</_this><prop versionId=\"9.0.0.0\">name</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "DestroyView",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><DestroyView xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ContainerView\">{{view2}}</_this></DestroyView></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ClusterComputeResource\">{{cluster}}</_this><prop versionId=\"9.0.0.0\">host</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanQueryVcClusterHealthSummary",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanQueryVcClusterHealthSummary xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanVcClusterHealthSystem\">vsan-cluster-health-system</_this><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster><includeObjUuids versionId=\"9.0.0.0\" xmlns=\"urn:vim25\">false</includeObjUuids><fields xmlns=\"urn:vim25\">hclInfo</fields></VsanQueryVcClusterHealthSummary></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "QueryDisksForVsan",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryDisksForVsan xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan0}}</_this></QueryDisksForVsan></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host0}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "QueryDisksForVsan",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryDisksForVsan xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan1}}</_this></QueryDisksForVsan></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host1}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "QueryDisksForVsan",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryDisksForVsan xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan2}}</_this></QueryDisksForVsan></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host2}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">configManager</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "QueryDisksForVsan",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><QueryDisksForVsan xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostVsanSystem\">{{hostVsan3}}</_this></QueryDisksForVsan></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Fetch",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Fetch xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"HostSystem\">{{host3}}</_this><prop versionId=\"9.0.0.0\">config</prop></Fetch></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-domclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cache-disk:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>capacity-disk:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>clom-disk:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>clom-host:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-domclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-domcompmgr:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-domowner:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-esa-dedup-domclient-io:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-esa-dedup-domcompmgr-io:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-esa-dedup-domowner-io:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-esa-dedup-store-chunksvc:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-esa-dedup-store-hashsvc:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-pmem:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-rdt-network-latency:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-remotedomclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-resync:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cluster-zdom-top-stats:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cmmds-net:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>cmmds-workload:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>computeCluster-remotedomclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>computeHost-remotedomclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>ddh-disk:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>disk-group:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>dom-world-cpu:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>heap-memory:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-cpu:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-domclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-domcompmgr:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-domowner:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-esa-dedup-domclient-io:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-esa-dedup-domcompmgr-io:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-esa-dedup-domowner-io:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-esa-dedup-store-chunksvc:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-esa-dedup-store-hashsvc:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-pmem:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-remotedomclient:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-vsansparse:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>host-zdom-top-stats:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>ioinsight:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>lsom-world-cpu:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>rdt-net:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>rdt-network-latency:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>remote-virtual-disk:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>remote-virtual-machine:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>remote-vscsi:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>slab-memory:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 500
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>system-mem:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>virtual-disk:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>virtual-machine:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vnic-rdt-network-latency:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-cluster-capacity:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-cpu:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-direct-cluster:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-direct-host:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-distribution:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-dp-historical-stats:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-esa-disk-layer:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-esa-disk-scsifw:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-file-service:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-host-net:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-iscsi-host:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-iscsi-lun:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-iscsi-target:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-memory:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-pnic-net:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-tcpip-stats:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vsan-vnic-net:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>vscsi:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/vsanHealth",
+      "method": "POST",
+      "operation": "VsanPerfQueryPerf",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><VsanPerfQueryPerf xmlns=\"urn:vsan\"><_this versionId=\"9.0.0.0\" type=\"VsanPerformanceManager\">vsan-performance-manager</_this><querySpecs xmlns=\"urn:vim25\"><entityRefId>zdom-vtx:*</entityRefId><startTime>{{time}}</startTime><endTime>{{time}}</endTime></querySpecs><cluster versionId=\"9.0.0.0\" xmlns=\"urn:vim25\" type=\"ClusterComputeResource\">{{cluster}}</cluster></VsanPerfQueryPerf></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "RetrieveServiceContent",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><RetrieveServiceContent xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"ServiceInstance\">ServiceInstance</_this></RetrieveServiceContent></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    },
+    {
+      "path": "/sdk",
+      "method": "POST",
+      "operation": "Logout",
+      "request": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">\n<soapenv:Body><Logout xmlns=\"urn:vim25\"><_this versionId=\"9.0.0.0\" type=\"SessionManager\">SessionManager</_this></Logout></soapenv:Body>\n</soapenv:Envelope>",
+      "status": 200
+    }
+  ]
+}
