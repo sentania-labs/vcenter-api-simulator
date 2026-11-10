@@ -697,7 +697,8 @@ func (c *Controller) Compatibility() *Compat {
 		Methods: []Method{}, Unlisted: []Method{}, Pending: []string{
 			"Behaviour on a real vCenter 9.1.1 other than the captured one",
 			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
-			"vSAN OSA, iSCSI target, NFS, FC and local VMFS inventory",
+			"vSAN OSA is emulated from a live three-host capture; VM-level families, stretched clusters, multiple disk groups, dedup and populated iSCSI are schema-only",
+			"iSCSI target, NFS, FC and local VMFS inventory",
 			"The VCF Operations ingestion path (Phase 3)",
 		}}
 	listed := map[string]bool{}
