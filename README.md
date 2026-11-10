@@ -59,10 +59,9 @@ What the scenario controls, and what the simulator guarantees:
   a local VMFS datastore per unclaimed NVMe device, and the cluster's vSAN
   datastore.
 - **Identity.** uuids are UUID v5 of (seed namespace, kind, registry
-  serial); MoRefs follow a deterministic creation order. A restart on the
-  same data directory reproduces everything; an edit keeps every uuid it
-  did not touch and the MoRefs of everything created before the edit's
-  first removal; only a seed change plus `-regenerate` churns identities.
+  serial); the registry also reserves MoRefs. A restart on the same data
+  directory and a removal preserve the identities of surviving entities.
+  A seed change plus `-regenerate` changes identities.
 - **Metrics.** Values are a pure function of (telemetry seed, entity,
   label, bucket); nothing is stored. Each label stays inside the min..max
   the live capture showed for it, follows a business-hours day and drifts

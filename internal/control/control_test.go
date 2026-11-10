@@ -715,23 +715,22 @@ func TestUnauthenticatedQueryIsNotInjected(t *testing.T) {
 	}
 }
 
-// Removing something renumbers the MoRefs of everything created after it;
-// the review has to say so, and a telemetry edit must not move the version.
-func TestReviewReportsRenumberedMoRefs(t *testing.T) {
+// Removing something preserves surviving MoRefs; telemetry edits do not move the version.
+func TestReviewPreservesMoRefs(t *testing.T) {
 	c := newCtl(t, tenClusters(t), "", "t")
 	if _, err := c.DeleteCluster("dc-01/cluster-02"); err != nil {
 		t.Fatal(err)
 	}
 	rv, _ := c.Review()
-	if rv.Renumbered.Clusters != 8 || rv.Renumbered.Hosts == 0 || rv.Renumbered.VMs == 0 || !rv.Churn {
+	if rv.Renumbered.Total() != 0 {
 		t.Errorf("renumbered: %+v churn %v", rv.Renumbered, rv.Churn)
 	}
 	found := false
 	for _, w := range rv.Warnings {
 		found = found || w.Title == "MoRefs are renumbered"
 	}
-	if !found {
-		t.Errorf("warnings: %+v", rv.Warnings)
+	if found {
+		t.Errorf("unexpected warning: %+v", rv.Warnings)
 	}
 	c.DiscardDraft()
 
@@ -1045,5 +1044,50 @@ func TestOSACompatibilityAndDashboardCoverage(t *testing.T) {
 	}
 	if !flags["cache-disk"] || !flags["capacity-disk"] || flags["disk-group"] {
 		t.Errorf("dashboard scope: cache=%v capacity=%v group=%v", flags["cache-disk"], flags["capacity-disk"], flags["disk-group"])
+	}
+}
+
+// Applying a cluster removal and restarting from the saved state must expose
+// the same references and UUIDs for each surviving cluster, host and VM.
+func TestRemovalIdentityAcrossApplyAndRestart(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: apply-identity\ndatacenters: [{name: dc, clusters: 3}]\ndefaults: {hosts: 3, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	c := newCtl(t, sc, dir, "same")
+	identities := func(c *Controller) map[string]string {
+		m := map[string]string{}
+		for _, refs := range c.applied().sim.Clusters {
+			cl := refs.Cluster
+			m[cl.Key] = fmt.Sprint(refs.Ref, cl.VsanUUID, cl.StatsUUID)
+			for i, h := range cl.Hosts {
+				m[h.Key] = fmt.Sprint(refs.Hosts[i], h.HardwareUUID, h.NodeUUID)
+			}
+			for i, v := range cl.VMs {
+				m[v.Key] = fmt.Sprint(refs.VMs[i], v.UUID, v.InstanceUUID)
+			}
+		}
+		return m
+	}
+	before := identities(c)
+	if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	after := identities(c)
+	for key, value := range after {
+		if before[key] != value {
+			t.Errorf("%s changed on apply", key)
+		}
+	}
+	c.Close()
+	restarted := newCtl(t, sc, dir, "same")
+	for key, value := range identities(restarted) {
+		if after[key] != value {
+			t.Errorf("%s changed on restart", key)
+		}
 	}
 }

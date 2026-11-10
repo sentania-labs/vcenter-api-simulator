@@ -503,10 +503,6 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 			}
 		}
 	}
-	first := 0
-	if d != nil && d.Scenario.Seed == r.sc.Seed {
-		first = firstRemoved(r.topo, topo)
-	}
 	vmsOn := map[int]int{}
 	for _, vm := range cl.VMs {
 		vmsOn[vm.Host]++
@@ -521,9 +517,6 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		row := HostRow{Name: h.Name, NodeUUID: h.NodeUUID, NVMe: nv, LCPU: h.Threads, VMs: vmsOn[h.Index], Identity: "new"}
 		if s, ok := oldSerial[h.Key]; ok && s == h.Serial {
 			row.Identity = "unchanged"
-			if first > 0 && h.Serial > first {
-				row.Identity = "renumbered"
-			}
 			if h.Index < len(hostRefs) && old != nil {
 				row.MoRef = hostRefs[h.Index]
 			}

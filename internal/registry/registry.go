@@ -45,11 +45,46 @@ type Registry struct {
 }
 
 type document struct {
-	Version    int            `json:"version"`
-	Seed       string         `json:"seed"`
-	Namespace  string         `json:"namespace"`
-	NextSerial int            `json:"nextSerial"`
-	Entries    map[string]int `json:"entries"`
+	Version    int                `json:"version"`
+	Seed       string             `json:"seed"`
+	Namespace  string             `json:"namespace"`
+	NextSerial int                `json:"nextSerial"`
+	Entries    map[string]int     `json:"entries"`
+	Ranges     map[int]MorefRange `json:"morefRanges,omitempty"`
+	MorefHigh  int64              `json:"morefHigh,omitempty"`
+}
+
+// MorefRange reserves the vcsim counter interval used by one inventory step.
+type MorefRange struct{ Start, End int64 }
+
+// MorefRange returns the interval assigned to a serial.
+func (r *Registry) MorefRange(serial int) (MorefRange, bool) {
+	v, ok := r.doc.Ranges[serial]
+	return v, ok
+}
+func (r *Registry) MorefHigh() int64 { return r.doc.MorefHigh }
+func (r *Registry) SetMorefRange(serial int, v MorefRange) {
+	if r.doc.Ranges == nil {
+		r.doc.Ranges = make(map[int]MorefRange)
+	}
+	r.doc.Ranges[serial] = v
+	if v.End > r.doc.MorefHigh {
+		r.doc.MorefHigh = v.End
+	}
+	r.dirty = true
+}
+
+// RetireMissing removes identities absent from a successfully built inventory.
+// Ranges remain reserved by serial so a later addition cannot reuse a MoRef.
+func (r *Registry) RetireMissing(live map[string]bool) {
+	for k := range r.doc.Entries {
+		if strings.HasPrefix(k, "cluster/") || strings.HasPrefix(k, "host/") || strings.HasPrefix(k, "vm/") || strings.HasPrefix(k, "device/") {
+			if !live[k] {
+				delete(r.doc.Entries, k)
+				r.dirty = true
+			}
+		}
+	}
 }
 
 // Namespace derives the identity namespace of a seed.
@@ -191,6 +226,10 @@ func (r *Registry) Sub(key string) uint64 {
 // console previews a draft on a clone and saves the clone it applies.
 func (r *Registry) Clone() *Registry {
 	c := &Registry{path: r.path, dirty: true, doc: r.doc, ns: r.ns}
+	c.doc.Ranges = make(map[int]MorefRange, len(r.doc.Ranges))
+	for k, v := range r.doc.Ranges {
+		c.doc.Ranges[k] = v
+	}
 	c.doc.Entries = make(map[string]int, len(r.doc.Entries))
 	for k, v := range r.doc.Entries {
 		c.doc.Entries[k] = v

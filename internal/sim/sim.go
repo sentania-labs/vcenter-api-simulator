@@ -5,14 +5,8 @@
 //
 // The inventory is created through vcsim's own method handlers
 // (CreateDatacenter, CreateClusterEx, AddHost_Task, CreateVM_Task) in
-// registry serial order: every entity's MoRef comes from vcsim's creation
-// counter, so a restart with the same registry assigns the same MoRefs,
-// and entities added by a later scenario edit (higher serials) are created
-// after everything that already existed and leave its MoRefs untouched.
-// A removal renumbers the objects created after the removed one (their
-// uuids, which come from the registry, do not change); so does a device
-// added to an existing host, whose local datastore is created in the
-// host's step.
+// registry serial order. Each creation step reserves its counter interval in
+// the identity registry so removals leave gaps instead of shifting survivors.
 package sim
 
 import (
@@ -25,19 +19,25 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/simulator/vpx"
 	"github.com/vmware/govmomi/vim25/methods"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
@@ -49,6 +49,7 @@ var vimServiceWSDL string
 // Options configure a Simulator.
 type Options struct {
 	Topology *topology.Topology
+	Registry *registry.Registry
 	// Now is the clock the Performance Service uses; nil means time.Now.
 	Now func() time.Time
 	// Username and Password, when Username is set, add one more accepted
@@ -83,10 +84,11 @@ type Simulator struct {
 	// Clusters are the MoRefs vcsim assigned, in topology order.
 	Clusters []*ClusterRefs
 
-	model  *simulator.Model
-	server *simulator.Server
-	home   string // datastore directories
-	tasks  *taskWaiter
+	model    *simulator.Model
+	server   *simulator.Server
+	home     string // datastore directories
+	tasks    *taskWaiter
+	registry *registry.Registry
 
 	dcs map[*topology.Datacenter]*dcRefs
 }
@@ -116,7 +118,7 @@ func New(opts Options) (*Simulator, error) {
 	if err := m.Create(); err != nil {
 		return nil, fmt.Errorf("sim: create model: %w", err)
 	}
-	s := &Simulator{Topology: topo, Catalog: cat, model: m, dcs: map[*topology.Datacenter]*dcRefs{}}
+	s := &Simulator{Topology: topo, Catalog: cat, model: m, registry: opts.Registry, dcs: map[*topology.Datacenter]*dcRefs{}}
 	s.home, err = os.MkdirTemp("", "vcsimulator-")
 	if err != nil {
 		m.Remove()
@@ -223,13 +225,108 @@ func (s *Simulator) build() error {
 	}
 	sort.SliceStable(steps, func(i, j int) bool { return steps[i].serial < steps[j].serial })
 	for _, st := range steps {
+		if s.registry == nil {
+			if err := st.run(); err != nil {
+				return err
+			}
+			continue
+		}
+		reserved, known := s.registry.MorefRange(st.serial)
+		start, err := counter(ctx)
+		if err != nil {
+			return err
+		}
+		target := start
+		if known {
+			target = reserved.Start
+		} else if high := s.registry.MorefHigh(); high > target {
+			target = high
+		}
+		if target < start {
+			return fmt.Errorf("sim: counter overlap for serial %d: %d > %d", st.serial, start, target)
+		}
+		if err := setCounter(ctx, target); err != nil {
+			return err
+		}
 		if err := st.run(); err != nil {
 			return err
 		}
+		end, err := counter(ctx)
+		if err != nil {
+			return err
+		}
+		if known && end > reserved.End {
+			return fmt.Errorf("sim: inventory step %d exceeds its reserved identity range", st.serial)
+		}
+		if !known {
+			s.registry.SetMorefRange(st.serial, registry.MorefRange{Start: target, End: end})
+		}
 	}
 	for _, refs := range s.Clusters {
+		// Creation follows serial order; a re-added object can have a later
+		// serial than objects that follow it in topology order.
+		hosts := make(map[string]types.ManagedObjectReference)
+		for _, ref := range refs.Hosts {
+			hosts[ctx.Map.Get(ref).(*simulator.HostSystem).Name] = ref
+		}
+		for i, h := range refs.Cluster.Hosts {
+			refs.Hosts[i] = hosts[h.Name]
+		}
+		vms := make(map[string]types.ManagedObjectReference)
+		for _, ref := range refs.VMs {
+			vms[ctx.Map.Get(ref).(*simulator.VirtualMachine).Name] = ref
+		}
+		for i, vm := range refs.Cluster.VMs {
+			refs.VMs[i] = vms[vm.Name]
+		}
 		s.finishCluster(ctx, refs)
 	}
+	if s.registry != nil {
+		live := make(map[string]bool)
+		for _, refs := range s.Clusters {
+			cl := refs.Cluster
+			live["cluster/"+cl.Key] = true
+			for _, h := range cl.Hosts {
+				live["host/"+h.Key] = true
+				for _, d := range h.Devices {
+					live["device/"+d.Key] = true
+				}
+			}
+			for _, vm := range cl.VMs {
+				live["vm/"+vm.Key] = true
+			}
+		}
+		s.registry.RetireMissing(live)
+	}
+	return nil
+}
+
+// counter probes the next generated reference and restores the counter. The
+// probe is removed before the counter is restored.
+func counter(ctx *simulator.Context) (int64, error) {
+	probe := &mo.ManagedEntity{}
+	ctx.Map.Put(probe)
+	n, err := strconv.ParseInt(strings.TrimPrefix(probe.Self.Value, "managedentity-"), 10, 64)
+	ctx.Map.Remove(ctx, probe.Self)
+	if err != nil {
+		return 0, fmt.Errorf("sim: counter probe: %w", err)
+	}
+	if err := setCounter(ctx, n-1); err != nil {
+		return 0, err
+	}
+	return n - 1, nil
+}
+
+// vcsim does not expose its allocation counter. AlignCounter cannot restore
+// it because the static model contains fixed references above that counter.
+// Validate the upstream layout before accessing the counter, and only do this
+// during the single-threaded inventory build after each task has completed.
+func setCounter(ctx *simulator.Context, n int64) error {
+	field, ok := reflect.TypeOf(*ctx.Map).FieldByName("counter")
+	if !ok || field.Type.Kind() != reflect.Int64 || field.Offset != 0 {
+		return fmt.Errorf("sim: unsupported vcsim registry counter layout")
+	}
+	atomic.StoreInt64((*int64)(unsafe.Pointer(ctx.Map)), n)
 	return nil
 }
 

@@ -217,7 +217,7 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 		creds[n] = p
 	}
 	s, err := sim.New(sim.Options{
-		Topology: topo, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
+		Topology: topo, Registry: reg, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Now: c.now,
 	})
 	if err != nil {

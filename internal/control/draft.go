@@ -301,9 +301,7 @@ type Warning struct {
 	Text     string `json:"text"`
 }
 
-// Renumbered counts the retained objects that get a new MoRef: vcsim numbers
-// MoRefs in creation order, which is registry serial order, so every object
-// created after the first removed one is numbered again. UUIDs do not change.
+// Renumbered is retained for compatibility with review clients.
 type Renumbered struct {
 	Clusters int `json:"clusters"`
 	Hosts    int `json:"hosts"`
@@ -312,90 +310,6 @@ type Renumbered struct {
 
 // Total is every renumbered object.
 func (r Renumbered) Total() int { return r.Clusters + r.Hosts + r.VMs }
-
-// firstRemoved is the lowest registry serial among objects that o has and n
-// does not (0 when nothing is removed): everything created after it is
-// numbered again.
-func firstRemoved(o, n *topology.Topology) int {
-	type id struct {
-		key    string
-		serial int
-	}
-	have := map[id]bool{}
-	for _, c := range n.Clusters() {
-		have[id{c.Key, c.Serial}] = true
-		for _, h := range c.Hosts {
-			have[id{h.Key, h.Serial}] = true
-			for _, d := range h.Devices {
-				have[id{d.Key, d.Serial}] = true
-			}
-		}
-		for _, v := range c.VMs {
-			have[id{v.Key, v.Serial}] = true
-		}
-	}
-	first := 0
-	note := func(k id) {
-		if !have[k] && (first == 0 || k.serial < first) {
-			first = k.serial
-		}
-	}
-	for _, c := range o.Clusters() {
-		note(id{c.Key, c.Serial})
-		for _, h := range c.Hosts {
-			note(id{h.Key, h.Serial})
-			for _, d := range h.Devices {
-				note(id{d.Key, d.Serial})
-			}
-		}
-		for _, v := range c.VMs {
-			note(id{v.Key, v.Serial})
-		}
-	}
-	return first
-}
-
-// renumbered compares the creation order of two topologies.
-func renumbered(o, n *topology.Topology) Renumbered {
-	type id struct {
-		key    string
-		serial int
-	}
-	oldIDs := map[id]bool{}
-	for _, c := range o.Clusters() {
-		oldIDs[id{c.Key, c.Serial}] = true
-		for _, h := range c.Hosts {
-			oldIDs[id{h.Key, h.Serial}] = true
-		}
-		for _, v := range c.VMs {
-			oldIDs[id{v.Key, v.Serial}] = true
-		}
-	}
-	first := firstRemoved(o, n)
-	var r Renumbered
-	if first == 0 {
-		return r
-	}
-	for _, c := range n.Clusters() {
-		if !oldIDs[id{c.Key, c.Serial}] {
-			continue // new objects are created last
-		}
-		if c.Serial > first {
-			r.Clusters++
-		}
-		for _, h := range c.Hosts {
-			if oldIDs[id{h.Key, h.Serial}] && h.Serial > first {
-				r.Hosts++
-			}
-		}
-		for _, v := range c.VMs {
-			if oldIDs[id{v.Key, v.Serial}] && v.Serial > first {
-				r.VMs++
-			}
-		}
-	}
-	return r
-}
 
 // Review is what applying a draft would do.
 type Review struct {
@@ -482,9 +396,6 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	if topoChanged {
 		rv.Changes = append(rv.Changes, topologyChanges(old, nt, d, oldProj, newProj)...)
 		rv.Identities = identityRows(old.topo, nt, c.cat)
-		if old.sc.Seed == d.Scenario.Seed {
-			rv.Renumbered = renumbered(old.topo, nt)
-		}
 		rv.Identities = withMoRefRow(rv.Identities, rv.Renumbered)
 	}
 	if teleChanged {
@@ -942,9 +853,7 @@ func num(n int) string {
 	return s
 }
 
-// withMoRefRow inserts the MoRef row after the host row. MoRefs are a
-// different thing from UUIDs: vcsim numbers them in creation order, so
-// kept UUIDs do not mean kept MoRefs.
+// withMoRefRow inserts the MoRef row after the host row.
 func withMoRefRow(rows []IdentityRow, rn Renumbered) []IdentityRow {
 	var hostRow IdentityRow
 	var vmRow IdentityRow

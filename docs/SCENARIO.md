@@ -24,20 +24,17 @@ serial it was first given. Serials are never reused.
 |---|---|---|
 | restart on the same data directory | unchanged | unchanged |
 | add clusters, hosts or VMs | existing ones unchanged; new ones get new serials | existing ones unchanged; new objects are created last (VMs that rebalance onto a new host keep their MoRef: they are created in their own order and moved afterwards) |
-| add devices to an existing host | existing ones unchanged | the host's new local datastore is created inside the host's step, so objects created after that host renumber |
-| remove entities | the rest unchanged; the removed serials stay retired | objects created after the removed one renumber |
+| add devices to an existing host | existing ones unchanged | adding local datastores can exceed the host's reserved creation range and the apply is rejected |
+| remove entities | the rest unchanged; the removed serials stay retired | the rest unchanged; removed references are never reused |
 | change `seed` | refused at start unless `-regenerate` is given; then every identity changes | all change |
 | change `telemetrySeed` | unchanged (every metric value changes) | unchanged |
 
-uuids are the registry's business and hold through every edit. MoRefs come
-from vcsim's creation counter: the inventory is created in registry serial
-order, so a restart assigns the same MoRefs and additions are created after
-everything that existed, but a removal (or a device added to an existing
-host) renumbers what was created after it. A client that keys on MoRefs
-(the VCF Operations vCenter adapter does) sees those objects as new; a
-client that keys on uuids (the vSAN pack) does not. `-regenerate` discards
-the registry whatever the seed; with the same seed the same identities come
-back, so change the seed to mint new ones.
+UUIDs are derived from the seed and registry serials. The registry also
+reserves the vcsim counter interval for each inventory creation step, so a
+removal leaves a gap and survivors keep their MoRefs across applies and restarts.
+Re-adding a removed entity allocates new identities. `-regenerate` discards
+the registry; the same seed reproduces the same identities, so change the seed
+to mint new ones.
 
 ## Reference
 
