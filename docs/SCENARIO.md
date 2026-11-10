@@ -33,11 +33,11 @@ UUIDs are derived from the seed and registry serials. The registry also
 reserves the vcsim counter interval for each inventory creation step (one
 per datacenter, cluster, host, VM and local datastore), so a removal leaves
 a gap, an addition is created in fresh space, and existing objects keep
-their MoRefs across applies and restarts. A cluster, host, VM or device removed and later added back under the same
-seed and name gets its previous UUIDs and MoRefs back, unless its registry
-entries were retired by an explicit regeneration. `-regenerate`
-discards the registry; the same seed reproduces the same identities, so
-change the seed to mint new ones.
+their MoRefs across applies and restarts. A cluster, host, VM or device
+removed and later added back under the same seed and name gets its previous
+UUIDs and MoRefs back, unless its registry entries were retired by an
+explicit regeneration. `-regenerate` discards the registry; the same seed
+reproduces the same identities, so change the seed to mint new ones.
 
 ## Reference
 
