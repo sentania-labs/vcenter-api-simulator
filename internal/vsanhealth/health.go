@@ -59,11 +59,13 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 		return &methods.VsanQueryVcClusterHealthSummaryBody{Fault_: fault}
 	}
 	if cl != nil {
-		sum.ClusterStatus = &vsantypes.VsanClusterHealthSystemStatusResult{Status: "green", GoalState: "installed"}
-		sum.ClusterVersions = &vsantypes.VsanClusterHealthSystemVersionResult{VcVersion: s.env.Catalog.About.Version, UpgradePossible: vim25types.NewBool(false)}
-		for _, h := range cl.Hosts {
-			sum.ClusterStatus.TrackedHostsStatus = append(sum.ClusterStatus.TrackedHostsStatus, vsantypes.VsanHostHealthSystemStatusResult{Hostname: h.Name, Status: "green"})
-			sum.ClusterVersions.HostResults = append(sum.ClusterVersions.HostResults, vsantypes.VsanHostHealthSystemVersionResult{Hostname: h.Name, Version: s.env.Catalog.About.EsxiVersion})
+		if cl.Spec.Architecture == "osa" {
+			sum.ClusterStatus = &vsantypes.VsanClusterHealthSystemStatusResult{Status: "green", GoalState: "installed"}
+			sum.ClusterVersions = &vsantypes.VsanClusterHealthSystemVersionResult{VcVersion: s.env.Catalog.About.Version, UpgradePossible: vim25types.NewBool(false)}
+			for _, h := range cl.Hosts {
+				sum.ClusterStatus.TrackedHostsStatus = append(sum.ClusterStatus.TrackedHostsStatus, vsantypes.VsanHostHealthSystemStatusResult{Hostname: h.Name, Status: "green"})
+				sum.ClusterVersions.HostResults = append(sum.ClusterVersions.HostResults, vsantypes.VsanHostHealthSystemVersionResult{Hostname: h.Name, Version: s.env.Catalog.About.EsxiVersion})
+			}
 		}
 		hcl := &vsantypes.VsanClusterHclInfo{HclDbLastUpdate: &hclDbLastUpdate, HclDbAgeHealth: "green"}
 		for _, h := range cl.Hosts {
