@@ -393,7 +393,7 @@ const actions = {
       body: html`<ul>
         <li><b>Removed:</b> ${int(c.hosts)} hosts${v.applied && v.hostsApplied !== c.hosts ? ` (${v.hostsApplied} applied, ${c.hosts} in the draft)` : ''}, ${int(c.vms)} VMs, ${int(c.nvme)} NVMe devices and ${int(c.ent)} perf entities. ${v.datastores[0].name} is deleted with it, and the local VMFS datastores of its hosts.</li>
         <li>Per cycle: ${nc} → ${nc - 1} clusters, and PerfQuery calls drop from ${int(kinds * nc)} to ${int(kinds * (nc - 1))}.</li>
-        <li>The other clusters keep their names and UUIDs. Every cluster, host and VM created after the deleted one gets a new MoRef (the review gives the count); the VCF Operations vCenter adapter keys on MoRefs and sees those as new objects.</li>
+        <li>Other clusters, hosts and VMs keep their IDs. Applying this delete retires this cluster’s IDs; re-adding it later gives it new IDs. Undoing the delete before apply keeps its current IDs.</li>
         ${joins}<li>Until you apply, <b>Undo delete</b> on this cluster, or Discard, brings it back as it is applied now; its pending edits are dropped.</li></ul>`,
       confirmLabel: `Delete ${v.key}`, danger: true,
     });

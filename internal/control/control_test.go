@@ -1149,3 +1149,86 @@ func TestGrowingHostsKeepsMoRefsOnApplyAndRestart(t *testing.T) {
 	c = newCtl(t, parse(3), dir, "three")
 	same("after editing the scenario file while stopped", original, refs(c))
 }
+
+func TestReviewDistinguishesRestoredAndNewIdentities(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: review-restored\ndatacenters: [{name: dc, clusters: 1}]\ndefaults: {hosts: 4, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newCtl(t, sc, "", "same")
+	smaller := editable(t, c)
+	setHosts(smaller, "dc/cluster-01", 3)
+	put(t, c, smaller)
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	bigger := editable(t, c)
+	setHosts(bigger, "dc/cluster-01", 5)
+	put(t, c, bigger)
+	rv, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, prefix := range []string{"Host", "VM", "MoRefs"} {
+		found := false
+		for _, row := range rv.Identities {
+			if strings.HasPrefix(row.Label, prefix) {
+				found = true
+				want := 1
+				if prefix == "MoRefs" {
+					want = 2
+				}
+				if row.Restored != want || row.Added != want || row.Removed != 0 {
+					t.Errorf("%s accounting: %+v", prefix, row)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing %s row", prefix)
+		}
+	}
+}
+
+func TestReviewRestorationDependsOnRetirement(t *testing.T) {
+	sc, err := scenario.Parse([]byte("seed: retired\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, vms: {perHost: 1}}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, explicit := range []bool{false, true} {
+		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+			c := newCtl(t, sc, "", "same")
+			if explicit {
+				if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				next := editable(t, c)
+				next.Datacenters[0].Clusters = 1
+				put(t, c, next)
+			}
+			if _, err := c.Apply("now"); err != nil {
+				t.Fatal(err)
+			}
+			next := editable(t, c)
+			next.Datacenters[0].Clusters = 2
+			next.Removed = nil
+			put(t, c, next)
+			rv, err := c.Review()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range rv.Identities {
+				if strings.HasPrefix(row.Label, "Cluster") {
+					if explicit && (row.Added != 1 || row.Restored != 0) {
+						t.Errorf("retired: %+v", row)
+					}
+					if !explicit && (row.Added != 0 || row.Restored != 1) {
+						t.Errorf("returning: %+v", row)
+					}
+					return
+				}
+			}
+			t.Error("missing cluster row")
+		})
+	}
+}

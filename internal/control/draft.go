@@ -286,10 +286,11 @@ type Change struct {
 
 // IdentityRow counts the identities one kind keeps, adds and removes.
 type IdentityRow struct {
-	Label   string `json:"label"`
-	Kept    int    `json:"kept"`
-	Added   int    `json:"added"`
-	Removed int    `json:"removed"`
+	Label    string `json:"label"`
+	Kept     int    `json:"kept"`
+	Added    int    `json:"added"`
+	Restored int    `json:"restored"`
+	Removed  int    `json:"removed"`
 }
 
 // Warning is a note the operator should read before applying.
@@ -382,7 +383,11 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 
 	if topoChanged {
 		rv.Changes = append(rv.Changes, topologyChanges(old, nt, d, oldProj, newProj)...)
-		rv.Identities = identityRows(old.topo, nt, c.cat)
+		var previous *registry.Registry
+		if old.sc.Seed == d.Scenario.Seed {
+			previous = c.reg
+		}
+		rv.Identities = identityRows(old.topo, nt, c.cat, previous)
 		rv.Identities = withMoRefRow(rv.Identities)
 	}
 	if teleChanged {
@@ -629,7 +634,7 @@ func telemetryChanges(o, n *scenario.Scenario) []Change {
 }
 
 // identityRows compares two topologies by (key, serial).
-func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
+func identityRows(o, n *topology.Topology, cat *catalog.Catalog, previous *registry.Registry) []IdentityRow {
 	type id struct {
 		key    string
 		serial int
@@ -643,7 +648,7 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 		}
 		return m
 	}
-	row := func(label string, pick func(*topology.Cluster) []id) IdentityRow {
+	row := func(label, prefix string, pick func(*topology.Cluster) []id) IdentityRow {
 		a, b := set(o, pick), set(n, pick)
 		r := IdentityRow{Label: label}
 		for k := range a {
@@ -655,19 +660,24 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 		}
 		for k := range b {
 			if !a[k] {
-				r.Added++
+				key := prefix + k.key
+				if prefix != "" && previous != nil && previous.Has(key) && previous.Serial(key) == k.serial {
+					r.Restored++
+				} else {
+					r.Added++
+				}
 			}
 		}
 		return r
 	}
 	rows := []IdentityRow{
-		row("Host UUIDs · vSAN node UUIDs", func(c *topology.Cluster) (out []id) {
+		row("Host UUIDs · vSAN node UUIDs", "host/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				out = append(out, id{h.Key, h.Serial})
 			}
 			return
 		}),
-		row("NVMe disk UUIDs", func(c *topology.Cluster) (out []id) {
+		row("NVMe disk UUIDs", "device/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				for _, d := range h.Devices {
 					if d.Claimed {
@@ -677,13 +687,13 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 			}
 			return
 		}),
-		row("VM UUIDs · instanceUuid", func(c *topology.Cluster) (out []id) {
+		row("VM UUIDs · instanceUuid", "vm/", func(c *topology.Cluster) (out []id) {
 			for _, v := range c.VMs {
 				out = append(out, id{v.Key, v.Serial})
 			}
 			return
 		}),
-		row("Virtual disk identities", func(c *topology.Cluster) (out []id) {
+		row("Virtual disk identities", "", func(c *topology.Cluster) (out []id) {
 			for _, v := range c.VMs {
 				for i := range v.Disks {
 					out = append(out, id{fmt.Sprintf("%s#%d", v.Key, i), v.Serial})
@@ -691,7 +701,7 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 			}
 			return
 		}),
-		row("Cluster UUIDs · vSAN datastores", func(c *topology.Cluster) []id { return []id{{c.Key, c.Serial}} }),
+		row("Cluster UUIDs · vSAN datastores", "cluster/", func(c *topology.Cluster) []id { return []id{{c.Key, c.Serial}} }),
 	}
 	// Compare actual family/ref pairs for clusters that changed, so
 	// architecture changes account for replaced disk and performance
@@ -845,7 +855,7 @@ func withMoRefRow(rows []IdentityRow) []IdentityRow {
 	}
 	row := IdentityRow{Label: "MoRefs · clusters, hosts, VMs",
 		Kept:  clRow.Kept + hostRow.Kept + vmRow.Kept,
-		Added: clRow.Added + hostRow.Added + vmRow.Added, Removed: clRow.Removed + hostRow.Removed + vmRow.Removed}
+		Added: clRow.Added + hostRow.Added + vmRow.Added, Restored: clRow.Restored + hostRow.Restored + vmRow.Restored, Removed: clRow.Removed + hostRow.Removed + vmRow.Removed}
 	out := make([]IdentityRow, 0, len(rows)+1)
 	for _, r := range rows {
 		out = append(out, r)
