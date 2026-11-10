@@ -3,6 +3,7 @@ package vsanhealth
 import (
 	_ "embed"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
+	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
 
 // The schema is service-wide: the OSA walk and the ESA capture advertise
@@ -143,6 +145,16 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 	for _, spec := range req.QuerySpecs {
 		family, tail, ok := splitRef(spec.EntityRefId)
 		f, known := m.env.Catalog.Families[family]
+		var osa osaFamily
+		osaData := false
+		if cl != nil && cl.Spec.Architecture == "osa" {
+			osa, osaData = osaFamilyFor(family)
+			if osaData {
+				known = true
+				f.Behaviour = catalog.Data
+				f.Labels = osa.Labels
+			}
+		}
 		if !ok || !known || tail == "" {
 			return &queryPerfBody{Fault_: faultInvalidRef()}
 		}
@@ -167,7 +179,7 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 				return &queryPerfBody{Fault_: faultWildcardRange(family)}
 			}
 		}
-		if f.Behaviour == catalog.Empty || cl == nil || (!cl.Dedup && strings.Contains(family, "-esa-dedup-")) {
+		if f.Behaviour == catalog.Empty || cl == nil || (!osaData && !cl.Dedup && strings.Contains(family, "-esa-dedup-")) {
 			res.Returnval = append(res.Returnval, entityMetricCSV{EntityRefId: spec.EntityRefId})
 			continue
 		}
@@ -179,7 +191,13 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 			end = *spec.EndTime
 		}
 		buckets := perf.Buckets(start, end, now)
-		refs, err := Entities(m.env.Catalog, cl, family)
+		var refs []string
+		var err error
+		if osaData {
+			refs = osaEntities(cl, family)
+		} else {
+			refs, err = Entities(m.env.Catalog, cl, family)
+		}
 		if err != nil {
 			return &queryPerfBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
 		}
@@ -207,9 +225,23 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 			for _, label := range f.Labels {
 				unit := m.env.Catalog.Unit(family, label)
 				st, ok := m.env.Catalog.LabelStats(family, label)
+				if osaData {
+					st, ok = osa.Stats[label]
+				}
 				vals := make([]string, len(buckets))
 				for i, b := range buckets {
-					vals[i] = perf.Value(cl.TelemetrySeed, ref, label, st, ok, unit, b)
+					switch {
+					case osaData && osaValueIsNone(osa, label):
+						vals[i] = "None"
+					case osaData && family == "vsan-cluster-capacity" && label == "total":
+						vals[i] = strconv.FormatInt(topology.VsanCapacity(cl), 10)
+					case osaData && family == "vsan-cluster-capacity" && label == "used":
+						vals[i] = strconv.FormatInt(topology.VsanUsed(cl), 10)
+					case osaData && family == "vsan-cluster-capacity" && label == "free":
+						vals[i] = strconv.FormatInt(topology.VsanCapacity(cl)-topology.VsanUsed(cl), 10)
+					default:
+						vals[i] = perf.Value(cl.TelemetrySeed, ref, label, st, ok, unit, b)
+					}
 				}
 				e.Value = append(e.Value, vsantypes.VsanPerfMetricSeriesCSV{
 					MetricId: vsantypes.VsanPerfMetricId{Label: label, MetricsCollectInterval: m.env.Catalog.MetricsCollectInt},

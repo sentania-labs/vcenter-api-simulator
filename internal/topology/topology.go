@@ -99,19 +99,20 @@ func (c *Cluster) VDSUUID() string { return c.Datacenter.VDSUUID }
 
 // Host is one ESXi host.
 type Host struct {
-	Index        int // within the cluster
-	Name         string
-	Key          string
-	Serial       int
-	Cluster      *Cluster
-	HardwareUUID string // summary.hardware.uuid
-	NodeUUID     string // vsanSystem.config.clusterInfo.nodeUuid and every host-scoped entityRefId
-	Devices      []*Device
-	Pnics        []string // vSAN uplinks, the vsan-pnic-net entities
-	VsanVmknic   string   // the vsan-vnic-net / vnic-rdt entity
-	Stack        string   // TCP/IP stack name
-	Threads      int      // host-cpu: cpu-0..Threads-1 plus the aggregate
-	Worlds       []World  // dom-world-cpu entities
+	Index         int // within the cluster
+	Name          string
+	Key           string
+	Serial        int
+	Cluster       *Cluster
+	HardwareUUID  string // summary.hardware.uuid
+	NodeUUID      string // vsanSystem.config.clusterInfo.nodeUuid and every host-scoped entityRefId
+	DiskGroupUUID string // OSA cache-disk and disk-group performance identity
+	Devices       []*Device
+	Pnics         []string // vSAN uplinks, the vsan-pnic-net entities
+	VsanVmknic    string   // the vsan-vnic-net / vnic-rdt entity
+	Stack         string   // TCP/IP stack name
+	Threads       int      // host-cpu: cpu-0..Threads-1 plus the aggregate
+	Worlds        []World  // dom-world-cpu entities
 	// Addresses are derived from the host serial: a /24 per 254 hosts.
 	MgmtIP    string
 	VmotionIP string
@@ -354,6 +355,7 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 	}
 	h.HardwareUUID = r.UUID("host-hardware", h.Serial)
 	h.NodeUUID = r.UUID("vsan-node", h.Serial)
+	h.DiskGroupUUID = r.UUID("vsan-disk-group", h.Serial)
 	for i := 0; i < cl.Spec.Host.VsanPnics; i++ {
 		h.Pnics = append(h.Pnics, fmt.Sprintf("vmnic%d", i+1))
 	}

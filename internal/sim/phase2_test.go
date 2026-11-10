@@ -896,3 +896,37 @@ func TestOSAPerfSupplementarySchema(t *testing.T) {
 		t.Fatalf("diagnostics: %+v", diagnostics.Returnval)
 	}
 }
+
+func TestOSAPerfSampleShapes(t *testing.T) {
+	sc := scenario.Phase1("osa-perf")
+	sc.Defaults.Architecture = "osa"
+	sc.Defaults.Hosts = 3
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	refs := map[string][]string{}
+	for _, tc := range []struct {
+		family           string
+		entities, labels int
+	}{{"disk-group", 3, 258}, {"cache-disk", 3, 135}, {"capacity-disk", 3, 228}, {"cluster-domclient", 1, 14}, {"vsan-cluster-capacity", 1, 6}} {
+		status, body := e.postPerf(e.cl().Ref, tc.family)
+		if status != 200 {
+			t.Fatalf("%s: %d %s", tc.family, status, body)
+		}
+		got := parseShape(t, body)
+		if len(got.refs) != tc.entities || len(got.labels) != tc.labels || len(got.samples) != 4 {
+			t.Errorf("%s: %d refs, %d labels, %d samples", tc.family, len(got.refs), len(got.labels), len(got.samples))
+		}
+		refs[tc.family] = got.refs
+		if tc.family == "vsan-cluster-capacity" && !strings.Contains(string(body), "None,None,None,None") {
+			t.Error("missing None capacity values")
+		}
+	}
+	for i := range refs["disk-group"] {
+		group := strings.TrimPrefix(refs["disk-group"][i], "disk-group:")
+		if refs["cache-disk"][i] != "cache-disk:"+group || refs["capacity-disk"][i] == "capacity-disk:"+group {
+			t.Error("disk group identity mismatch")
+		}
+	}
+}
