@@ -30,11 +30,15 @@ serial it was first given. Serials are never reused.
 | change `telemetrySeed` | unchanged (every metric value changes) | unchanged |
 
 UUIDs are derived from the seed and registry serials. The registry also
-reserves the vcsim counter interval for each inventory creation step (one per datacenter, cluster, host, VM and local datastore), so a
-removal leaves a gap, an addition is created in fresh space, and existing objects keep their MoRefs across applies and restarts.
-A host, VM or device that is removed and later added back keeps its serial, so it gets its previous UUIDs and MoRefs back; removing a cluster in the console retires its identities, so a cluster added again under that name is new. `-regenerate` discards
-the registry; the same seed reproduces the same identities, so change the seed
-to mint new ones.
+reserves the vcsim counter interval for each inventory creation step (one
+per datacenter, cluster, host, VM and local datastore), so a removal leaves
+a gap, an addition is created in fresh space, and existing objects keep
+their MoRefs across applies and restarts. A host, VM or device that is
+removed and later added back keeps its serial, so it gets its previous
+UUIDs and MoRefs back; removing a cluster in the console retires its
+identities, so a cluster added again under that name is new. `-regenerate`
+discards the registry; the same seed reproduces the same identities, so
+change the seed to mint new ones.
 
 ## Reference
 
