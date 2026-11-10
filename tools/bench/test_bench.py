@@ -1,6 +1,5 @@
 """Integration regressions for benchmark projections and relative output paths."""
 import json
-import os
 import subprocess
 import tempfile
 import unittest
