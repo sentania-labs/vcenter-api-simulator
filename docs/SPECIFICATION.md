@@ -10,7 +10,7 @@ The **first success criterion** is that the actual MP, pointed at the simulated 
 ## 2. Boundary and priority
 P0: vSphere /sdk inventory + authentication/session primitives that the MP uses; vSAN /vsanHealth Performance Service; multi-cluster ESA data; controls for scale; API instrumentation.
 P1: native vCenter adapter ingestion, richer topology editor, failure profiles, deterministic history/replay, Helm and UI.
-P2: broader vSphere PerformanceManager metrics, regular datastore/vDS/VM realism, diverse datastore combinations, vSAN OSA / other optional services, multi-vCenter orchestration.
+P2: broader vSphere PerformanceManager metrics, regular datastore/vDS/VM realism, diverse datastore combinations, other optional services (vSAN OSA read side is now emulated; see SCENARIO), multi-vCenter orchestration.
 
 The vCenter and ESX version **profile** targets 9.1.1-era compatibility. The worker must discover reported build strings and API behavior from the available live lab; do not hardcode unverified patch/build numbers or pretend real hypervisors exist.
 
@@ -66,7 +66,7 @@ The operator must tell the orchestrator where a worker can obtain a **read-only 
 **Gate D — release:** UI approved and end-user evaluated; Helm install/upgrade/restart deterministic; documentation, automated tests, CI, vulnerability and secrets scans, external review and release tag.
 
 ## 12. Explicit non-goals for MVP
-Real ESX/vSAN infrastructure, write operations such as provisioning or migrations, full vCenter 9.1.1 API fidelity, exact simulation of device physics, large-scale multi-vCenter dynamic ingress automation, production authentication service, OSA coverage, or claims of vendor support.
+Real ESX/vSAN infrastructure, write operations such as provisioning or migrations, full vCenter 9.1.1 API fidelity, exact simulation of device physics, large-scale multi-vCenter dynamic ingress automation, production authentication service, or claims of vendor support.
 
 ## 13. Open design decisions for Firstmate to resolve with evidence
 SOAP server architecture, extension API compatibility, session routing between /sdk and /vsanHealth, counter-schema extraction, fixture-sanitization format, history generation/cache policy, large payload streaming, collection benchmark harness, identity linking with VCF Operations native vCenter adapter.

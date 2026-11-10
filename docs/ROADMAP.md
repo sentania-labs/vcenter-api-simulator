@@ -11,7 +11,7 @@ This is an outcome-based roadmap; stages have exit gates, not dates. Build an ES
 | 4 — Scale lab | Profiles for 10/50/100+ ESA clusters, query logs and exportable benchmark bundles, adjustable latency/errors, replay harness | Reproducible throughput/latency/RSS reports with tested ceiling |
 | 5 — Control UI | Lattice prototype, operator approval, independent UX walkthrough, topology editor, query observability and scenario presets | UX evaluation completed; operator can configure and run scenarios without editing code |
 | 6 — Delivery | Docker, Helm, Argo CD example, persistent identity/seeds, Prometheus, documentation and CI | Installation/restart/upgrade/release acceptance tests |
-| 7 — Expansion | vSphere perf counters, richer vDS/VMFS/NFS, generic vCenter adapter realism, optional OSA, multi-instance management | Additional MP scenario demonstrates value; separate planning review |
+| 7 — Expansion | vSphere perf counters, richer vDS/VMFS/NFS, generic vCenter adapter realism, multi-instance management | Additional MP scenario demonstrates value; separate planning review |
 
 Phase 3's first collection gate was demonstrated on 2026-11-07 as a standalone
 adapter test; native-vCenter attachment and the Java Content Factory pack remain
