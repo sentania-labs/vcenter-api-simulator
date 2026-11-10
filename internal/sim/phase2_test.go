@@ -1118,7 +1118,7 @@ func TestOSACapturedFaultsAndHTTP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
+		_ = res.Body.Close()
 		if res.StatusCode != want {
 			t.Errorf("%s: %d", path, res.StatusCode)
 		}
@@ -1135,7 +1135,7 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 401 {
 		t.Fatalf("unauthenticated: %d", res.StatusCode)
 	}
@@ -1149,7 +1149,7 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 201 || token == "" {
 		t.Fatalf("session: %d", res.StatusCode)
 	}
@@ -1160,7 +1160,7 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
+		_ = res.Body.Close()
 		if res.StatusCode != want {
 			t.Errorf("%s: %d", path, res.StatusCode)
 		}
@@ -1171,7 +1171,7 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 204 {
 		t.Fatal(res.StatusCode)
 	}
@@ -1181,7 +1181,7 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 401 {
 		t.Fatalf("deleted session: %d", res.StatusCode)
 	}
