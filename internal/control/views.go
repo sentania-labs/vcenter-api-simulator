@@ -16,6 +16,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
+	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
 
 // State is the overview's data.
@@ -224,19 +225,20 @@ func (c *Controller) Timeline() []TimelineEntry {
 
 // TreeCluster is one cluster row.
 type TreeCluster struct {
-	Key         string `json:"key"`
-	Name        string `json:"name"`
-	Datacenter  string `json:"datacenter"`
-	Hosts       int    `json:"hosts"`
-	HostsBefore int    `json:"hostsBefore"` // -1 when the cluster is new
-	VMsPerHost  int    `json:"vmsPerHost"`
-	Devices     int    `json:"devices"` // NVMe per host
-	State       string `json:"state"`   // "" | pending | new | removed
-	Override    bool   `json:"override"`
-	Regenerate  bool   `json:"regenerate"`
-	SeedReset   bool   `json:"seedReset"`
-	Warnings    int    `json:"warnings"`
-	Entities    int    `json:"entities"`
+	Key          string `json:"key"`
+	Architecture string `json:"architecture"`
+	Name         string `json:"name"`
+	Datacenter   string `json:"datacenter"`
+	Hosts        int    `json:"hosts"`
+	HostsBefore  int    `json:"hostsBefore"` // -1 when the cluster is new
+	VMsPerHost   int    `json:"vmsPerHost"`
+	Devices      int    `json:"devices"` // NVMe per host
+	State        string `json:"state"`   // "" | pending | new | removed
+	Override     bool   `json:"override"`
+	Regenerate   bool   `json:"regenerate"`
+	SeedReset    bool   `json:"seedReset"`
+	Warnings     int    `json:"warnings"`
+	Entities     int    `json:"entities"`
 }
 
 // TreeDC groups clusters.
@@ -343,7 +345,7 @@ func (c *Controller) Tree() *Tree {
 }
 
 func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) TreeCluster {
-	tc := TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name, Hosts: len(cl.Hosts), HostsBefore: -1,
+	tc := TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name, Architecture: cl.Spec.Architecture, Hosts: len(cl.Hosts), HostsBefore: -1,
 		VMsPerHost: scenario.Int(cl.Spec.VMs.PerHost), Devices: cl.Spec.Host.ClaimedDevices, Regenerate: regen}
 	_, tc.Override = sc.Override(cl.Key)
 	tc.SeedReset = sc.SeedEpoch(cl.Key) > 0
@@ -362,8 +364,11 @@ func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) T
 // clusterChecks are the consistency checks of one cluster.
 func clusterChecks(cl *topology.Cluster, entities int) []Warning {
 	var w []Warning
-	if !cl.Dedup {
+	if cl.Spec.Architecture != "osa" && !cl.Dedup {
 		w = append(w, Warning{"warn", "Dedup is off", "The *-esa-dedup-* kinds answer empty for this cluster; the collector still queries them."})
+	}
+	if cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		w = append(w, Warning{"warn", "Stats primary is offline", "Performance queries return a missing-primary fault until it is online."})
 	}
 	if entities > 6000 {
 		w = append(w, Warning{"warn", "Large cluster", fmt.Sprintf("%s performance entities from this cluster alone.", num(entities))})
@@ -616,6 +621,8 @@ func sources(sc *scenario.Scenario, key string) []FieldSource {
 	}
 	v := sc.Vary
 	return []FieldSource{
+		src("architecture", o.Architecture != "", false),
+		src("statsPrimary", o.StatsPrimary != nil, false),
 		src("hosts", o.Hosts != 0, len(v.Hosts) > 0),
 		src("vmsPerHost", o.VMs.PerHost != nil, v.VMsPerHost != nil),
 		src("disksPerVM", o.VMs.DisksPerVM != 0, false),
@@ -667,6 +674,7 @@ type Compat struct {
 	Methods  []Method       `json:"methods"`
 	Unlisted []Method       `json:"unlisted"` // seen in traffic, not in the matrix
 	Kinds    map[string]int `json:"kinds"`    // catalog behaviours
+	OSAKinds map[string]int `json:"osaKinds"` // primary-online wildcard outcomes
 	Profile  string         `json:"profile"`
 	Verified string         `json:"verifiedBy"`
 	Cycle    activity.Cycle `json:"lastCycle"`
@@ -679,7 +687,7 @@ var matrix = []Method{
 	{"vsanHealth", "VsanPerformanceManager", "VsanPerfGetSupportedEntityTypes", "live capture", "verified", "The advertised catalog is the captured one, verbatim.", 0, 0},
 	{"vsanHealth", "VsanVcClusterConfigSystem", "VsanClusterGetConfig", "live capture", "verified", "Captured request and response replayed.", 0, 0},
 	{"vsanHealth", "VimClusterVsanVcDiskManagementSystem", "QueryVsanManagedDisks", "live capture", "verified", "Ten captured per-host responses replayed.", 0, 0},
-	{"vsanHealth", "VsanVcClusterHealthSystem", "VsanQueryVcClusterHealthSummary", "live capture", "partial", "Only fields=[hclInfo], the one the pack asks for.", 0, 0},
+	{"vsanHealth", "VsanVcClusterHealthSystem", "VsanQueryVcClusterHealthSummary", "live capture", "partial", "ESA HCL information and OSA cluster and host status are modeled; deeper health details remain incomplete.", 0, 0},
 	{"sdk", "SessionManager", "Login", "vcsim", "partial", "Accepts any user, or only the scenario's users. Token and certificate logins are refused when users are configured.", 0, 0},
 	{"sdk", "SessionManager", "Logout", "vcsim", "partial", "Faults after logout match the captured shape.", 0, 0},
 	{"sdk", "ServiceInstance", "RetrieveServiceContent", "vcsim + capture", "verified", "About block is the captured 9.1.1 identity.", 0, 0},
@@ -697,11 +705,11 @@ func (c *Controller) Compatibility() *Compat {
 	for _, m := range sum.Methods {
 		seen[m.Surface+"/"+m.Method] = m
 	}
-	cv := &Compat{Kinds: map[string]int{}, Profile: c.cat.About.FullName, Verified: "fixtures/live/9.1.1, replayed by go test", Cycle: sum.Cycle,
+	cv := &Compat{Kinds: map[string]int{}, OSAKinds: map[string]int{}, Profile: c.cat.About.FullName, Verified: "fixtures/live/9.1.1, replayed by go test", Cycle: sum.Cycle,
 		Methods: []Method{}, Unlisted: []Method{}, Pending: []string{
 			"Behaviour on a real vCenter 9.1.1 other than the captured one",
 			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
-			"vSAN OSA is emulated from a live three-host capture; VM-level families, stretched clusters, multiple disk groups, dedup and populated iSCSI are schema-only",
+			"vSAN OSA beyond a single-disk-group, three-host cluster: per-VM and virtual-disk performance, multiple disk groups per host, stretched clusters and OSA deduplication",
 			"iSCSI target, NFS, FC and local VMFS inventory",
 			"The VCF Operations ingestion path (Phase 3)",
 		}}
@@ -726,6 +734,12 @@ func (c *Controller) Compatibility() *Compat {
 	sort.Slice(cv.Unlisted, func(i, j int) bool { return cv.Unlisted[i].Calls > cv.Unlisted[j].Calls })
 	for _, f := range c.cat.Families {
 		cv.Kinds[string(f.Behaviour)]++
+	}
+	osa := &topology.Cluster{Spec: scenario.ClusterSpec{Architecture: "osa"}}
+	for _, name := range vsanhealth.PerfFamilyNames(c.cat, osa) {
+		if f, ok := vsanhealth.EffectiveFamily(c.cat, osa, name); ok {
+			cv.OSAKinds[string(f.Behaviour)]++
+		}
 	}
 	return cv
 }

@@ -1,4 +1,4 @@
-import { api, html, raw, join, badge, tile, int, bytes, ms, hms, hm, dateTime } from './lib.js';
+import { api, html, raw, join, badge, tile, int, bytes, ms, hms, hm, dateTime, plural } from './lib.js';
 
 // Shared by the Overview and the API Activity screens.
 export function requestsChart(minutes, w = 560, h = 120) {
@@ -77,7 +77,7 @@ export default {
         <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
           ${tile('Perf entities', int(sel.entities), `${sel.kinds} kinds`)}
           ${tile('Metric series', int(sel.series), 'entities × metrics')}
-          ${tile('PerfQuery calls', int(sel.calls), `${sel.kinds} kinds × ${p.clusters} clusters`)}
+          ${tile('PerfQuery calls', int(sel.calls), `${sel.kinds} kinds × ${plural(p.clusters, 'cluster')}`)}
           ${tile('Response bytes', html`~${bytes(sel.bytes).split(' ')[0]} <small>${bytes(sel.bytes).split(' ')[1]}</small>`, 'estimate, 3 samples per series')}
         </div>
       </section>
@@ -86,7 +86,7 @@ export default {
         <table class="lat-table"><thead><tr><th>Family</th><th>Scope</th><th class="r">Objects</th><th class="r">Metrics</th><th class="r">Series</th></tr></thead>
           <tbody>${st.Top.map((f) => html`<tr><td class="ink mono">${f.family}</td><td>${f.dashboard ? badge('dashboard') : html`<span class="subtle">all only</span>`}</td><td class="num r">${int(f.objects)}</td><td class="num r">${int(f.metrics)}</td><td class="num r">${int(f.series)}</td></tr>`)}</tbody>
           <tfoot><tr><td colspan="2">${p.all.kinds} kinds (${st.Top.length} shown)</td><td class="num r">${int(p.all.entities)}</td><td></td><td class="num r">${int(p.all.series)}</td></tr></tfoot></table>
-        <div class="anno">${(() => { const big = st.Top.filter((f) => !f.dashboard).slice(0, 2); const tot = p.all.entities || 1; const share = big.reduce((s, f) => s + f.objects, 0) / tot; return big.length ? html`${join(big.map((f) => f.family), ' and ')} hold ${Math.round(share * 100)}% of objects and are not referenced by any shipped MP view. See Telemetry → Metric scope.` : 'Every large family is referenced by a shipped MP view.'; })()}</div>
+        <div class="anno">${(() => { const big = (p.families || st.Top).filter((f) => !f.dashboard && f.objects > 0).sort((a, b) => b.objects - a.objects).slice(0, 2); const tot = p.all.entities || 1; const share = big.reduce((s, f) => s + f.objects, 0) / tot; return big.length ? html`${join(big.map((f) => f.family), ' and ')} hold ${Math.round(share * 100)}% of objects and are not referenced by any shipped MP view. See Telemetry → Metric scope.` : 'Every large family is referenced by a shipped MP view.'; })()}</div>
       </section>
     </div>
 
@@ -99,7 +99,7 @@ export default {
             ${tile('Rate now', html`${a.ratePerSec.toFixed(1)} <small>req/s</small>`, 'mean of the last 5 min')}
             ${tile('P95 latency', html`${ms(a.p95Ms).split(' ')[0]} <small>${ms(a.p95Ms).split(' ')[1]}</small>`, 'last 60 min')}
             ${tile('Faults', html`${a.faults.percent.toFixed(1)} <small>%</small>`, `${int(a.faults.injected)} injected · ${int(a.faults.unexpected)} unexpected · ${int(a.faults.denied || 0)} denied`, faultKind === 'bad' ? '' : '')}
-            ${tile('Empty results', int(emptyEntities), 'expected: provisional kinds on ESA')}
+            ${tile('Empty results', int(emptyEntities), p.osaClusters === 0 ? 'expected: provisional kinds on ESA' : 'expected: unmodeled kinds on a cluster')}
           </div>
         </div>
       </section>

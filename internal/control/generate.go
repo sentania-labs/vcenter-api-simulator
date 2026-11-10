@@ -13,6 +13,8 @@ import (
 // scenario defaults.
 type GenParams struct {
 	Seed           string                `json:"seed"`
+	Architecture   string                `json:"architecture"`
+	StatsPrimary   *bool                 `json:"statsPrimary"`
 	Datacenters    []scenario.Datacenter `json:"datacenters"`
 	Hosts          int                   `json:"hosts"`
 	VMsPerHost     *int                  `json:"vmsPerHost"`
@@ -33,8 +35,44 @@ func (c *Controller) generated(p GenParams) (*scenario.Scenario, error) {
 	base := c.applied().sc
 	sc := clone(base)
 	sc.Datacenters = p.Datacenters
+	architecture := p.Architecture
+	if architecture == "" {
+		architecture = base.Defaults.Architecture
+		clusters := c.applied().topo.Clusters()
+		if len(clusters) > 0 {
+			first := clusters[0].Spec.Architecture
+			uniform := true
+			for _, cl := range clusters[1:] {
+				if cl.Spec.Architecture != first {
+					uniform = false
+					break
+				}
+			}
+			if uniform {
+				architecture = first
+			}
+		}
+	}
+	primary := p.StatsPrimary
+	if primary == nil {
+		primary = base.Defaults.StatsPrimary
+		clusters := c.applied().topo.Clusters()
+		if len(clusters) > 0 {
+			first := clusters[0].Spec.StatsPrimary == nil || *clusters[0].Spec.StatsPrimary
+			uniform := true
+			for _, cl := range clusters[1:] {
+				if (cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary) != first {
+					uniform = false
+					break
+				}
+			}
+			if uniform {
+				primary = &first
+			}
+		}
+	}
 	sc.Defaults = scenario.ClusterSpec{
-		Hosts: p.Hosts, Dedup: p.Dedup, Compression: p.Compression,
+		Architecture: architecture, StatsPrimary: primary, Hosts: p.Hosts, Dedup: p.Dedup, Compression: p.Compression,
 		Host: scenario.HostSpec{Threads: p.Threads, DomWorlds: p.DomWorlds, VsanPnics: p.VsanPnics,
 			ClaimedDevices: p.ClaimedDevices, LocalDevices: p.LocalDevices},
 		VMs: scenario.VMSpec{PerHost: p.VMsPerHost, DisksPerVM: p.DisksPerVM},
@@ -146,6 +184,16 @@ type preset struct {
 }
 
 var presets = []preset{
+	{PresetInfo{"osa", "Three-host OSA", "A three-host OSA cluster with its performance primary online.", "topology", "replaces every identity"}, `
+seed: osa
+datacenters: [{name: dc-01, clusters: 1}]
+defaults:
+  architecture: osa
+  statsPrimary: true
+  hosts: 3
+  host: {threads: 5, domWorlds: 14, vsanPnics: 1, claimedDevices: 1, localDevices: 1}
+  vms: {perHost: 1, disksPerVM: 1}
+`},
 	{PresetInfo{"phase1", "Phase 1 reference", "One datacenter, one four-host ESA cluster: the shape the reference pack was validated against.", "topology", "replaces every identity"}, `
 seed: phase1
 datacenters: [{name: dc-01, clusters: 1}]

@@ -21,6 +21,7 @@ const (
 // the pinned commit), plus the ESA dedup kinds, which are a per-cluster
 // switch. The list is carried here, not read from the pack at run time.
 var dashboardKinds = map[string]bool{
+	"cache-disk": true, "capacity-disk": true,
 	"cluster-domclient": true, "cluster-domcompmgr": true, "cluster-domowner": true,
 	"cluster-rdt-network-latency": true, "cluster-zdom-top-stats": true, "vsan-cluster-capacity": true,
 	"cmmds-net": true, "host-domclient": true, "host-domcompmgr": true, "host-domowner": true,

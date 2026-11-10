@@ -204,7 +204,7 @@ func TestConsoleScriptTests(t *testing.T) {
 	if err != nil {
 		t.Skip("node is not installed")
 	}
-	cmd := exec.Command(node, "--test", "ui/js/telemetry.test.mjs")
+	cmd := exec.Command(node, "--test", "ui/js/telemetry.test.mjs", "ui/js/topology.test.mjs")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node --test: %v\n%s", err, out)
 	}
