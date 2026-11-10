@@ -41,6 +41,7 @@ For each scenario sweep dashboard-only vs all modeled entity families, 5/10/15-m
 | Suite | Runs | Covers |
 |---|---|---|
 | `go test ./...` | CI, required | the Phase 1 contract replay; the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality and overrides); restart and edit identity stability through the registry; credentials; fault and latency knobs; inventory property paths against the trimmed live inventory capture; gauge values inside each label's live envelope and `Raw` counters never decreasing across more than the 90-day retention; fixture sanitization |
+| `go test ./...` (control console) | CI, required | `internal/control`: draft, review and apply keep every identity they should and rebuild the vCenter only for topology changes; Delete, Regenerate and Reset seed; saved state across a restart and a changed scenario file; scheduled apply; projections equal what the Performance Service enumerates. `internal/activity`, `internal/admin`: request classification (ok, injected, unexpected, refused, timeout), redaction (no `/sdk` body, no credential), cycle diagnosis, admin API guards (Host allowlist against DNS rebinding, cross-origin and content-type checks) |
 | `tools/smoke/smoke.sh` | CI, required | the principal's acceptance (2026-11-07): a plain vSphere client (govc) connects, lists hosts and VMs, counts match the scenario, identities identical across a restart |
 | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow, local | the reference pack's collector against every cluster of a scenario |
 | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow, local | `mp-test connect` and two collects through the Operations integration SDK |
@@ -58,6 +59,7 @@ Comparison against a live vCenter was never run and remains unverified.
 Given the same seed, entityRefId, metric and 5-minute UTC slot, return equal values regardless of request order or process restart. Different entities should not accidentally alias. Configured changes must take effect at a defined bucket boundary. Time window requests must contain only relevant bucket timestamps and honor unavailable or not-yet-populated bins.
 
 ## UX acceptance
+The control console was built from the owner-approved Rev 2.1 mockups. Screenshots of every screen in light and dark, taken from the running app, are in [`docs/console/`](console/), and an independent evaluation agent walked workflows A-F of [UX-REQUIREMENTS](UX-REQUIREMENTS.md) against the built UI (scores and findings in [`docs/console/`](console/README.md)). The original gate:
 Before building UI, provide real desktop mockups, walk through generation, topology editing, scenario injection, query inspection and export flow using an independent end-user agent. Test novice and expert paths and require operator review.
 
 ## CI gates

@@ -32,7 +32,7 @@ Phase 1 proved the routing: one vcsim service serves `/sdk` and a registered `/v
 | metrics scenarios | `internal/vsanhealth` (`Knobs`) | per-family and per-method faults with cluster and bucket-aligned time selectors; per-family and `/sdk` latency |
 | vCenter façade | `internal/sim` | builds the vcsim inventory in registry serial order through vcsim's own method handlers (an event-driven task waiter instead of the property collector's poll), shapes cluster, host, datastore and VM properties after the trimmed live inventory capture, enforces credentials |
 
-The Lattice operator UI, query telemetry and Prometheus export are not built yet.
+The control plane (`internal/control`) owns the applied scenario, the running vCenter, the operator's pending draft and the request log (`internal/activity`); `internal/admin` serves its JSON API and the embedded Lattice console on a separate address, never on the API listeners. A topology apply builds a new `sim.Simulator` next to the running one and swaps it at a five-minute bucket boundary (the old one drains for 30 s); latency and fault edits replace the knobs in place. Prometheus export is not built yet.
 
 ## Source of truth
 One immutable versioned topology model backs both API surfaces. Objects have stable deterministic identities and relationships: datacenter, cluster, host, VM, storage, vDS, vSAN storage pool, NVMe device, native MoRefs and Performance Service entityRefIds. Store UUID namespaces and seed. Support create/clone/edit/reset operations with clear identity consequences; default restart preserves existing topology.

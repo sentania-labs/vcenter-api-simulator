@@ -318,3 +318,59 @@ func TestUnsetKnobDoesNotShiftLaterDraws(t *testing.T) {
 		t.Errorf("setting earlier knobs re-rolled claimedDevices: %d vs %d", with.Host.ClaimedDevices, without.Host.ClaimedDevices)
 	}
 }
+
+func TestRemovedClustersKeepTheOthersNumbering(t *testing.T) {
+	sc := scenario.Phase1("rm")
+	sc.Datacenters[0].Clusters = 4
+	sc.Removed = []string{"dc-01/cluster-02"}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	reg := registry.InMemory("rm")
+	tp := Generate(sc, reg)
+	var names []string
+	for _, c := range tp.Clusters() {
+		names = append(names, c.Name)
+	}
+	if fmt.Sprint(names) != "[cluster-01 cluster-03 cluster-04]" {
+		t.Errorf("clusters %v", names)
+	}
+	if reg.Has("cluster/dc-01/cluster-02") {
+		t.Error("a removed cluster minted identities")
+	}
+	// the vSAN datastore keeps the name its number gives it
+	if tp.Clusters()[1].Datastore != "vsanDatastore (2)" {
+		t.Errorf("datastore %q", tp.Clusters()[1].Datastore)
+	}
+	// overrides and faults may not name a removed cluster
+	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-02"}}
+	if err := sc.Validate(); err == nil {
+		t.Error("an override of a removed cluster must be refused")
+	}
+	sc.Clusters = nil
+	sc.Removed = []string{"dc-01/cluster-09"}
+	if err := sc.Validate(); err == nil {
+		t.Error("removing a cluster that is not generated must be refused")
+	}
+}
+
+func TestSeedEpochChangesOnlyTheClusterTelemetrySeed(t *testing.T) {
+	sc := scenario.Phase1("ep")
+	sc.Datacenters[0].Clusters = 2
+	reg := registry.InMemory("ep")
+	base := Generate(sc, reg)
+	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-02", SeedEpoch: 3}}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	epoch := Generate(sc, reg)
+	a, b := base.Clusters(), epoch.Clusters()
+	if a[0].TelemetrySeed != b[0].TelemetrySeed || a[1].TelemetrySeed == b[1].TelemetrySeed {
+		t.Errorf("telemetry seeds %q/%q -> %q/%q", a[0].TelemetrySeed, a[1].TelemetrySeed, b[0].TelemetrySeed, b[1].TelemetrySeed)
+	}
+	for i := range a {
+		if a[i].VsanUUID != b[i].VsanUUID || a[i].Hosts[0].NodeUUID != b[i].Hosts[0].NodeUUID {
+			t.Errorf("cluster %d identity changed with its seed epoch", i)
+		}
+	}
+}

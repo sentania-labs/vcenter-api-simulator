@@ -29,12 +29,32 @@ import (
 // one object for every cluster, so a sleep there would stall every
 // cluster's queries. Hold runs in the HTTP handler before dispatch instead.
 type Knobs struct {
+	now func() time.Time
+
+	cfg     sync.RWMutex // guards faults and latency, which Set replaces live
 	faults  []scenario.Fault
 	latency scenario.Latency
-	now     func() time.Time
 
 	mu  sync.Mutex
 	rng *rand.Rand
+}
+
+// Set replaces the faults and latency while the service runs. In-flight
+// requests finish under the settings they started with.
+func (k *Knobs) Set(faults []scenario.Fault, latency scenario.Latency) {
+	k.cfg.Lock()
+	k.faults, k.latency = faults, latency
+	k.cfg.Unlock()
+}
+
+// SDKDelay is the /sdk latency setting, if any.
+func (k *Knobs) SDKDelay() *scenario.Delay {
+	if k == nil {
+		return nil
+	}
+	k.cfg.RLock()
+	defer k.cfg.RUnlock()
+	return k.latency.SDK
 }
 
 // NewKnobs builds the knobs from the scenario sections.
@@ -59,6 +79,8 @@ func (k *Knobs) active(match func(scenario.Fault) bool, cluster string) *scenari
 		return nil
 	}
 	now := k.now().UTC()
+	k.cfg.RLock()
+	defer k.cfg.RUnlock()
 	for i := range k.faults {
 		f := &k.faults[i]
 		if !match(*f) || !selects(f.Clusters, cluster) {
@@ -99,13 +121,16 @@ func selects(keys []string, cluster string) bool {
 // delay is the family's latency: the per-family entry, else the perfQuery
 // default, else zero.
 func (k *Knobs) delay(family string) time.Duration {
+	k.cfg.RLock()
 	d, ok := k.latency.Families[family]
 	if !ok {
 		if k.latency.PerfQuery == nil {
+			k.cfg.RUnlock()
 			return 0
 		}
 		d = *k.latency.PerfQuery
 	}
+	k.cfg.RUnlock()
 	k.mu.Lock()
 	r := k.rng.Float64()
 	k.mu.Unlock()
@@ -147,6 +172,24 @@ var (
 	hostRe    = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?host[^>]*>([^<]+)</`)
 )
 
+// Target reads the entity family a perf query asks for and the cluster key a
+// /vsanHealth call targets, for the request log. Either may be empty.
+func (e *Env) Target(body []byte) (family, cluster string) {
+	if f := familyRe.FindSubmatch(body); f != nil {
+		family = string(f[1])
+	}
+	if c := clusterRe.FindSubmatch(body); c != nil {
+		if cl := e.clusterByValue(string(c[1])); cl != nil {
+			cluster = cl.Key
+		}
+	} else if h := hostRe.FindSubmatch(body); h != nil {
+		if _, cl := e.Host(vim25types.ManagedObjectReference{Type: "HostSystem", Value: string(h[1])}); cl != nil {
+			cluster = cl.Key
+		}
+	}
+	return family, cluster
+}
+
 // Hold returns how long a /vsanHealth request must wait before dispatch:
 // the family's latency for a perf query, plus TimeoutHold when a timeout
 // fault is active for the family or method on the targeted cluster.
@@ -160,22 +203,9 @@ func (e *Env) Hold(body []byte) time.Duration {
 		return 0
 	}
 	method := string(m[1])
-	cluster := ""
-	if c := clusterRe.FindSubmatch(body); c != nil {
-		if cl := e.clusterByValue(string(c[1])); cl != nil {
-			cluster = cl.Key
-		}
-	} else if h := hostRe.FindSubmatch(body); h != nil {
-		if _, cl := e.Host(vim25types.ManagedObjectReference{Type: "HostSystem", Value: string(h[1])}); cl != nil {
-			cluster = cl.Key
-		}
-	}
+	family, cluster := e.Target(body)
 	var hold time.Duration
 	if method == "VsanPerfQueryPerf" {
-		family := ""
-		if f := familyRe.FindSubmatch(body); f != nil {
-			family = string(f[1])
-		}
 		hold += k.delay(family)
 		if cluster != "" {
 			if f := k.FamilyFault(family, cluster); f != nil && f.Fault == scenario.FaultTimeout {

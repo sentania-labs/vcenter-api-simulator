@@ -50,6 +50,10 @@ spec:
             - -data=/data
             - -seed={{ .Values.simulator.seed }}
             - -tls-names={{ include "vcsim.tlsNames" . }}
+            - -admin={{ if .Values.admin.enabled }}{{ ternary "0.0.0.0" "127.0.0.1" .Values.admin.exposeToPodNetwork }}:{{ .Values.admin.port }}{{ end }}
+            {{- if and .Values.admin.enabled .Values.admin.allowedHosts }}
+            - -admin-allowed-hosts={{ join "," .Values.admin.allowedHosts }}
+            {{- end }}
             {{- range .Values.simulator.extraArgs }}
             - {{ . | quote }}
             {{- end }}
@@ -75,6 +79,11 @@ spec:
             - name: https
               containerPort: {{ .Values.simulator.port }}
               protocol: TCP
+            {{- if .Values.admin.enabled }}
+            - name: admin
+              containerPort: {{ .Values.admin.port }}
+              protocol: TCP
+            {{- end }}
           {{- if .Values.probes.startup.enabled }}
           startupProbe:
             httpGet:

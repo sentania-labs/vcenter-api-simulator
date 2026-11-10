@@ -30,27 +30,32 @@ type Scenario struct {
 	// (vCenter instance uuid, cluster uuids, node uuids, disk uuids, VM
 	// uuids) is derived from it and the registry's serials, so a scenario
 	// with the same seed and registry reproduces the same identities.
-	Seed string `yaml:"seed"`
+	Seed string `yaml:"seed" json:"seed,omitempty"`
 	// TelemetrySeed feeds metric values only; empty means Seed. Changing it
 	// changes every value and no identity.
-	TelemetrySeed string `yaml:"telemetrySeed"`
+	TelemetrySeed string `yaml:"telemetrySeed" json:"telemetrySeed,omitempty"`
 
-	Datacenters []Datacenter      `yaml:"datacenters"`
-	Defaults    ClusterSpec       `yaml:"defaults"`
-	Vary        Vary              `yaml:"vary"`
-	Clusters    []ClusterOverride `yaml:"clusters"`
+	Datacenters []Datacenter      `yaml:"datacenters" json:"datacenters,omitempty"`
+	Defaults    ClusterSpec       `yaml:"defaults" json:"defaults,omitempty"`
+	Vary        Vary              `yaml:"vary" json:"vary,omitempty"`
+	Clusters    []ClusterOverride `yaml:"clusters" json:"clusters,omitempty"`
+	// Removed lists cluster keys the datacenters would generate but the
+	// scenario leaves out (the console's Delete cluster). The cluster
+	// numbers of the others do not shift, and a removed cluster's
+	// identities stay retired in the registry.
+	Removed []string `yaml:"removed" json:"removed,omitempty"`
 
-	Auth    Auth    `yaml:"auth"`
-	TLS     TLS     `yaml:"tls"`
-	Faults  []Fault `yaml:"faults"`
-	Latency Latency `yaml:"latency"`
+	Auth    Auth    `yaml:"auth" json:"auth,omitempty"`
+	TLS     TLS     `yaml:"tls" json:"tls,omitempty"`
+	Faults  []Fault `yaml:"faults" json:"faults,omitempty"`
+	Latency Latency `yaml:"latency" json:"latency,omitempty"`
 }
 
 // Datacenter generates Clusters clusters named cluster-01, cluster-02, ...
 // under one datacenter with one vDS.
 type Datacenter struct {
-	Name     string `yaml:"name"`
-	Clusters int    `yaml:"clusters"`
+	Name     string `yaml:"name" json:"name,omitempty"`
+	Clusters int    `yaml:"clusters" json:"clusters,omitempty"`
 }
 
 // ClusterSpec is the per-cluster cardinality. An unset value means "use
@@ -58,26 +63,26 @@ type Datacenter struct {
 // counts that may legitimately be zero are pointers so that zero can be
 // set.
 type ClusterSpec struct {
-	Hosts       int      `yaml:"hosts"`
-	Dedup       *bool    `yaml:"dedup"`
-	Compression *bool    `yaml:"compression"`
-	Host        HostSpec `yaml:"host"`
-	VMs         VMSpec   `yaml:"vms"`
+	Hosts       int      `yaml:"hosts" json:"hosts,omitempty"`
+	Dedup       *bool    `yaml:"dedup" json:"dedup,omitempty"`
+	Compression *bool    `yaml:"compression" json:"compression,omitempty"`
+	Host        HostSpec `yaml:"host" json:"host,omitempty"`
+	VMs         VMSpec   `yaml:"vms" json:"vms,omitempty"`
 }
 
 // HostSpec is the per-host cardinality.
 type HostSpec struct {
-	Threads        int  `yaml:"threads"`        // host-cpu entities: cpu-0..N-1 plus the aggregate
-	DomWorlds      *int `yaml:"domWorlds"`      // dom-world-cpu entities
-	VsanPnics      int  `yaml:"vsanPnics"`      // vmnic uplinks on the vDS, the vsan-pnic-net entities
-	ClaimedDevices int  `yaml:"claimedDevices"` // NVMe devices claimed by vSAN ESA
-	LocalDevices   *int `yaml:"localDevices"`   // NVMe devices left to local VMFS
+	Threads        int  `yaml:"threads" json:"threads,omitempty"`               // host-cpu entities: cpu-0..N-1 plus the aggregate
+	DomWorlds      *int `yaml:"domWorlds" json:"domWorlds,omitempty"`           // dom-world-cpu entities
+	VsanPnics      int  `yaml:"vsanPnics" json:"vsanPnics,omitempty"`           // vmnic uplinks on the vDS, the vsan-pnic-net entities
+	ClaimedDevices int  `yaml:"claimedDevices" json:"claimedDevices,omitempty"` // NVMe devices claimed by vSAN ESA
+	LocalDevices   *int `yaml:"localDevices" json:"localDevices,omitempty"`     // NVMe devices left to local VMFS
 }
 
 // VMSpec is the VM population of a cluster.
 type VMSpec struct {
-	PerHost    *int `yaml:"perHost"`
-	DisksPerVM int  `yaml:"disksPerVM"`
+	PerHost    *int `yaml:"perHost" json:"perHost,omitempty"`
+	DisksPerVM int  `yaml:"disksPerVM" json:"disksPerVM,omitempty"`
 }
 
 // Int dereferences an optional count; nil is 0.
@@ -99,46 +104,50 @@ const MinHosts = 3
 // (duplicates weight it); a Range draws uniformly. Explicit cluster
 // overrides win over draws.
 type Vary struct {
-	Hosts          []int  `yaml:"hosts"`
-	VMsPerHost     *Range `yaml:"vmsPerHost"`
-	ClaimedDevices []int  `yaml:"claimedDevices"`
-	DomWorlds      *Range `yaml:"domWorlds"`
-	Threads        []int  `yaml:"threads"`
+	Hosts          []int  `yaml:"hosts" json:"hosts,omitempty"`
+	VMsPerHost     *Range `yaml:"vmsPerHost" json:"vmsPerHost,omitempty"`
+	ClaimedDevices []int  `yaml:"claimedDevices" json:"claimedDevices,omitempty"`
+	DomWorlds      *Range `yaml:"domWorlds" json:"domWorlds,omitempty"`
+	Threads        []int  `yaml:"threads" json:"threads,omitempty"`
 }
 
 // Range is an inclusive integer range.
 type Range struct {
-	Min int `yaml:"min"`
-	Max int `yaml:"max"`
+	Min int `yaml:"min" json:"min,omitempty"`
+	Max int `yaml:"max" json:"max,omitempty"`
 }
 
 // ClusterOverride pins values for one cluster, keyed "<datacenter>/<cluster>".
 type ClusterOverride struct {
-	Key         string `yaml:"key"`
-	ClusterSpec `yaml:",inline"`
+	Key string `yaml:"key" json:"key,omitempty"`
+	// SeedEpoch, when above zero, gives the cluster its own telemetry seed
+	// (the console's Reset cluster seed): every synthetic sample and the
+	// whole history of this cluster change, no identity does.
+	SeedEpoch   int `yaml:"seedEpoch,omitempty" json:"seedEpoch,omitempty"`
+	ClusterSpec `yaml:",inline" json:",omitempty"`
 }
 
 // Auth lists who may log in. With no users any non-empty user name and
 // password are accepted, as vcsim does.
 type Auth struct {
-	Users []User `yaml:"users"`
+	Users []User `yaml:"users" json:"users,omitempty"`
 }
 
 // User is one account. Password may come from the environment instead of
 // the file.
 type User struct {
-	Name        string `yaml:"name"`
-	Password    string `yaml:"password"`
-	PasswordEnv string `yaml:"passwordEnv"`
+	Name        string `yaml:"name" json:"name,omitempty"`
+	Password    string `yaml:"password" json:"password,omitempty"`
+	PasswordEnv string `yaml:"passwordEnv" json:"passwordEnv,omitempty"`
 }
 
 // TLS selects the certificate: a provided pair, or a self-signed one
 // created once in Dir and kept across restarts.
 type TLS struct {
-	Dir      string   `yaml:"dir"`
-	CertFile string   `yaml:"certFile"`
-	KeyFile  string   `yaml:"keyFile"`
-	Names    []string `yaml:"names"`
+	Dir      string   `yaml:"dir" json:"dir,omitempty"`
+	CertFile string   `yaml:"certFile" json:"certFile,omitempty"`
+	KeyFile  string   `yaml:"keyFile" json:"keyFile,omitempty"`
+	Names    []string `yaml:"names" json:"names,omitempty"`
 }
 
 // Fault injects a SOAP fault on /vsanHealth. Family selects VsanPerfQueryPerf
@@ -149,12 +158,12 @@ type TLS struct {
 // snap to five-minute bucket boundaries, so a change takes effect at the
 // next bucket as a scenario edit would.
 type Fault struct {
-	Family   string     `yaml:"family"`
-	Method   string     `yaml:"method"`
-	Clusters []string   `yaml:"clusters"`
-	Fault    string     `yaml:"fault"`
-	From     *time.Time `yaml:"from"`
-	To       *time.Time `yaml:"to"`
+	Family   string     `yaml:"family" json:"family,omitempty"`
+	Method   string     `yaml:"method" json:"method,omitempty"`
+	Clusters []string   `yaml:"clusters" json:"clusters,omitempty"`
+	Fault    string     `yaml:"fault" json:"fault,omitempty"`
+	From     *time.Time `yaml:"from" json:"from,omitempty"`
+	To       *time.Time `yaml:"to" json:"to,omitempty"`
 }
 
 // Fault kinds.
@@ -168,15 +177,15 @@ const (
 // Latency delays responses. PerfQuery applies to every VsanPerfQueryPerf;
 // Families overrides it per entity family; SDK applies to every /sdk call.
 type Latency struct {
-	PerfQuery *Delay           `yaml:"perfQuery"`
-	Families  map[string]Delay `yaml:"families"`
-	SDK       *Delay           `yaml:"sdk"`
+	PerfQuery *Delay           `yaml:"perfQuery" json:"perfQuery,omitempty"`
+	Families  map[string]Delay `yaml:"families" json:"families,omitempty"`
+	SDK       *Delay           `yaml:"sdk" json:"sdk,omitempty"`
 }
 
 // Delay is a fixed delay plus uniform jitter, in milliseconds.
 type Delay struct {
-	FixedMs  int `yaml:"fixedMs"`
-	JitterMs int `yaml:"jitterMs"`
+	FixedMs  int `yaml:"fixedMs" json:"fixedMs,omitempty"`
+	JitterMs int `yaml:"jitterMs" json:"jitterMs,omitempty"`
 }
 
 // Duration draws one delay; r in [0,1) selects the jitter.
@@ -271,6 +280,22 @@ func (s *Scenario) Validate() error {
 	if err := s.Defaults.check("defaults"); err != nil {
 		return err
 	}
+	all := map[string]bool{}
+	for _, dc := range s.Datacenters {
+		for n := 1; n <= dc.Clusters; n++ {
+			all[ClusterKey(dc.Name, n)] = true
+		}
+	}
+	removed := map[string]bool{}
+	for _, k := range s.Removed {
+		if !all[k] {
+			return fmt.Errorf("scenario: removed: %q is not a cluster the datacenters generate", k)
+		}
+		if removed[k] {
+			return fmt.Errorf("scenario: removed: %q listed twice", k)
+		}
+		removed[k] = true
+	}
 	generated := map[string]bool{}
 	for _, k := range s.ClusterKeys() {
 		generated[k] = true
@@ -285,6 +310,9 @@ func (s *Scenario) Validate() error {
 		}
 		if keys[c.Key] {
 			return fmt.Errorf("scenario: cluster %q overridden twice", c.Key)
+		}
+		if c.SeedEpoch < 0 {
+			return fmt.Errorf("scenario: clusters[%s]: seedEpoch must not be negative", c.Key)
 		}
 		keys[c.Key] = true
 		if err := merge(s.Defaults, c.ClusterSpec).check("clusters[" + c.Key + "]"); err != nil {
@@ -492,10 +520,37 @@ func (s *Scenario) ClusterKeys() []string {
 	var out []string
 	for _, dc := range s.Datacenters {
 		for n := 1; n <= dc.Clusters; n++ {
-			out = append(out, fmt.Sprintf("%s/cluster-%02d", dc.Name, n))
+			if k := ClusterKey(dc.Name, n); !s.IsRemoved(k) {
+				out = append(out, k)
+			}
 		}
 	}
 	return out
+}
+
+// ClusterKey names the n-th cluster of a datacenter.
+func ClusterKey(datacenter string, n int) string {
+	return fmt.Sprintf("%s/cluster-%02d", datacenter, n)
+}
+
+// IsRemoved reports whether the scenario leaves a generated cluster out.
+func (s *Scenario) IsRemoved(key string) bool {
+	for _, k := range s.Removed {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+// SeedEpoch is the cluster's telemetry seed epoch (0 until reset).
+func (s *Scenario) SeedEpoch(key string) int {
+	for _, c := range s.Clusters {
+		if c.Key == key {
+			return c.SeedEpoch
+		}
+	}
+	return 0
 }
 
 // FamilyFaults lists the perf-family faults, sorted for deterministic

@@ -18,10 +18,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -29,10 +34,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sentania/vcenter-api-simulator/internal/admin"
+	"github.com/sentania/vcenter-api-simulator/internal/control"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
-	"github.com/sentania/vcenter-api-simulator/internal/sim"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
 
@@ -62,8 +68,22 @@ func main() {
 	password := flag.String("password", "", "password for -username (env VCSIM_PASSWORD)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	describe := flag.Bool("describe", false, "print the scenario's cardinality as JSON (clusters, hosts, VMs, devices, per cluster) and exit without serving; needs no data directory")
+	adminAddr := flag.String("admin", "127.0.0.1:9090", "address for the control console (plain HTTP, no login; keep it on loopback or behind your own ingress; empty disables; env VCSIM_ADMIN)")
+	adminHosts := flag.String("admin-allowed-hosts", "", "comma-separated Host names the control console answers to besides localhost, 127.0.0.1 and ::1; any other Host gets 403 (env VCSIM_ADMIN_ALLOWED_HOSTS)")
 	sessionTimeout := flag.Duration("session-timeout", 0, "idle session timeout (0: sessions never expire)")
 	flag.Parse()
+	adminSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "admin" {
+			adminSet = true
+		}
+	})
+	if v, ok := os.LookupEnv("VCSIM_ADMIN"); ok && !adminSet {
+		*adminAddr = v
+	}
+	if *adminHosts == "" {
+		*adminHosts = os.Getenv("VCSIM_ADMIN_ALLOWED_HOSTS")
+	}
 	if *username == "" {
 		*username = os.Getenv("VCSIM_USERNAME")
 	}
@@ -104,62 +124,69 @@ func main() {
 		}
 		return
 	}
-	reg, err := registry.Open(filepath.Join(*dataDir, "registry.json"), sc.Seed, *regenerate)
-	if err != nil {
-		log.Fatal(err)
-	}
-	topo := topology.Generate(sc, reg)
-	if err := reg.Save(); err != nil {
-		log.Fatal(err)
-	}
-
 	cert, err := certificate(sc, *dataDir, *tlsDir, *tlsCert, *tlsKey, *names)
 	if err != nil {
 		log.Fatal(err)
 	}
-	creds, err := sc.Credentials()
-	if err != nil {
+	if _, err := sc.Credentials(); err != nil {
 		log.Fatal(err)
+	}
+	extra := map[string]string{}
+	if *username != "" {
+		// the flag/env user joins the scenario's users
+		extra[*username] = *password
 	}
 
 	start := time.Now()
-	if *username != "" {
-		// the flag/env user joins the scenario's users
-		if creds == nil {
-			creds = map[string]string{}
-		}
-		creds[*username] = *password
-	}
-	s, err := sim.New(sim.Options{
-		Topology:       topo,
-		Credentials:    creds,
-		SessionTimeout: *sessionTimeout,
-		Faults:         sc.Faults,
-		Latency:        sc.Latency,
+	ctl, err := control.New(control.Options{
+		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
+		Credentials: extra, SessionTimeout: *sessionTimeout,
+		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer s.Close()
+	defer ctl.Close()
 
-	ls, err := serve.Listen(listen, s.Handler, cert)
+	ls, err := serve.Listen(listen, ctl, cert)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer ls.Close()
 
-	fmt.Printf("vcsimulator: %s (%s)\n", version, commit)
-	clusters, hosts, vms, devices := topo.Counts()
-	fmt.Printf("vcsimulator: vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s\n",
-		s.Catalog.About.Version, topo.InstanceUUID, sc.Seed, reg.Len(), time.Since(start).Round(time.Millisecond))
-	fmt.Printf("vcsimulator: %d clusters, %d hosts, %d vms, %d devices\n", clusters, hosts, vms, devices)
-	fmt.Printf("vcsimulator: %s\n", loginMode(creds))
-	for _, c := range s.Clusters {
-		cl := c.Cluster
-		fmt.Printf("vcsimulator: %s (%s) vsan uuid=%s hosts=%d vms=%d dedup=%v\n", cl.Key, c.Ref.Value, cl.VsanUUID, len(cl.Hosts), len(cl.VMs), cl.Dedup)
+	var adminSrv *http.Server
+	if *adminAddr != "" {
+		ln, err := net.Listen("tcp", *adminAddr)
+		switch {
+		case err != nil && adminSet:
+			log.Fatal(err)
+		case err != nil:
+			// the default address is taken (another instance on this host):
+			// the API still serves, the console is off
+			fmt.Printf("vcsimulator: control console not started: %v (set -admin to another address)\n", err)
+			*adminAddr = ""
+		default:
+			adminSrv = &http.Server{Handler: admin.Handler(ctl, strings.Split(*adminHosts, ",")), ReadHeaderTimeout: 30 * time.Second}
+			go func() {
+				if err := adminSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					fmt.Println("admin:", err)
+				}
+			}()
+			defer adminSrv.Close()
+			*adminAddr = ln.Addr().String()
+		}
 	}
+
+	fmt.Printf("vcsimulator: %s (%s)\n", version, commit)
+	for _, line := range ctl.Banner(time.Since(start)) {
+		fmt.Println("vcsimulator: " + line)
+	}
+	fmt.Printf("vcsimulator: %s\n", loginMode(ctl.LoginUsers()))
 	for _, a := range ls.Addrs {
 		fmt.Printf("vcsimulator: listening on https://%s/sdk and /vsanHealth\n", a)
+	}
+	if *adminAddr != "" {
+		fmt.Printf("vcsimulator: control console on http://%s/ (no login; %s)\n", *adminAddr, adminNote(*adminAddr))
 	}
 
 	sig := make(chan os.Signal, 1)
@@ -167,11 +194,47 @@ func main() {
 	<-sig
 }
 
-func loginMode(creds map[string]string) string {
-	if len(creds) == 0 {
+// sourceHash identifies the scenario the process started from, so a saved
+// console state is dropped when the operator edits the file.
+func sourceHash(path string, sc *scenario.Scenario) string {
+	if path == "" {
+		return "builtin:" + sc.Seed
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "file:" + path
+	}
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// endpointName is the host name shown as the API endpoint: the first
+// extra certificate name, else the machine's.
+func endpointName(names string) string {
+	for _, n := range strings.Split(names, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			return n
+		}
+	}
+	if h, err := os.Hostname(); err == nil {
+		return h
+	}
+	return "localhost"
+}
+
+func adminNote(addr string) string {
+	host, _, _ := net.SplitHostPort(addr)
+	if ip := net.ParseIP(host); host == "localhost" || (ip != nil && ip.IsLoopback()) {
+		return "loopback only"
+	}
+	return "reachable beyond this host: put it behind your own authentication"
+}
+
+func loginMode(users []string) string {
+	if len(users) == 0 {
 		return "login accepts any user name and password"
 	}
-	return fmt.Sprintf("login restricted to %d user(s)", len(creds))
+	return fmt.Sprintf("login restricted to %d user(s)", len(users))
 }
 
 // certificate picks the key pair: flags over the scenario, a provided pair

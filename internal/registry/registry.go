@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -183,4 +184,34 @@ func (r *Registry) Sub(key string) uint64 {
 		v = v<<8 | uint64(sum[i])
 	}
 	return v
+}
+
+// Clone returns a copy with the same path: allocations on it never reach
+// the original, and it writes the file only if Save is called on it. The
+// console previews a draft on a clone and saves the clone it applies.
+func (r *Registry) Clone() *Registry {
+	c := &Registry{path: r.path, dirty: true, doc: r.doc, ns: r.ns}
+	c.doc.Entries = make(map[string]int, len(r.doc.Entries))
+	for k, v := range r.doc.Entries {
+		c.doc.Entries[k] = v
+	}
+	return c
+}
+
+// Retire forgets every identity of a cluster (the cluster, its hosts,
+// devices and VMs). The serials are never reused, so the next generation
+// of the same logical entities gets new identities and the old ones stay
+// retired. It returns how many keys it removed.
+func (r *Registry) Retire(clusterKey string) int {
+	n := 0
+	for k := range r.doc.Entries {
+		if strings.HasSuffix(k, "/"+clusterKey) || strings.Contains(k, "/"+clusterKey+"/") {
+			delete(r.doc.Entries, k)
+			n++
+		}
+	}
+	if n > 0 {
+		r.dirty = true
+	}
+	return n
 }
