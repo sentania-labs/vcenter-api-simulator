@@ -29,8 +29,8 @@ concurrent collectors, retries or Cloud Proxy resource use. Expected HTTP 500
 responses for unsupported families are retained; differences from the recorded
 status are counted in JSON and CSV. Existing scenario latency and fault knobs
 apply; a fault affecting login or view creation aborts the run. `VmHWM` is the
-simulator process high-water RSS, not the combined scope's peak. Series totals
-are projections from the captured catalog, not measured ingestion.
+simulator process high-water RSS, not the combined scope's peak. Entity and series totals
+are projections from each scenario topology and the captured catalog, not measured ingestion.
 
 The output directory must not exist or must be empty; the harness refuses
 anything else and never changes the permissions of a directory it did not

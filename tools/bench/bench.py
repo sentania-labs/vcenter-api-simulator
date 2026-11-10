@@ -177,18 +177,8 @@ def moref_values(text, kind):
             and el.get("type") == kind and el.text]
 
 
-def read_catalog():
-    """Data-bearing families and the per-cluster fan-out the catalog implies."""
-    cat = json.load(open(os.path.join(ROOT, "internal/catalog/catalog.json")))
-    fams = cat["families"]
-    data = sorted(f for f, v in fams.items() if v["behaviour"] == "data")
-    entities = sum(v["entities"] for v in fams.values())
-    series = sum(v["entities"] * len(v.get("labels", [])) for v in fams.values())
-    return {"families": len(fams), "dataFamilies": data,
-            "entitiesPerCluster": entities, "seriesPerCluster": series}
-
-
 def start_sim(port, scenario, data_dir):
+    data_dir = os.path.abspath(data_dir)
     exe = os.path.join(data_dir, "vcsimulator")
     subprocess.run(["go", "build", "-o", exe, os.path.join(ROOT, "cmd/vcsimulator")],
                    cwd=ROOT, check=True)
@@ -216,7 +206,7 @@ def start_sim(port, scenario, data_dir):
     raise SystemExit("simulator did not report its topology")
 
 
-def one_pass(described, catalog, base, user, pw):
+def one_pass(described, base, user, pw):
     """Replay the recorded collector trace, substituting simulator identities."""
     import re
     import urllib.error
@@ -342,14 +332,13 @@ def run(args):
     os.makedirs(args.out, exist_ok=True)
     data_dir = os.path.join(args.out, "data")
     os.makedirs(data_dir)
-    catalog = read_catalog()
     proc, described = start_sim(args.port, args.scenario, data_dir)
     base = f"https://127.0.0.1:{args.port}"
     runs = []
     try:
         for i in range(args.runs):
             t0 = time.perf_counter()
-            calls = one_pass(described, catalog, base, args.username, args.password)
+            calls = one_pass(described, base, args.username, args.password)
             wall = time.perf_counter() - t0
             lat = [c[2] for c in calls]
             runs.append({
@@ -385,13 +374,13 @@ def run(args):
                       "build": git_commit()},
         "topology": described,
         "projection": {
-            "advertisedFamilies": catalog["families"],
-            "dataFamilies": len(catalog["dataFamilies"]),
-            "entitiesPerCluster": catalog["entitiesPerCluster"],
-            "metricSeriesPerCluster": catalog["seriesPerCluster"],
-            "samplesPerPassIn15MinWindow": catalog["seriesPerCluster"] * BUCKETS_15MIN,
-            "note": ("projected from the captured catalog (fixtures/live/9.1.1) and the scenario's "
-                     "cardinality; the entity counts in each run's records are what the service returned"),
+            "advertisedFamilies": len(described["projection"]["families"]),
+            "dataFamilies": sum(f["behaviour"] == "data" for f in described["projection"]["families"]),
+            "totalEntities": described["projection"]["all"]["entities"],
+            "totalMetricSeries": described["projection"]["all"]["series"],
+            "samplesPerPassIn15MinWindow": described["projection"]["all"]["series"] * BUCKETS_15MIN,
+            "perCluster": described["projection"]["perCluster"],
+            "note": "Projected from scenario topology and the captured metric catalog; not measured ingestion.",
         },
         "runs": runs,
     }
@@ -413,10 +402,10 @@ def render(s):
     out = [f"# Benchmark: {t['seed']}", ""]
     out.append(f"- topology: {t['clusters']} clusters, {t['hosts']} hosts, {t['vms']} VMs, "
                f"{t['devices']} devices")
-    out.append(f"- projected per cluster: {p['advertisedFamilies']} advertised families "
-               f"({p['dataFamilies']} with data), {p['entitiesPerCluster']} entities, "
-               f"{p['metricSeriesPerCluster']} metric series; {p['samplesPerPassIn15MinWindow']} "
-               "samples for four theoretical buckets per cluster")
+    out.append(f"- projected across the scenario: {p['advertisedFamilies']} advertised families "
+               f"({p['dataFamilies']} with data), {p['totalEntities']} entities, "
+               f"{p['totalMetricSeries']} metric series; {p['samplesPerPassIn15MinWindow']} "
+               "samples for four theoretical buckets across the scenario")
     out.append(f"- host: {s['host']['cpus']} CPUs, {s['host']['memoryMb']} MB total; "
                f"cgroup memory cap {s['host']['commandCapMb']} MB")
     out.append(f"- simulator build: {s['simulator']['build']}, "

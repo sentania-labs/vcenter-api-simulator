@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/sentania/vcenter-api-simulator/internal/admin"
+	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/control"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -293,13 +294,14 @@ func jsonLine(d description, addr string) string {
 
 // description is what -describe and the startup line carry.
 type description struct {
-	Addr     string               `json:"addr,omitempty"`
-	Seed     string               `json:"seed"`
-	Clusters int                  `json:"clusters"`
-	Hosts    int                  `json:"hosts"`
-	VMs      int                  `json:"vms"`
-	Devices  int                  `json:"devices"`
-	Per      []clusterDescription `json:"perCluster"`
+	Addr       string               `json:"addr,omitempty"`
+	Seed       string               `json:"seed"`
+	Clusters   int                  `json:"clusters"`
+	Hosts      int                  `json:"hosts"`
+	VMs        int                  `json:"vms"`
+	Devices    int                  `json:"devices"`
+	Per        []clusterDescription `json:"perCluster"`
+	Projection *control.Projection  `json:"projection"`
 }
 
 type clusterDescription struct {
@@ -314,7 +316,7 @@ type clusterDescription struct {
 }
 
 func describeTopology(topo *topology.Topology) description {
-	d := description{Seed: topo.Seed}
+	d := description{Seed: topo.Seed, Projection: control.Project(catalog.MustLoad(), topo)}
 	d.Clusters, d.Hosts, d.VMs, d.Devices = topo.Counts()
 	for _, c := range topo.Clusters() {
 		claimed := 0
