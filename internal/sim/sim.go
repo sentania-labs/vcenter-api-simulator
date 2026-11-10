@@ -660,7 +660,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		case "/sdk/vimService.wsdl":
 			w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
-			fmt.Fprint(w, vimServiceWSDL)
+			_, _ = fmt.Fprint(w, vimServiceWSDL)
 			return
 		}
 	}
