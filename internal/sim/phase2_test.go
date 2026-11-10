@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -858,7 +859,9 @@ func TestOSACapacityReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	capacity, used := topology.VsanCapacity(cl.Cluster), topology.VsanUsed(cl.Cluster)
+	// Four hosts, one claimed 4000787030016-byte device each; four VMs with one
+	// 40 GiB thin disk each, half used: 4*20*2^30.
+	const capacity, used int64 = 4 * 4000787030016, 4 * 20 << 30
 	if usage.Returnval.TotalCapacityB != capacity || usage.Returnval.FreeCapacityB != capacity-used || state.Returnval.PhysicalCapacity != capacity || state.Returnval.PhysicalCapacityUsed != used {
 		t.Fatalf("inconsistent capacity: %+v %+v", usage.Returnval, state.Returnval)
 	}
@@ -899,6 +902,26 @@ func TestOSAPerfSupplementarySchema(t *testing.T) {
 	}
 }
 
+func perfSeries(t *testing.T, doc []byte, label string) string {
+	t.Helper()
+	var env struct {
+		Series []struct {
+			Label  string `xml:"metricId>label"`
+			Values string `xml:"values"`
+		} `xml:"Body>VsanPerfQueryPerfResponse>returnval>value"`
+	}
+	if err := xml.Unmarshal(doc, &env); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range env.Series {
+		if s.Label == label {
+			return s.Values
+		}
+	}
+	t.Fatalf("no %s series", label)
+	return ""
+}
+
 func TestOSAPerfSampleShapes(t *testing.T) {
 	sc := scenario.Phase1("osa-perf")
 	sc.Defaults.Architecture = "osa"
@@ -921,8 +944,19 @@ func TestOSAPerfSampleShapes(t *testing.T) {
 			t.Errorf("%s: %d refs, %d labels, %d samples", tc.family, len(got.refs), len(got.labels), len(got.samples))
 		}
 		refs[tc.family] = got.refs
-		if tc.family == "vsan-cluster-capacity" && !strings.Contains(string(body), "None,None,None,None") {
-			t.Error("missing None capacity values")
+		if tc.family == "vsan-cluster-capacity" {
+			// Three hosts, one claimed 4000787030016-byte device each; three VMs
+			// with one 40 GiB thin disk each, half used.
+			const total, used int64 = 3 * 4000787030016, 3 * 20 << 30
+			want := map[string]string{"total": fmt.Sprint(total), "used": fmt.Sprint(used), "free": fmt.Sprint(total - used)}
+			for label, value := range want {
+				if series := perfSeries(t, body, label); series != strings.TrimSuffix(strings.Repeat(value+",", 4), ",") {
+					t.Errorf("vsan-cluster-capacity %s = %q, want four samples of %s", label, series, value)
+				}
+			}
+			if series := perfSeries(t, body, "totalDpOverhead"); series != "None,None,None,None" {
+				t.Errorf("totalDpOverhead = %q", series)
+			}
 		}
 	}
 	for i := range refs["disk-group"] {
