@@ -1,0 +1,24 @@
+# Scale profile "large" (docs/TESTING.md scale matrix): fifty ESA clusters of
+# eight hosts, uniform cardinality so a run's numbers are attributable to
+# volume rather than to varied shapes. See scale-10.yaml for the field notes.
+seed: scale-50
+datacenters:
+  - name: dc-01
+    clusters: 50
+defaults:
+  hosts: 8
+  dedup: true
+  compression: true
+  host:
+    threads: 32
+    domWorlds: 66
+    vsanPnics: 2
+    claimedDevices: 1
+    localDevices: 1
+  vms:
+    perHost: 4
+    disksPerVM: 1
+auth:
+  users:
+    - name: administrator@vsphere.local
+      password: VMware1!

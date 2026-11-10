@@ -36,6 +36,7 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/admin"
 	"github.com/sentania/vcenter-api-simulator/internal/control"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
@@ -59,6 +60,7 @@ func main() {
 	scenarioPath := flag.String("scenario", "", "scenario file (YAML); default: the built-in one-cluster scenario")
 	dataDir := flag.String("data", "", "directory for the identity registry and the self-signed certificate (env VCSIM_DATA; default data)")
 	seed := flag.String("seed", "phase1", "identity seed for the built-in scenario (ignored with -scenario)")
+	queryLog := flag.String("query-log", "", "write query log JSONL to this path (may contain inventory identifiers)")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
 	tlsDir := flag.String("tls-dir", "", "directory holding the persisted self-signed certificate (default <data>/tls)")
 	tlsCert := flag.String("tls-cert", "", "serve this certificate (PEM) instead of a self-signed one; needs -tls-key")
@@ -117,8 +119,6 @@ func main() {
 	}
 
 	if *describe {
-		// the cardinality the scenario materializes, for scripts that need
-		// the expected counts (the acceptance harness, projections)
 		if err := json.NewEncoder(os.Stdout).Encode(describeTopology(topology.Generate(sc, registry.InMemory(sc.Seed)))); err != nil {
 			log.Fatal(err)
 		}
@@ -148,7 +148,16 @@ func main() {
 	}
 	defer ctl.Close()
 
-	ls, err := serve.Listen(listen, ctl, cert)
+	var handler http.Handler = ctl
+	if *queryLog != "" {
+		f, err := os.OpenFile(*queryLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		handler = querylog.Wrap(handler, f)
+	}
+	ls, err := serve.Listen(listen, handler, cert)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -187,6 +196,11 @@ func main() {
 	}
 	if *adminAddr != "" {
 		fmt.Printf("vcsimulator: control console on http://%s/ (no login; %s)\n", *adminAddr, adminNote(*adminAddr))
+	}
+	// machine-readable form of the same counts, for the benchmark harness
+	desc := describeTopology(topology.Generate(sc, registry.InMemory(sc.Seed)))
+	for _, a := range ls.Addrs {
+		fmt.Printf("VCSIM_JSON %s\n", jsonLine(desc, a))
 	}
 
 	sig := make(chan os.Signal, 1)
@@ -265,8 +279,19 @@ func certificate(sc *scenario.Scenario, dataDir, tlsDir, certFile, keyFile, name
 	return serve.LoadOrCreateCertificate(tlsDir, san)
 }
 
-// description is what -describe prints.
+// jsonLine renders a description with the listen address.
+func jsonLine(d description, addr string) string {
+	d.Addr = addr
+	b, err := json.Marshal(d)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return string(b)
+}
+
+// description is what -describe and the startup line carry.
 type description struct {
+	Addr     string               `json:"addr,omitempty"`
 	Seed     string               `json:"seed"`
 	Clusters int                  `json:"clusters"`
 	Hosts    int                  `json:"hosts"`

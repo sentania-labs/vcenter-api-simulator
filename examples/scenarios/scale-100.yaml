@@ -1,0 +1,25 @@
+# Scale profile "stress" (docs/TESTING.md scale matrix): one hundred and six
+# ESA clusters of eight hosts, 848 hosts in one simulated vCenter. The
+# cardinality-stress profile is this file with fewer clusters and the same
+# per-host fan-out; see scale-10.yaml for the field notes.
+seed: scale-100
+datacenters:
+  - name: dc-01
+    clusters: 106
+defaults:
+  hosts: 8
+  dedup: true
+  compression: true
+  host:
+    threads: 32
+    domWorlds: 66
+    vsanPnics: 2
+    claimedDevices: 1
+    localDevices: 1
+  vms:
+    perHost: 4
+    disksPerVM: 1
+auth:
+  users:
+    - name: administrator@vsphere.local
+      password: VMware1!
