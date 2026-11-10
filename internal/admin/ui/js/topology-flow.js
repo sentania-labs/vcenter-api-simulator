@@ -107,7 +107,7 @@ function genRender(ctx, data) {
   const sameSeed = st && form.seed.trim() === st.topology.seed;
   const topoPresets = (data.presets || []).filter((x) => x.kind === 'topology');
   const fam = p ? famRows(p, pv.scope) : null;
-  const emptyCalls = p ? p.emptyKinds * p.clusters : 0;
+  const emptyCalls = p ? p.emptyCalls : 0;
   const canCreate = !pvErr && !pvBusy && !!pv && !genBusy;
   return html`
   <div class="page-head"><span class="page-title">Quick generator</span>${badge('new topology draft')}
@@ -167,7 +167,7 @@ function genRender(ctx, data) {
           <tbody>${fam.top.map((f) => html`<tr><td class="ink mono">${f.family}</td><td class="muted">${fam.per(f)}</td><td class="lat-num num">${int(f.objects)}</td><td class="lat-num num">${int(f.series)}</td><td>${f.dashboard ? badge('dashboard') : html`<span class="subtle">all only</span>`}</td></tr>`)}
             ${fam.rest.length ? html`<tr><td class="subtle" colspan="2">… ${fam.rest.length} more kinds</td><td class="lat-num num">${int(fam.rest.reduce((s, f) => s + f.objects, 0))}</td><td class="lat-num num">${int(fam.rest.reduce((s, f) => s + f.series, 0))}</td><td></td></tr>` : ''}</tbody>
           <tfoot><tr><td>${sel.kinds} kinds queried</td><td></td><td class="lat-num num">${int(sel.entities)}</td><td class="lat-num num">${int(sel.series)}</td><td></td></tr></tfoot></table>
-        <div class="anno">${p.emptyKinds} provisional kinds (OSA, iSCSI, PMem, file service…) return empty or a fault on ESA but are still queried: ${int(emptyCalls)} calls / cycle.</div>
+        <div class="anno">${int(emptyCalls)} of ${int(p.all.calls)} queries / cycle across all modeled kinds return no samples or a fault (kinds a cluster does not model, or a stats-primary fault) but are still issued.</div>
         ${(pv.warnings || []).map((w) => banner(w.severity === 'warn' ? 'warn' : 'info', html`<b>${w.title}.</b> ${w.text}`))}
         <div class="row wrap anno">${pv.scope === 'dashboard' ? 'All modeled kinds' : 'Dashboard-only scope'} would project <b class="num">${int(pv.other.entities)}</b> entities · <b class="num">${int(pv.other.calls)}</b> calls · <a href="#/telemetry">Compare scopes in Telemetry →</a></div>`
         : (pvErr ? '' : html`<div class="empty">Calculating…</div>`)}
