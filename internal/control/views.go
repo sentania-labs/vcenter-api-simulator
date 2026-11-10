@@ -707,7 +707,7 @@ func (c *Controller) Compatibility() *Compat {
 			"Behaviour on a real vCenter 9.1.1 other than the captured one",
 			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
 			"vSAN OSA beyond a single-disk-group, three-host cluster: per-VM and virtual-disk performance, multiple disk groups per host, stretched clusters and OSA deduplication",
-			"iSCSI target, NFS, FC and local VMFS inventory",
+			"iSCSI target, file service and FC datastore inventory",
 			"The VCF Operations ingestion path (Phase 3)",
 		}}
 	listed := map[string]bool{}
