@@ -1,0 +1,19 @@
+# Three-host OSA cluster with a working vSAN performance primary.
+# Set statsPrimary to false to reproduce the missing-primary state.
+seed: osa
+datacenters:
+  - name: dc-01
+    clusters: 1
+defaults:
+  architecture: osa
+  statsPrimary: true
+  hosts: 3
+  host:
+    threads: 5
+    domWorlds: 14
+    vsanPnics: 1
+    claimedDevices: 1
+    localDevices: 1
+  vms:
+    perHost: 1
+    disksPerVM: 1

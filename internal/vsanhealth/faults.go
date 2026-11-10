@@ -8,6 +8,20 @@ import (
 	vim25types "github.com/vmware/govmomi/vim25/types"
 )
 
+func faultStatsPrimaryMissing() *soap.Fault {
+	f := &vim25types.NotFound{}
+	f.FaultMessage = []vim25types.LocalizableMessage{{
+		Key:     "com.vmware.vsan.perfsvc.fault.masternotfound",
+		Message: "Stats primary cannot be found in the cluster.",
+	}}
+	return simulator.Fault("The object or item referred to could not be found.", f)
+}
+
+func faultInvalidProperty(property string) *soap.Fault {
+	return simulator.Fault("A specified parameter was not correct: "+property,
+		&vim25types.InvalidArgument{InvalidProperty: property})
+}
+
 // Fault shapes, each one as captured from vCenter 9.1.1 in
 // fixtures/live/9.1.1 (file named per case). The management pack treats
 // InvalidArgument and NotSupported as "feature absent" and any other fault as

@@ -36,8 +36,7 @@ func (e *env) post(path, payload string) (int, []byte) {
 	return res.StatusCode, body
 }
 
-// Only the listed objects exist on /vsanHealth; anything else, including the
-// stock objects vcsim's own vSAN simulator would add, is ManagedObjectNotFound.
+// Unlisted objects and unsupported operations retain typed faults.
 func TestVsanHealthServesOnlyTheSlice(t *testing.T) {
 	e := start(t, "narrow")
 	call := func(typ, id, op string) shape {
@@ -46,7 +45,7 @@ func TestVsanHealthServesOnlyTheSlice(t *testing.T) {
 		return parseShape(t, body)
 	}
 	got := call(vsan.VsanVcStretchedClusterSystem.Type, vsan.VsanVcStretchedClusterSystem.Value, "VSANVcConvertToStretchedCluster")
-	if got.fault != "ManagedObjectNotFoundFault" {
+	if got.fault != "MethodNotFoundFault" {
 		t.Errorf("stretched-cluster system: fault %q", got.fault)
 	}
 	got = call("VsanUnlistedSystem", "vsan-unlisted-system", "VsanClusterGetConfig")

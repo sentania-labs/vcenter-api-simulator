@@ -13,12 +13,14 @@ const pad = (n) => String(n).padStart(2, '0');
 
 // editable fields: where each lives in an override entry and in an effective spec
 const FIELDS = {
+	architecture: { label: 'vSAN architecture', path: ['architecture'], select: true, src: 'architecture' },
+	statsPrimary: { label: 'Stats primary online', path: ['statsPrimary'], bool: true, defaultOn: true, src: 'statsPrimary', hint: 'When off, performance queries return a missing-primary fault.' },
   hosts: { label: 'Hosts', path: ['hosts'], min: 3, src: 'hosts' },
   vmsPerHost: { label: 'VMs per host', path: ['vms', 'perHost'], min: 0, src: 'vmsPerHost' },
   disksPerVM: { label: 'Virtual disks / VM', path: ['vms', 'disksPerVM'], min: 1, src: 'disksPerVM' },
   threads: { label: 'Logical CPUs', path: ['host', 'threads'], min: 1, src: 'threads', hint: 'host-cpu objects' },
   domWorlds: { label: 'DOM worlds', path: ['host', 'domWorlds'], min: 0, src: 'domWorlds', hint: 'dom-world-cpu objects' },
-  claimedDevices: { label: 'NVMe devices', path: ['host', 'claimedDevices'], min: 1, src: 'claimedDevices', hint: 'claimed by vSAN ESA' },
+  claimedDevices: { label: 'NVMe devices', path: ['host', 'claimedDevices'], min: 1, src: 'claimedDevices', hint: 'claimed by vSAN' },
   localDevices: { label: 'Local devices', path: ['host', 'localDevices'], min: 0, src: 'localDevices', hint: 'local VMFS, inventory only' },
   vsanPnics: { label: 'pNICs (vSAN)', path: ['host', 'vsanPnics'], min: 1, src: 'vsanPnics', hint: 'vsan-pnic-net objects' },
   dedup: { label: 'Dedup', path: ['dedup'], bool: true, src: 'dedup' },
@@ -91,7 +93,7 @@ function treeRow(c, key) {
   return html`<li><a class="lat-row tree-row${sel ? ' is-sel' : ''}${c.state ? ' is-pending' : ''}" href="#/topology/${c.key}" data-k="row:${c.key}" data-key="${c.key}" ${raw(sel ? 'aria-current="true"' : '')}>
     <span class="ink mono" style="font-size:12px${c.state === 'removed' ? ';text-decoration:line-through' : ''}">${c.name}</span>
     <span class="num r" style="font-size:12px">${hosts}h</span>
-    <span class="num r subtle" style="font-size:11.5px">${c.devices}×N</span>
+    <span class="num r subtle" style="font-size:11.5px">${(c.architecture || 'esa').toUpperCase()} · ${c.devices}×N</span>
     <span style="text-align:right">${b}</span></a></li>`;
 }
 
@@ -103,13 +105,17 @@ function dcGroup(dc, key) {
   const flush = (idx) => {
     if (!run.length) return;
     if (run.length >= 5 && !ui.expanded[dc.name + ':' + run[0].key]) {
-      rows.push(html`<li><button type="button" class="tree-run" data-act="topo.expand" data-arg="${dc.name}:${run[0].key}" data-k="run:${run[0].key}">${run[0].name} … ${run[run.length - 1].name} · ${run.length} uniform clusters</button></li>`);
+      rows.push(html`<li><button type="button" class="tree-run" data-act="topo.expand" data-arg="${dc.name}:${run[0].key}" data-k="run:${run[0].key}">${run[0].name} … ${run[run.length - 1].name} · ${run.length} uniform ${(run[0].architecture || 'esa').toUpperCase()} clusters</button></li>`);
     } else run.forEach((c) => rows.push(treeRow(c, key)));
     run = [];
   };
   for (const c of dc.clusters) {
     if (!matches(c)) continue;
-    if (!filtering && isPlain(c, key)) run.push(c);
+    if (!filtering && isPlain(c, key)) {
+      const last = run[run.length - 1];
+      if (last && ((last.architecture || 'esa') !== (c.architecture || 'esa') || last.hosts !== c.hosts || last.devices !== c.devices || last.vmsPerHost !== c.vmsPerHost)) flush();
+      run.push(c);
+    }
     else { flush(); rows.push(treeRow(c, key)); }
   }
   flush();
@@ -128,7 +134,7 @@ function treeCard(d) {
 }
 
 // ---- centre: the editor ---------------------------------------------------------
-function fieldValue(v, f) { return f.bool ? !!v : v; }
+function fieldValue(v, f) { return f.defaultOn ? v !== false : f.select ? (v || 'esa') : f.bool ? !!v : v; }
 
 function input(view, id, locked) {
   const f = FIELDS[id];
@@ -142,6 +148,9 @@ function input(view, id, locked) {
   else if (src === 'override') hint = html`override · <button type="button" class="link" data-act="topo.inherit" data-arg="${id}" data-k="inherit:${id}">↺ inherit</button>`;
   else hint = src === 'varied' ? 'varied per cluster' : f.hint ? f.hint : 'scenario default';
   const hid = `h-${id}`;
+  if (f.select) {
+    return html`<div><label class="lat-label" for="f-${id}">${f.label}${marker}</label><select class="lat-input${changed ? ' is-changed' : ''}" id="f-${id}" ${raw(locked ? 'disabled' : '')} data-chg="topo.field" data-f="${id}" data-k="f:${id}" aria-describedby="${hid}"><option value="esa" ${raw(cur === 'esa' ? 'selected' : '')}>vSAN ESA</option><option value="osa" ${raw(cur === 'osa' ? 'selected' : '')}>vSAN OSA</option></select><div class="lat-hint" id="${hid}">${hint}</div></div>`;
+  }
   if (f.bool) {
     return html`<div><span class="lat-label">${f.label}${marker}</span><div style="padding:4px 0"><label class="chk"><input type="checkbox" ${raw(cur ? 'checked' : '')} ${raw(locked ? 'disabled' : '')} data-chg="topo.field" data-f="${id}" data-k="f:${id}" aria-describedby="${hid}"> ${cur ? 'on' : 'off'}</label></div><div class="lat-hint" id="${hid}">${hint}</div></div>`;
   }
@@ -197,7 +206,7 @@ function editorCard(ctx, d) {
   return html`<section class="lat-card" aria-labelledby="ed-title">
     <div class="row">
       <h2 class="page-title mono" id="ed-title" style="font-size:16px;white-space:nowrap;margin:0">${v.name} <span class="muted" style="font-size:12px;font-weight:400">${v.datacenter}</span></h2>
-      ${badge('vSAN ESA')}${stateBadge}${regen ? badge('new identity generation', 'warn') : ''}${v.seedEpoch > 0 ? badge(`seed epoch ${v.seedEpoch}`, 'warn') : ''}
+      ${badge(v.spec.architecture === 'osa' ? 'vSAN OSA' : 'vSAN ESA')}${stateBadge}${regen ? badge('new identity generation', 'warn') : ''}${v.seedEpoch > 0 ? badge(`seed epoch ${v.seedEpoch}`, 'warn') : ''}
       <span class="grow"></span><span class="anno" style="white-space:nowrap">${v.moref ? html`MoRef <span class="mono">${v.moref}</span> · ` : ''}${v.vsanUuid ? html`UUID <span class="mono">${v.vsanUuid}</span>` : html`<span class="subtle">identities are derived at apply</span>`}</span>
     </div>
     ${sched ? banner('info', html`A change is scheduled. Editing is locked until it lands or you cancel it from the banner above.`) : ''}
@@ -205,13 +214,14 @@ function editorCard(ctx, d) {
     <h2 class="lat-card-title">Cluster <span class="aside">◆ marks a value this cluster overrides; the rest come from the scenario defaults or its per-cluster draws</span></h2>
     <div class="fields c6">
       ${input(v, 'hosts', locked)}${input(v, 'vmsPerHost', locked)}${input(v, 'disksPerVM', locked)}
-      ${input(v, 'dedup', locked)}${input(v, 'compression', locked)}
+      ${input(v, 'architecture', locked)}${input(v, 'statsPrimary', locked)}
+      ${v.spec.architecture === 'osa' ? '' : html`${input(v, 'dedup', locked)}${input(v, 'compression', locked)}`}
       <div><span class="lat-label">vDS</span><div class="mono ink" style="padding:5px 0">${v.vds}</div><div class="lat-hint">${v.portgroups} port groups · ${v.datacenter}</div></div>
     </div>
-    <h2 class="lat-card-title">Storage <span class="aside">vSAN ESA is what the MP collects; the other rows are /sdk inventory only</span></h2>
+    <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; the other rows are /sdk inventory only</span></h2>
     <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>MP Perf Service</th></tr></thead><tbody>
       ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td class="${s.perfService === 'queried' ? 'ink' : 'muted'}">${s.perfService}</td></tr>`)}</tbody></table>
-    <div class="anno">vSAN ESA is the only architecture the simulator models. OSA, NFS, FC and iSCSI datastores are not editable yet.</div>
+    <div class="anno">${v.spec.architecture === 'osa' ? 'OSA deduplication and compression are not modeled from the capture. ' : ''}NFS, FC and iSCSI datastores are not editable yet.</div>
     <h2 class="lat-card-title">Per-host defaults <span class="aside">applies to every host in ${v.name}</span></h2>
     <div class="fields c6">${['threads', 'domWorlds', 'claimedDevices', 'localDevices', 'vsanPnics'].map((id) => input(v, id, locked))}</div>
     <h2 class="lat-card-title">Hosts <span class="aside">${v.state === 'removed' ? 0 : v.spec.hosts} after apply · identities derive from seed ${ctx.state.topology.seed} + cluster + host ordinal</span></h2>
@@ -242,9 +252,11 @@ function impactCard(ctx, d) {
     const added = v.hosts.filter((h) => h.identity === 'new').length;
     const gone = v.hosts.filter((h) => h.identity === 'removed').length;
     const regen = d.draft.regenerate.includes(v.key);
+    const architectureChanged = v.applied && (v.applied.architecture || 'esa') !== (v.spec.architecture || 'esa');
+    if (architectureChanged) banners.push(banner('warn', html`<b>Performance identities change.</b> The review lists the performance entities added and removed by changing architecture.`));
     if (regen) banners.push(banner('warn', html`<b>Every identity in ${v.name} is replaced.</b> The cluster UUID, ${v.hosts.length} hosts, their NVMe disks and ${v.vms} VMs get new UUIDs; VCF Operations sees new objects and the old ones go stale.`));
     else if (kept && rv && rv.renumbered && (rv.renumbered.clusters + rv.renumbered.hosts + rv.renumbered.vms) > 0) banners.push(banner('warn', html`<b>UUIDs kept, MoRefs renumbered.</b> ${kept} host${kept === 1 ? '' : 's'} here keep host, vSAN node, disk and VM UUIDs. ${int(rv.renumbered.clusters)} clusters, ${int(rv.renumbered.hosts)} hosts and ${int(rv.renumbered.vms)} VMs get new MoRefs because something this change removes was created before them.`));
-    else if (kept) banners.push(banner('ok', html`<b>Identities kept.</b> ${kept} host${kept === 1 ? '' : 's'} keep MoRefs, host UUIDs, vSAN node UUIDs, disk UUIDs and VM instanceUuids.${others > 0 ? html` The other ${others - pendingOthers} cluster${others - pendingOthers === 1 ? ' is' : 's are'} untouched.` : ''}`));
+    else if (kept) banners.push(banner('ok', html`<b>Host and VM identities kept.</b> ${kept} host${kept === 1 ? '' : 's'} keep MoRefs, host UUIDs, vSAN node UUIDs, disk UUIDs and VM instanceUuids.${others > 0 ? html` The other ${others - pendingOthers} cluster${others - pendingOthers === 1 ? ' is' : 's are'} untouched.` : ''}`));
     if (added && !regen) {
       const one = d.tree.pendingClusters === 1 && rv ? rv.identities : null;
       const vms = one ? (one.find((r) => r.label.startsWith('VM')) || {}).added : null;
@@ -294,6 +306,7 @@ const actions = {
     const id = el.dataset.f, f = FIELDS[id], key = data.key;
     let val;
     if (f.bool) val = el.checked;
+    else if (f.select) val = el.value;
     else {
       const txt = el.value.trim();
       if (!/^\d+$/.test(txt) || Number(txt) < f.min) {

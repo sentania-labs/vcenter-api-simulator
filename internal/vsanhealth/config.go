@@ -16,6 +16,40 @@ type ClusterConfigSystem struct {
 	env *Env
 }
 
+// The OSA response carries the newer data-efficiency subtype, whose
+// dedupStoreUuid is not represented by govmomi's base type.
+type osaDataEfficiency struct {
+	Type           string `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
+	DedupEnabled   bool   `xml:"dedupEnabled"`
+	DedupStoreUUID string `xml:"dedupStoreUuid"`
+}
+
+type osaConfig struct {
+	vsantypes.VsanConfigInfoEx
+	DataEfficiency osaDataEfficiency `xml:"dataEfficiencyConfig"`
+	Rdma           struct {
+		Enabled bool `xml:"rdmaEnabled"`
+	} `xml:"rdmaConfig"`
+	Esa    struct{} `xml:"vsanEsaConfigInfo"`
+	Health struct {
+		Historical struct {
+			Enabled bool `xml:"enabled"`
+		} `xml:"historicalHealthConfig"`
+	} `xml:"vsanHealthConfig"`
+	PMem struct {
+		Enabled bool `xml:"enabled"`
+	} `xml:"vsanPMemConfig"`
+}
+
+type osaConfigResponse struct {
+	Returnval osaConfig `xml:"returnval"`
+}
+type osaConfigBody struct {
+	Res *osaConfigResponse `xml:"urn:vsan VsanClusterGetConfigResponse,omitempty"`
+}
+
+func (*osaConfigBody) Fault() *soap.Fault { return nil }
+
 // VsanClusterGetConfig returns the ESA cluster configuration with the fields
 // the capture shows (clusterconfig-domain-c6004.resp.xml) that govmomi's
 // VsanConfigInfoEx can carry.
@@ -30,7 +64,7 @@ func (s *ClusterConfigSystem) VsanClusterGetConfig(ctx *simulator.Context, req *
 	} else {
 		info.Enabled = vim25types.NewBool(true)
 		info.DefaultConfig = &vim25types.VsanClusterConfigInfoHostDefaultInfo{Uuid: cl.VsanUUID}
-		info.VsanEsaEnabled = vim25types.NewBool(true)
+		info.VsanEsaEnabled = vim25types.NewBool(cl.Spec.Architecture != "osa")
 		info.DataEfficiencyConfig = &vsantypes.VsanDataEfficiencyConfig{
 			DedupEnabled:       cl.Dedup,
 			CompressionEnabled: vim25types.NewBool(cl.Compression),
@@ -51,6 +85,11 @@ func (s *ClusterConfigSystem) VsanClusterGetConfig(ctx *simulator.Context, req *
 		info.VumConfig = &vsantypes.VsanVumConfig{BaselinePreferenceType: "latestRelease"}
 		info.FileServiceConfig = &vsantypes.VsanFileServiceConfig{Enabled: false}
 		info.DataInTransitEncryptionConfig = &vsantypes.VsanDataInTransitEncryptionConfig{}
+	}
+	if cl != nil && cl.Spec.Architecture == "osa" {
+		config := osaConfig{VsanConfigInfoEx: info, DataEfficiency: osaDataEfficiency{Type: "VsanDataEfficiencyConfigEx"}}
+		config.Health.Historical.Enabled = true
+		return &osaConfigBody{Res: &osaConfigResponse{Returnval: config}}
 	}
 	return &methods.VsanClusterGetConfigBody{Res: &vsantypes.VsanClusterGetConfigResponse{Returnval: info}}
 }

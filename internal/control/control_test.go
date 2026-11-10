@@ -466,6 +466,69 @@ func TestTreeAndClusterView(t *testing.T) {
 	}
 }
 
+// The projection counts entities without building them; the count must equal
+// what the wildcard handler enumerates for every family on both architectures.
+func TestPerfEntityCountMatchesEnumeration(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
+	e := editable(t, c)
+	e.Clusters[0].Architecture = "osa"
+	put(t, c, e)
+	mixed, _ := c.previewTopology(c.draft)
+	osa := 0
+	for _, cl := range mixed.Clusters() {
+		if cl.Spec.Architecture == "osa" {
+			osa++
+		}
+		for _, family := range vsanhealth.PerfFamilyNames(c.cat, cl) {
+			refs, err := vsanhealth.PerfEntities(c.cat, cl, family)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := vsanhealth.PerfEntityCount(c.cat, cl, family)
+			if err != nil || got != len(refs) {
+				t.Errorf("%s %s: count %d (%v), enumerated %d", cl.Key, family, got, err, len(refs))
+			}
+		}
+	}
+	if osa != 1 {
+		t.Fatalf("%d OSA clusters, want 1", osa)
+	}
+}
+
+// A mixed ESA and OSA topology must be labelled per cluster: the datastore
+// type follows the cluster's architecture and the projection counts OSA
+// clusters so the console does not call every cluster ESA.
+func TestArchitectureIsLabelledPerCluster(t *testing.T) {
+	sc := tenClusters(t)
+	c := newCtl(t, sc, "", "t")
+	if got := Project(c.cat, c.applied().topo).OSAClusters; got != 0 {
+		t.Fatalf("ESA-only topology: %d OSA clusters", got)
+	}
+	e := editable(t, c)
+	for i := range e.Clusters {
+		if e.Clusters[i].Key == "dc-01/cluster-01" {
+			e.Clusters[i].Architecture = "osa"
+		}
+	}
+	if e.Defaults.Architecture != "" {
+		t.Fatalf("test assumes an ESA default, got %q", e.Defaults.Architecture)
+	}
+	put(t, c, e)
+	mixed, _ := c.previewTopology(c.draft)
+	if got := Project(c.cat, mixed).OSAClusters; got != 1 {
+		t.Errorf("mixed topology: %d OSA clusters, want 1", got)
+	}
+	for key, want := range map[string]string{"dc-01/cluster-01": "vSAN OSA", "dc-01/cluster-02": "vSAN ESA"} {
+		cv, err := c.Cluster(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cv.Datastores[0].Type; got != want {
+			t.Errorf("%s datastore type %q, want %q", key, got, want)
+		}
+	}
+}
+
 // ---- the API plane ------------------------------------------------------------
 
 const soapEnv = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Body>%s</soapenv:Body></soapenv:Envelope>`
@@ -802,4 +865,185 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func TestOSAGeneratorPreservesSettingsAndReviewsChanges(t *testing.T) {
+	sc := scenario.Phase1("osa-generator")
+	sc.Defaults.Architecture = "osa"
+	sc.Defaults.Hosts = 3
+	primary := false
+	sc.Defaults.StatsPrimary = &primary
+	c := newCtl(t, sc, "", "t")
+	params := GenParams{Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1}}, Hosts: 3}
+	generated, err := c.Generate(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated.Scenario.Defaults.Architecture != "osa" || generated.Scenario.Defaults.StatsPrimary == nil || *generated.Scenario.Defaults.StatsPrimary {
+		t.Fatalf("generator lost OSA settings: %+v", generated.Scenario.Defaults)
+	}
+	c.DiscardDraft()
+	online := true
+	params.Architecture = "esa"
+	params.StatsPrimary = &online
+	if _, err := c.Generate(params); err != nil {
+		t.Fatal(err)
+	}
+	review, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := map[string]Change{}
+	for _, ch := range review.Changes {
+		changes[ch.Field] = ch
+	}
+	if changes["Architecture"].Before != "OSA" || changes["Architecture"].After != "ESA" || changes["Stats primary"].Before != "offline" || changes["Stats primary"].After != "online" {
+		t.Fatalf("missing settings in review: %+v", review.Changes)
+	}
+	for _, unchanged := range review.NotAffected {
+		if strings.Contains(unchanged, "other clusters") {
+			t.Errorf("changed cluster listed as unaffected: %s", unchanged)
+		}
+	}
+	c.DiscardDraft()
+	if _, err := c.ApplyPreset("osa"); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.DraftState().Scenario.Defaults.Architecture; got != "osa" {
+		t.Errorf("OSA preset: %q", got)
+	}
+}
+
+func TestArchitectureReviewCountsPerformanceIdentityChanges(t *testing.T) {
+	sc := scenario.Phase1("arch-review")
+	sc.Defaults.Hosts = 3
+	c := newCtl(t, sc, "", "t")
+	edit := editable(t, c)
+	edit.Clusters = append(edit.Clusters, scenario.ClusterOverride{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{Architecture: "osa"}})
+	put(t, c, edit)
+	review, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ch := range review.Changes {
+		if ch.Field == "Architecture" && ch.Before == "ESA" && ch.After == "OSA" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("architecture missing in review: %+v", review.Changes)
+	}
+	var perf IdentityRow
+	for _, row := range review.Identities {
+		if row.Label == "Performance entities" {
+			perf = row
+		}
+	}
+	if perf.Kept == 0 || perf.Added == 0 || perf.Removed == 0 || !review.Churn {
+		t.Errorf("architecture change must count retained, new and removed performance identities: %+v, churn=%v", perf, review.Churn)
+	}
+	tree := c.Tree()
+	if tree.Datacenters[0].Clusters[0].Architecture != "osa" || tree.Datacenters[0].Clusters[0].State != "pending" {
+		t.Errorf("tree does not show pending OSA: %+v", tree.Datacenters[0].Clusters[0])
+	}
+	view, err := c.Cluster("dc-01/cluster-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range view.Checks {
+		if check.Title == "Dedup is off" {
+			t.Error("ESA dedup warning should not apply to OSA")
+		}
+	}
+}
+
+func TestStatsPrimaryChangeReviewAndWarning(t *testing.T) {
+	sc := scenario.Phase1("osa-primary-review")
+	sc.Defaults.Architecture, sc.Defaults.Hosts = "osa", 3
+	c := newCtl(t, sc, "", "t")
+	edit := editable(t, c)
+	offline := false
+	edit.Clusters = append(edit.Clusters, scenario.ClusterOverride{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{StatsPrimary: &offline}})
+	put(t, c, edit)
+	review, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, change := range review.Changes {
+		if change.Field == "Stats primary" && change.Before == "online" && change.After == "offline" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("stats-primary change not reviewed: %+v", review.Changes)
+	}
+	for _, row := range review.Identities {
+		if row.Label == "Performance entities" && (row.Kept != review.Before.Entities || row.Added != 0 || row.Removed != 0) {
+			t.Errorf("offline primary should retain performance identities: %+v", row)
+		}
+	}
+	if review.After.Entities != 0 {
+		t.Errorf("offline primary should project no samples: %+v", review.After)
+	}
+	if review.Churn {
+		t.Error("stats unavailability alone must not claim stable UUIDs were replaced")
+	}
+	view, err := c.Cluster("dc-01/cluster-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	warned := false
+	for _, check := range view.Checks {
+		if check.Title == "Stats primary is offline" {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("missing offline warning: %+v", view.Checks)
+	}
+}
+
+func TestOSACompatibilityAndDashboardCoverage(t *testing.T) {
+	sc := scenario.Phase1("osa-compat")
+	sc.Defaults.Architecture = "osa"
+	primary := false
+	sc.Defaults.StatsPrimary = &primary
+	c := newCtl(t, sc, "", "t")
+	compat := c.Compatibility()
+	for name, want := range map[string]int{"data": 30, "empty": 26, "invalid-argument": 16, "not-supported": 2} {
+		if got := compat.OSAKinds[name]; got != want {
+			t.Errorf("OSA %s: %d, want %d", name, got, want)
+		}
+	}
+	for _, pending := range compat.Pending {
+		if strings.Contains(pending, "schema-only") || strings.Contains(pending, "is emulated") {
+			t.Errorf("pending list should name only unverified behavior: %q", pending)
+		}
+	}
+	view, err := c.Cluster("dc-01/cluster-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, check := range view.Checks {
+		if check.Title == "Stats primary is offline" {
+			found = true
+		}
+		if check.Title == "Dedup is off" {
+			t.Error("OSA cannot use ESA dedup warning")
+		}
+	}
+	if !found {
+		t.Error("missing primary warning")
+	}
+	projection := Project(c.cat, c.applied().topo)
+	flags := map[string]bool{}
+	for _, family := range projection.Families {
+		flags[family.Family] = family.Dashboard
+	}
+	if !flags["cache-disk"] || !flags["capacity-disk"] || flags["disk-group"] {
+		t.Errorf("dashboard scope: cache=%v capacity=%v group=%v", flags["cache-disk"], flags["capacity-disk"], flags["disk-group"])
+	}
 }

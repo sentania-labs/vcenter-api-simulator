@@ -1,6 +1,9 @@
 package vsanhealth
 
 import (
+	_ "embed"
+	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +15,34 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
+	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
+
+// The schema is service-wide: the OSA walk and the ESA capture advertise
+// the same graphs and metric labels. These two supplementary catalogs come
+// from the sanitized OSA walk.
+//
+//go:embed fixtures/aggregate.json
+var aggregateSchema []byte
+
+//go:embed fixtures/diagnostics.json
+var diagnosticSchema []byte
+
+func (m *PerfManager) VsanPerfGetAggregatedEntityTypes(ctx *simulator.Context, req *vsantypes.VsanPerfGetAggregatedEntityTypes) soap.HasFault {
+	res := &vsantypes.VsanPerfGetAggregatedEntityTypesResponse{}
+	if err := json.Unmarshal(aggregateSchema, &res.Returnval); err != nil {
+		return &methods.VsanPerfGetAggregatedEntityTypesBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
+	}
+	return &methods.VsanPerfGetAggregatedEntityTypesBody{Res: res}
+}
+
+func (m *PerfManager) VsanPerfGetSupportedDiagnosticExceptions(ctx *simulator.Context, req *vsantypes.VsanPerfGetSupportedDiagnosticExceptions) soap.HasFault {
+	res := &vsantypes.VsanPerfGetSupportedDiagnosticExceptionsResponse{}
+	if err := json.Unmarshal(diagnosticSchema, &res.Returnval); err != nil {
+		return &methods.VsanPerfGetSupportedDiagnosticExceptionsBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
+	}
+	return &methods.VsanPerfGetSupportedDiagnosticExceptionsBody{Res: res}
+}
 
 // maxWildcardWindow is the live limit on a wildcard query's window.
 const maxWildcardWindow = 12 * time.Hour
@@ -21,6 +51,46 @@ const maxWildcardWindow = 12 * time.Hour
 type PerfManager struct {
 	vim25types.ManagedObjectReference
 	env *Env
+}
+
+func (m *PerfManager) VsanPerfQueryStatsObjectInformation(ctx *simulator.Context, req *vsantypes.VsanPerfQueryStatsObjectInformation) soap.HasFault {
+	info := vsantypes.VsanObjectInformation{DirectoryName: "unknown"}
+	cl := m.env.Cluster(req.Cluster)
+	if cl != nil && (cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary) {
+		info.DirectoryName = ".vsan.stats"
+		info.VsanObjectUuid = cl.StatsUUID
+		info.VsanHealth = "healthy"
+		for _, kv := range [][2]string{{"hostFailuresToTolerate", "1"}, {"cacheReservation", "0"}, {"stripeWidth", "1"}, {"proportionalCapacity", "0"}, {"forceProvisioning", "0"}, {"iopsLimit", "0"}, {"checksumDisabled", "0"}, {"subFailuresToTolerate", "0"}} {
+			info.PolicyAttributes = append(info.PolicyAttributes, vim25types.KeyValue{Key: kv[0], Value: kv[1]})
+		}
+		info.PolicyAttributes = append(info.PolicyAttributes,
+			vim25types.KeyValue{Key: "spbmProfileGenerationNumber", Value: "0"},
+			vim25types.KeyValue{Key: "spbmProfileId", Value: cl.PolicyUUID},
+			vim25types.KeyValue{Key: "spbmProfileName", Value: "vSAN Default Storage Policy"},
+			vim25types.KeyValue{Key: "compressionDisabled", Value: "0"})
+		info.SpbmProfileUuid, info.SpbmProfileGenerationId = cl.PolicyUUID, "0"
+		now := m.env.Now().UTC()
+		info.SpbmComplianceResult = &vsantypes.VsanStorageComplianceResult{CheckTime: &now, Profile: cl.PolicyUUID, ObjectUUID: cl.StatsUUID, ComplianceStatus: "compliant", OperationalStatus: &vsantypes.VsanStorageOperationalStatus{Healthy: vim25types.NewBool(true)}, ObjPolicyGenerationId: "0"}
+	}
+	return &methods.VsanPerfQueryStatsObjectInformationBody{Res: &vsantypes.VsanPerfQueryStatsObjectInformationResponse{Returnval: info}}
+}
+
+func (m *PerfManager) VsanPerfQueryTimeRanges(ctx *simulator.Context, req *vsantypes.VsanPerfQueryTimeRanges) soap.HasFault {
+	cl := m.env.Cluster(req.Cluster)
+	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		return &methods.VsanPerfQueryTimeRangesBody{Fault_: faultStatsPrimaryMissing()}
+	}
+	return &methods.VsanPerfQueryTimeRangesBody{Res: &vsantypes.VsanPerfQueryTimeRangesResponse{}}
+}
+
+func (m *PerfManager) VsanPerfQueryClusterHealth(ctx *simulator.Context, req *vsantypes.VsanPerfQueryClusterHealth) soap.HasFault {
+	cl := m.env.Cluster(&req.Cluster)
+	primary := cl == nil || cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
+	group, err := m.perfHealthGroup(cl, primary)
+	if err != nil {
+		return &methods.VsanPerfQueryClusterHealthBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
+	}
+	return &methods.VsanPerfQueryClusterHealthBody{Res: &vsantypes.VsanPerfQueryClusterHealthResponse{Returnval: []vim25types.BaseDynamicData{group}}}
 }
 
 // VsanPerfQueryNodeInformation lists the cluster's hosts as the Performance
@@ -33,6 +103,7 @@ func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *
 		return &methods.VsanPerfQueryNodeInformationBody{Fault_: fault}
 	}
 	if cl != nil && len(cl.Hosts) > 0 {
+		primary := cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
 		master := cl.Hosts[0].NodeUUID
 		now := m.env.Now().UTC()
 		sinceCollect := int64(now.Sub(now.Truncate(perf.Interval)) / time.Second)
@@ -41,12 +112,12 @@ func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *
 				Version:        m.env.Catalog.About.EsxiVersion,
 				Hostname:       h.Name,
 				IsCmmdsMaster:  i == 0,
-				IsStatsMaster:  i == 0,
+				IsStatsMaster:  i == 0 && primary,
 				VsanMasterUuid: master,
 				VsanNodeUuid:   h.NodeUUID,
 				DiagnosticMode: vim25types.NewBool(false),
 			}
-			if i == 0 {
+			if i == 0 && primary {
 				n.MasterInfo = &vsantypes.VsanPerfMasterInformation{
 					SecSinceLastStatsWrite:    sinceCollect + 1,
 					SecSinceLastStatsCollect:  sinceCollect + 5,
@@ -100,6 +171,10 @@ func (b *queryPerfBody) Fault() *soap.Fault { return b.Fault_ }
 // VsanPerfQueryPerf answers wildcard and specific entity queries with the
 // bucket rule and fault shapes measured live (recon section 5.3).
 func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.VsanPerfQueryPerf) soap.HasFault {
+	cl := m.env.Cluster(req.Cluster)
+	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		return &queryPerfBody{Fault_: faultStatsPrimaryMissing()}
+	}
 	wildcards := 0
 	for _, spec := range req.QuerySpecs {
 		if strings.HasSuffix(spec.EntityRefId, ":*") {
@@ -109,12 +184,16 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 	if wildcards > 1 {
 		return &queryPerfBody{Fault_: faultWildcardLimit()}
 	}
-	cl := m.env.Cluster(req.Cluster)
 	now := m.env.Now()
 	res := &queryPerfResponse{}
 	for _, spec := range req.QuerySpecs {
 		family, tail, ok := splitRef(spec.EntityRefId)
-		f, known := m.env.Catalog.Families[family]
+		f, known := EffectiveFamily(m.env.Catalog, cl, family)
+		var osa osaFamily
+		osaData := false
+		if cl != nil && cl.Spec.Architecture == "osa" {
+			osa, osaData = osaFamilyFor(family)
+		}
 		if !ok || !known || tail == "" {
 			return &queryPerfBody{Fault_: faultInvalidRef()}
 		}
@@ -128,6 +207,9 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 		}
 		switch f.Behaviour {
 		case catalog.InvalidArgument:
+			if cl != nil && cl.Spec.Architecture == "osa" && family == "computeCluster-remotedomclient" {
+				return &queryPerfBody{Fault_: faultInvalidProperty(spec.EntityRefId)}
+			}
 			return &queryPerfBody{Fault_: faultInvalidRef()}
 		case catalog.NotSupported:
 			return &queryPerfBody{Fault_: faultNotSupportedPMem()}
@@ -139,7 +221,7 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 				return &queryPerfBody{Fault_: faultWildcardRange(family)}
 			}
 		}
-		if f.Behaviour == catalog.Empty || cl == nil || (!cl.Dedup && strings.Contains(family, "-esa-dedup-")) {
+		if f.Behaviour == catalog.Empty || cl == nil {
 			res.Returnval = append(res.Returnval, entityMetricCSV{EntityRefId: spec.EntityRefId})
 			continue
 		}
@@ -151,7 +233,7 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 			end = *spec.EndTime
 		}
 		buckets := perf.Buckets(start, end, now)
-		refs, err := Entities(m.env.Catalog, cl, family)
+		refs, err := PerfEntities(m.env.Catalog, cl, family)
 		if err != nil {
 			return &queryPerfBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
 		}
@@ -179,9 +261,23 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 			for _, label := range f.Labels {
 				unit := m.env.Catalog.Unit(family, label)
 				st, ok := m.env.Catalog.LabelStats(family, label)
+				if osaData {
+					st, ok = osa.Stats[label]
+				}
 				vals := make([]string, len(buckets))
 				for i, b := range buckets {
-					vals[i] = perf.Value(cl.TelemetrySeed, ref, label, st, ok, unit, b)
+					switch {
+					case osaData && osaValueIsNone(osa, label):
+						vals[i] = "None"
+					case osaData && family == "vsan-cluster-capacity" && label == "total":
+						vals[i] = strconv.FormatInt(topology.VsanCapacity(cl), 10)
+					case osaData && family == "vsan-cluster-capacity" && label == "used":
+						vals[i] = strconv.FormatInt(topology.VsanUsed(cl), 10)
+					case osaData && family == "vsan-cluster-capacity" && label == "free":
+						vals[i] = strconv.FormatInt(topology.VsanCapacity(cl)-topology.VsanUsed(cl), 10)
+					default:
+						vals[i] = perf.Value(cl.TelemetrySeed, ref, label, st, ok, unit, b)
+					}
 				}
 				e.Value = append(e.Value, vsantypes.VsanPerfMetricSeriesCSV{
 					MetricId: vsantypes.VsanPerfMetricId{Label: label, MetricsCollectInterval: m.env.Catalog.MetricsCollectInt},

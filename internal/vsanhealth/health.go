@@ -16,6 +16,32 @@ type ClusterHealthSystem struct {
 	env *Env
 }
 
+// The current bindings omit the build fields present in the 9.1 response.
+type healthHostVersion struct {
+	Hostname string `xml:"hostname"`
+	Version  string `xml:"version"`
+	Build    string `xml:"build"`
+}
+type healthVersions struct {
+	Hosts           []healthHostVersion `xml:"hostResults"`
+	VcVersion       string              `xml:"vcVersion"`
+	IssueFound      bool                `xml:"issueFound"`
+	UpgradePossible bool                `xml:"upgradePossible"`
+	VcBuild         string              `xml:"vcBuild"`
+}
+type osaHealthSummary struct {
+	vsantypes.VsanClusterHealthSummary
+	Versions healthVersions `xml:"clusterVersions"`
+}
+type osaHealthResponse struct {
+	Returnval osaHealthSummary `xml:"returnval"`
+}
+type osaHealthBody struct {
+	Res *osaHealthResponse `xml:"urn:vsan VsanQueryVcClusterHealthSummaryResponse,omitempty"`
+}
+
+func (*osaHealthBody) Fault() *soap.Fault { return nil }
+
 // hclDbLastUpdate is fixed; the capture's value was the HCL database date.
 var hclDbLastUpdate = time.Date(2026, 11, 3, 9, 5, 2, 0, time.UTC)
 
@@ -33,6 +59,14 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 		return &methods.VsanQueryVcClusterHealthSummaryBody{Fault_: fault}
 	}
 	if cl != nil {
+		if cl.Spec.Architecture == "osa" {
+			sum.ClusterStatus = &vsantypes.VsanClusterHealthSystemStatusResult{Status: "green", GoalState: "installed"}
+			sum.ClusterVersions = &vsantypes.VsanClusterHealthSystemVersionResult{VcVersion: s.env.Catalog.About.Version, UpgradePossible: vim25types.NewBool(false)}
+			for _, h := range cl.Hosts {
+				sum.ClusterStatus.TrackedHostsStatus = append(sum.ClusterStatus.TrackedHostsStatus, vsantypes.VsanHostHealthSystemStatusResult{Hostname: h.Name, Status: "green"})
+				sum.ClusterVersions.HostResults = append(sum.ClusterVersions.HostResults, vsantypes.VsanHostHealthSystemVersionResult{Hostname: h.Name, Version: s.env.Catalog.About.EsxiVersion})
+			}
+		}
 		hcl := &vsantypes.VsanClusterHclInfo{HclDbLastUpdate: &hclDbLastUpdate, HclDbAgeHealth: "green"}
 		for _, h := range cl.Hosts {
 			hr := vsantypes.VsanHostHclInfo{Hostname: h.Name, HclChecked: true, ReleaseName: "ESXi " + majorMinor(s.env.Catalog.About.EsxiVersion)}
@@ -70,6 +104,13 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 			hcl.HostResults = append(hcl.HostResults, hr)
 		}
 		sum.HclInfo = hcl
+	}
+	if cl != nil && cl.Spec.Architecture == "osa" {
+		versions := healthVersions{VcVersion: s.env.Catalog.About.Version, VcBuild: s.env.Catalog.About.Build}
+		for _, host := range cl.Hosts {
+			versions.Hosts = append(versions.Hosts, healthHostVersion{Hostname: host.Name, Version: s.env.Catalog.About.EsxiVersion, Build: s.env.Catalog.About.EsxiBuild})
+		}
+		return &osaHealthBody{Res: &osaHealthResponse{Returnval: osaHealthSummary{VsanClusterHealthSummary: sum, Versions: versions}}}
 	}
 	return &methods.VsanQueryVcClusterHealthSummaryBody{Res: &vsantypes.VsanQueryVcClusterHealthSummaryResponse{Returnval: sum}}
 }

@@ -49,13 +49,15 @@ type Datacenter struct {
 // vmkernel NICs attach to the first three; VMs to the last.
 var Portgroups = []string{"pg-mgmt", "pg-vmotion", "pg-vsan", "pg-vm"}
 
-// Cluster is a vSAN ESA cluster.
+// Cluster is a vSAN ESA or OSA cluster.
 type Cluster struct {
 	Name       string
 	Key        string // "<datacenter>/<cluster>", the scenario's override and fault selector
 	Serial     int
 	Datacenter *Datacenter
 	VsanUUID   string // configurationEx.vsanConfigInfo.defaultConfig.uuid and every cluster-* entityRefId
+	StatsUUID  string // vSAN performance statistics object
+	PolicyUUID string // default storage policy
 	// TelemetrySeed feeds this cluster's metric values: the scenario's
 	// telemetry seed, narrowed by the cluster's seed epoch once it was reset.
 	TelemetrySeed string
@@ -68,6 +70,29 @@ type Cluster struct {
 	Spec          scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
 }
 
+// VsanCapacity and VsanUsed are shared by datastore and vSAN capacity reads.
+func VsanCapacity(cl *Cluster) int64 {
+	var total int64
+	for _, h := range cl.Hosts {
+		for _, d := range h.Devices {
+			if d.Claimed {
+				total += d.CapacityBytes
+			}
+		}
+	}
+	return total
+}
+
+func VsanUsed(cl *Cluster) int64 {
+	var used int64
+	for _, vm := range cl.VMs {
+		for _, d := range vm.Disks {
+			used += d.CapacityKB << 10 / 2
+		}
+	}
+	return used
+}
+
 // VDS is the datacenter's vDS name; VDSUUID its uuid; Portgroup the VM
 // portgroup. Kept as methods so the /vsanHealth and network code reads one
 // place.
@@ -76,19 +101,20 @@ func (c *Cluster) VDSUUID() string { return c.Datacenter.VDSUUID }
 
 // Host is one ESXi host.
 type Host struct {
-	Index        int // within the cluster
-	Name         string
-	Key          string
-	Serial       int
-	Cluster      *Cluster
-	HardwareUUID string // summary.hardware.uuid
-	NodeUUID     string // vsanSystem.config.clusterInfo.nodeUuid and every host-scoped entityRefId
-	Devices      []*Device
-	Pnics        []string // vSAN uplinks, the vsan-pnic-net entities
-	VsanVmknic   string   // the vsan-vnic-net / vnic-rdt entity
-	Stack        string   // TCP/IP stack name
-	Threads      int      // host-cpu: cpu-0..Threads-1 plus the aggregate
-	Worlds       []World  // dom-world-cpu entities
+	Index         int // within the cluster
+	Name          string
+	Key           string
+	Serial        int
+	Cluster       *Cluster
+	HardwareUUID  string // summary.hardware.uuid
+	NodeUUID      string // vsanSystem.config.clusterInfo.nodeUuid and every host-scoped entityRefId
+	DiskGroupUUID string // OSA cache-disk and disk-group performance identity
+	Devices       []*Device
+	Pnics         []string // vSAN uplinks, the vsan-pnic-net entities
+	VsanVmknic    string   // the vsan-vnic-net / vnic-rdt entity
+	Stack         string   // TCP/IP stack name
+	Threads       int      // host-cpu: cpu-0..Threads-1 plus the aggregate
+	Worlds        []World  // dom-world-cpu entities
 	// Addresses are derived from the host serial: a /24 per 254 hosts.
 	MgmtIP    string
 	VmotionIP string
@@ -258,14 +284,16 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		Name: name, Key: key, Datacenter: dc,
 		Serial:        r.Serial("cluster/" + key),
 		TelemetrySeed: telemetrySeed,
-		Dedup:         *spec.Dedup,
-		Compression:   *spec.Compression,
+		Dedup:         *spec.Dedup && spec.Architecture != "osa",
+		Compression:   *spec.Compression && spec.Architecture != "osa",
 		Spec:          spec,
 	}
 	if e := s.SeedEpoch(key); e > 0 {
 		cl.TelemetrySeed = fmt.Sprintf("%s/%s#%d", telemetrySeed, key, e)
 	}
 	cl.VsanUUID = r.UUID("vsan-cluster", cl.Serial)
+	cl.StatsUUID = r.UUID("vsan-stats-object", cl.Serial)
+	cl.PolicyUUID = r.UUID("vsan-default-policy", cl.Serial)
 	cl.ContainerID = r.Hex("vsan-container", cl.Serial, 16) + "-" + r.Hex("vsan-container-tail", cl.Serial, 16)
 	// vCenter names the first vSAN datastore in a datacenter "vsanDatastore"
 	// and the next ones "vsanDatastore (1)", "vsanDatastore (2)", ...
@@ -331,6 +359,7 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 	}
 	h.HardwareUUID = r.UUID("host-hardware", h.Serial)
 	h.NodeUUID = r.UUID("vsan-node", h.Serial)
+	h.DiskGroupUUID = r.UUID("vsan-disk-group", h.Serial)
 	for i := 0; i < cl.Spec.Host.VsanPnics; i++ {
 		h.Pnics = append(h.Pnics, fmt.Sprintf("vmnic%d", i+1))
 	}

@@ -17,6 +17,7 @@ package sim
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -41,6 +42,9 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
+
+//go:embed fixtures/vimService.wsdl
+var vimServiceWSDL string
 
 // Options configure a Simulator.
 type Options struct {
@@ -142,7 +146,7 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0}
+	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0, rest: restSessions{tokens: map[string]bool{}, credentials: creds}}
 	return s, nil
 }
 
@@ -350,7 +354,7 @@ func (s *Simulator) createCluster(ctx *simulator.Context, refs *ClusterRefs) err
 	cfg.VsanConfigInfo = &types.VsanClusterConfigInfo{
 		Enabled:        types.NewBool(false),
 		DefaultConfig:  &types.VsanClusterConfigInfoHostDefaultInfo{Uuid: cl.VsanUUID, AutoClaimStorage: types.NewBool(false)},
-		VsanEsaEnabled: types.NewBool(true),
+		VsanEsaEnabled: types.NewBool(cl.Spec.Architecture != "osa"),
 	}
 	shapeClusterConfig(cfg, cl)
 	s.Env.RegisterCluster(refs.Ref, cl)
@@ -633,6 +637,7 @@ type handler struct {
 	cat         *catalog.Catalog
 	env         *vsanhealth.Env
 	strictLogin bool
+	rest        restSessions
 }
 
 // otherLogins are vcsim's alternative login methods: LoginByToken takes
@@ -642,6 +647,23 @@ type handler struct {
 var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.rest.serve(w, r) {
+		return
+	}
+	if r.Method == http.MethodGet {
+		switch r.URL.Path {
+		case "/sdk", "/sdk/":
+			http.NotFound(w, r)
+			return
+		case "/vsanHealth", "/vsanHealth/", "/vsanHealth/vsanServiceVersions.xml":
+			w.WriteHeader(http.StatusNotImplemented)
+			return
+		case "/sdk/vimService.wsdl":
+			w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
+			_, _ = fmt.Fprint(w, vimServiceWSDL)
+			return
+		}
+	}
 	switch r.URL.Path {
 	case "/sdk/vimServiceVersions.xml":
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")

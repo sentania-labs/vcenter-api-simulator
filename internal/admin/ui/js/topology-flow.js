@@ -19,14 +19,25 @@ let pvTimer = 0;
 let genBusy = false;
 let draftInfo = null;     // GET /api/draft at load time
 
-function seedForm(scn) {
+function seedForm(scn, projection) {
   const d = scn.defaults || {};
   const h = d.host || {};
   const v = d.vms || {};
+  const primaryStates = [];
+  for (const dc of scn.datacenters || []) {
+    for (let i = 1; i <= dc.clusters; i++) {
+      const key = `${dc.name}/cluster-${String(i).padStart(2, '0')}`;
+      if ((scn.removed || []).includes(key)) continue;
+      const override = (scn.clusters || []).find((c) => c.key === key);
+      primaryStates.push((override?.statsPrimary ?? d.statsPrimary) !== false);
+    }
+  }
   form = {
     seed: scn.seed || '',
     dcs: (scn.datacenters || []).map((x) => ({ name: x.name, clusters: String(x.clusters ?? 1) })),
     hosts: String(d.hosts ?? 4),
+    architecture: projection?.clusters > 0 && projection.osaClusters === projection.clusters ? 'osa' : projection?.clusters > 0 && projection.osaClusters === 0 ? 'esa' : (d.architecture || 'esa'),
+    statsPrimary: primaryStates.length && primaryStates.every((x) => x === primaryStates[0]) ? primaryStates[0] : d.statsPrimary !== false,
     vmsPerHost: String(v.perHost ?? 2),
     disksPerVM: String(v.disksPerVM ?? 1),
     claimedDevices: String(h.claimedDevices ?? 1),
@@ -45,6 +56,8 @@ function params() {
     seed: form.seed.trim(),
     datacenters: form.dcs.map((d) => ({ name: d.name.trim(), clusters: num(d.clusters) })),
     hosts: num(form.hosts),
+    architecture: form.architecture,
+    statsPrimary: form.statsPrimary,
     vmsPerHost: optNum(form.vmsPerHost),
     disksPerVM: num(form.disksPerVM),
     claimedDevices: num(form.claimedDevices),
@@ -107,7 +120,7 @@ function genRender(ctx, data) {
   const sameSeed = st && form.seed.trim() === st.topology.seed;
   const topoPresets = (data.presets || []).filter((x) => x.kind === 'topology');
   const fam = p ? famRows(p, pv.scope) : null;
-  const emptyCalls = p ? p.emptyKinds * p.clusters : 0;
+  const emptyCalls = p ? p.emptyCalls : 0;
   const canCreate = !pvErr && !pvBusy && !!pv && !genBusy;
   return html`
   <div class="page-head"><span class="page-title">Quick generator</span>${badge('new topology draft')}
@@ -132,9 +145,11 @@ function genRender(ctx, data) {
         <div class="row"><button type="button" class="lat-btn lat-btn--sm" data-act="gen.dcAdd">Add datacenter</button><span class="anno">${int(clusters)} cluster${clusters === 1 ? '' : 's'} · named cluster-01, cluster-02 … in each datacenter</span></div>
       </div>
       <div class="fields c3">${field('Hosts per cluster', 'hosts', 'at least 3: vSAN needs three hosts')}</div>
+      <div class="fields c3"><div><label class="lat-label" for="gen-architecture">vSAN architecture</label><select class="lat-input" id="gen-architecture" data-chg="gen.architecture" data-k="gen-architecture"><option value="esa" ${form.architecture === 'esa' ? 'selected' : ''}>vSAN ESA</option><option value="osa" ${form.architecture === 'osa' ? 'selected' : ''}>vSAN OSA</option></select><div class="lat-hint">Applies to generated clusters; override individual clusters afterwards.</div></div>
+        <div><span class="lat-label">Stats primary online</span><label class="chk"><input type="checkbox" data-chg="gen.flag" data-f="statsPrimary" data-k="gen-statsPrimary" ${form.statsPrimary ? 'checked' : ''}> ${form.statsPrimary ? 'on' : 'off'}</label><div class="lat-hint">When off, performance queries return a missing-primary fault.</div></div></div>
       <h2 class="lat-card-title">Per host</h2>
       <div class="fields c3">
-        ${field('NVMe devices', 'claimedDevices', 'claimed by vSAN ESA')}
+        ${field('NVMe devices', 'claimedDevices', form.architecture === 'osa' ? 'capacity devices in each OSA disk group' : 'claimed by vSAN ESA')}
         ${field('Logical CPUs', 'threads', 'host-cpu entities')}
         ${field('DOM worlds', 'domWorlds', 'dom-world-cpu entities')}
         ${field('vSAN pNICs', 'vsanPnics', 'uplinks on the vDS')}
@@ -142,9 +157,9 @@ function genRender(ctx, data) {
         ${field('Virtual disks per VM', 'disksPerVM')}
         ${field('Local NVMe (VMFS)', 'localDevices', 'a local datastore each')}
       </div>
-      <div class="row wrap" style="gap:16px"><label class="chk"><input type="checkbox" data-chg="gen.flag" data-f="dedup" data-k="gen-dedup" ${form.dedup ? 'checked' : ''}> ESA dedup</label>
+      ${form.architecture === 'osa' ? html`<div class="anno">OSA deduplication and compression are not modeled from the capture.</div>` : html`<div class="row wrap" style="gap:16px"><label class="chk"><input type="checkbox" data-chg="gen.flag" data-f="dedup" data-k="gen-dedup" ${form.dedup ? 'checked' : ''}> ESA dedup</label>
         <label class="chk"><input type="checkbox" data-chg="gen.flag" data-f="compression" data-k="gen-compression" ${form.compression ? 'checked' : ''}> Compression</label>
-        <span class="anno">dedup off: the *-esa-dedup-* kinds answer empty</span></div>
+        <span class="anno">dedup off: the *-esa-dedup-* kinds answer empty</span></div>`}
       <h2 class="lat-card-title">Identity</h2>
       <div class="fields c2"><div><label class="lat-label" for="gen-seed">Global seed</label><input class="lat-input mono" id="gen-seed" data-k="gen-seed" autocomplete="off" spellcheck="false" data-inp="gen.seed" value="${form.seed}">
         <div class="lat-hint">same seed + shape → same identities; the only place to change it</div></div></div>
@@ -167,7 +182,7 @@ function genRender(ctx, data) {
           <tbody>${fam.top.map((f) => html`<tr><td class="ink mono">${f.family}</td><td class="muted">${fam.per(f)}</td><td class="lat-num num">${int(f.objects)}</td><td class="lat-num num">${int(f.series)}</td><td>${f.dashboard ? badge('dashboard') : html`<span class="subtle">all only</span>`}</td></tr>`)}
             ${fam.rest.length ? html`<tr><td class="subtle" colspan="2">… ${fam.rest.length} more kinds</td><td class="lat-num num">${int(fam.rest.reduce((s, f) => s + f.objects, 0))}</td><td class="lat-num num">${int(fam.rest.reduce((s, f) => s + f.series, 0))}</td><td></td></tr>` : ''}</tbody>
           <tfoot><tr><td>${sel.kinds} kinds queried</td><td></td><td class="lat-num num">${int(sel.entities)}</td><td class="lat-num num">${int(sel.series)}</td><td></td></tr></tfoot></table>
-        <div class="anno">${p.emptyKinds} provisional kinds (OSA, iSCSI, PMem, file service…) return empty or a fault on ESA but are still queried: ${int(emptyCalls)} calls / cycle.</div>
+        <div class="anno">${int(emptyCalls)} of ${int(p.all.calls)} queries / cycle across all modeled kinds return no samples or a fault (kinds a cluster does not model, or a stats-primary fault) but are still issued.</div>
         ${(pv.warnings || []).map((w) => banner(w.severity === 'warn' ? 'warn' : 'info', html`<b>${w.title}.</b> ${w.text}`))}
         <div class="row wrap anno">${pv.scope === 'dashboard' ? 'All modeled kinds' : 'Dashboard-only scope'} would project <b class="num">${int(pv.other.entities)}</b> entities · <b class="num">${int(pv.other.calls)}</b> calls · <a href="#/telemetry">Compare scopes in Telemetry →</a></div>`
         : (pvErr ? '' : html`<div class="empty">Calculating…</div>`)}
@@ -181,7 +196,7 @@ const generator = {
     draftInfo = scn;
     const v = ctx.state?.topology.version ?? 0;
     if (!form || formVersion !== v) {
-      seedForm(scn.applied);
+      seedForm(scn.applied, ctx.state?.projection);
       formVersion = v;
       pv = null; pvErr = '';
     }
@@ -190,6 +205,7 @@ const generator = {
   },
   render: genRender,
   actions: {
+    'gen.architecture'(ctx, el) { form.architecture = el.value; ctx.rerender(); schedulePreview(ctx, 0); },
     'gen.set'(ctx, el) { form[el.dataset.f] = el.value; schedulePreview(ctx); },
     'gen.seed'(ctx, el) { form.seed = el.value; schedulePreview(ctx); },
     'gen.flag'(ctx, el) { form[el.dataset.f] = el.checked; schedulePreview(ctx, 0); },
@@ -227,7 +243,7 @@ let showAll = false;
 const CAP = 10;
 let applying = false;
 
-const effectKind = (e) => (/new identit|replaces|removes|renumber|changes samples/.test(e) ? 'warn' : '');
+const effectKind = (e) => (/new identit|replaces|removes|renumber|changes samples|changes performance identities/.test(e) ? 'warn' : '');
 
 function delta(a, b) {
   const d = b - a;

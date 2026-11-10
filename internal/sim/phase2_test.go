@@ -3,6 +3,10 @@ package sim_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"encoding/xml"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -770,5 +774,415 @@ defaults: {hosts: 4, vms: {perHost: 2}}
 		if before[cl.Hosts[i].Name] != after[cl.Hosts[i].Name] {
 			t.Errorf("host %s changed", cl.Hosts[i].Name)
 		}
+	}
+}
+
+func TestOSAArchitectureDiscriminator(t *testing.T) {
+	sc, err := scenario.Parse([]byte(`seed: osa-test
+datacenters:
+  - name: dc-01
+    clusters: 2
+defaults:
+  hosts: 3
+  architecture: esa
+clusters:
+  - key: dc-01/cluster-02
+    architecture: osa
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	e := startWith(t, topo, sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := property.DefaultCollector(e.client)
+	for i, c := range e.sim.Clusters {
+		wantESA := i == 0
+		cfg, err := vc.VsanClusterGetConfig(ctx, c.Ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.VsanEsaEnabled == nil || *cfg.VsanEsaEnabled != wantESA {
+			t.Errorf("cluster %d vsanHealth ESA: %+v", i, cfg.VsanEsaEnabled)
+		}
+		if !wantESA && cfg.DataEfficiencyConfig.DedupEnabled {
+			t.Error("OSA dedup should be disabled")
+		}
+		if !wantESA {
+			req := `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body><VsanClusterGetConfig xmlns="urn:vsan"><_this type="VsanVcClusterConfigSystem">vsan-cluster-config-system</_this><cluster type="ClusterComputeResource">` + c.Ref.Value + `</cluster></VsanClusterGetConfig></Body></Envelope>`
+			status, body := e.post("/vsanHealth", req)
+			if status != 200 || !strings.Contains(string(body), "<dedupStoreUuid></dedupStoreUuid>") {
+				t.Errorf("OSA data efficiency XML: status %d, %s", status, body)
+			}
+		}
+		var moCluster mo.ClusterComputeResource
+		if err := pc.RetrieveOne(ctx, c.Ref, []string{"configurationEx"}, &moCluster); err != nil {
+			t.Fatal(err)
+		}
+		config := moCluster.ConfigurationEx.(*types.ClusterConfigInfoEx)
+		if config.VsanConfigInfo.VsanEsaEnabled == nil || *config.VsanConfigInfo.VsanEsaEnabled != wantESA {
+			t.Errorf("cluster %d sdk ESA mismatch", i)
+		}
+		for _, host := range config.VsanHostConfig {
+			if host.VsanEsaEnabled == nil || *host.VsanEsaEnabled != wantESA {
+				t.Errorf("cluster %d host ESA mismatch", i)
+			}
+		}
+	}
+}
+
+func TestOSACapacityReads(t *testing.T) {
+	sc := scenario.Phase1("osa-capacity")
+	sc.Defaults.Architecture = "osa"
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	e := startWith(t, topo, sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	cl := e.cl()
+	vc, err := vsan.NewClient(context.Background(), e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage, err := vsanmethods.VsanQuerySpaceUsage(context.Background(), vc.Client, &vsantypes.VsanQuerySpaceUsage{This: vsanhealth.SpaceSystemRef, Cluster: cl.Ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := vsanmethods.QueryClusterDataEfficiencyCapacityState(context.Background(), vc.Client, &vsantypes.QueryClusterDataEfficiencyCapacityState{This: vsanhealth.DiskMgmtRef, Cluster: cl.Ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Four hosts, one claimed 4000787030016-byte device each; four VMs with one
+	// 40 GiB thin disk each, half used: 4*20*2^30.
+	const capacity, used int64 = 4 * 4000787030016, 4 * 20 << 30
+	if usage.Returnval.TotalCapacityB != capacity || usage.Returnval.FreeCapacityB != capacity-used || state.Returnval.PhysicalCapacity != capacity || state.Returnval.PhysicalCapacityUsed != used {
+		t.Fatalf("inconsistent capacity: %+v %+v", usage.Returnval, state.Returnval)
+	}
+	if state.Returnval.LogicalCapacity != 0 || usage.Returnval.SpaceOverview == nil || usage.Returnval.SpaceDetail == nil {
+		t.Fatal("missing OSA space fields")
+	}
+	req := `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body><VsanClusterGetClaimedCapacity xmlns="urn:vsan"><_this type="VsanVcClusterConfigSystem">vsan-cluster-config-system</_this><cluster type="ClusterComputeResource">` + cl.Ref.Value + `</cluster></VsanClusterGetClaimedCapacity></Body></Envelope>`
+	status, body := e.post("/vsanHealth", req)
+	if status != 200 || !strings.Contains(string(body), fmt.Sprintf("<returnval>%d</returnval>", capacity)) {
+		t.Fatalf("claimed capacity: %d %s", status, body)
+	}
+}
+
+func TestOSAPerfSupplementarySchema(t *testing.T) {
+	sc := scenario.Phase1("osa-schema")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	vc, err := vsan.NewClient(context.Background(), e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aggregate, err := vsanmethods.VsanPerfGetAggregatedEntityTypes(context.Background(), vc.Client, &vsantypes.VsanPerfGetAggregatedEntityTypes{This: vsanhealth.PerfManagerRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aggregate.Returnval) != 1 || aggregate.Returnval[0].Name != "aggregate" || len(aggregate.Returnval[0].Graphs) == 0 {
+		t.Fatalf("aggregate: %+v", aggregate.Returnval)
+	}
+	diagnostics, err := vsanmethods.VsanPerfGetSupportedDiagnosticExceptions(context.Background(), vc.Client, &vsantypes.VsanPerfGetSupportedDiagnosticExceptions{This: vsanhealth.PerfManagerRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostics.Returnval) != 20 || diagnostics.Returnval[0].ExceptionId == "" || diagnostics.Returnval[0].ExceptionDetails == "" {
+		t.Fatalf("diagnostics: %+v", diagnostics.Returnval)
+	}
+}
+
+func perfSeries(t *testing.T, doc []byte, label string) string {
+	t.Helper()
+	var env struct {
+		Series []struct {
+			Label  string `xml:"metricId>label"`
+			Values string `xml:"values"`
+		} `xml:"Body>VsanPerfQueryPerfResponse>returnval>value"`
+	}
+	if err := xml.Unmarshal(doc, &env); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range env.Series {
+		if s.Label == label {
+			return s.Values
+		}
+	}
+	t.Fatalf("no %s series", label)
+	return ""
+}
+
+func TestOSAPerfSampleShapes(t *testing.T) {
+	sc := scenario.Phase1("osa-perf")
+	sc.Defaults.Architecture = "osa"
+	sc.Defaults.Hosts = 3
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	refs := map[string][]string{}
+	for _, tc := range []struct {
+		family           string
+		entities, labels int
+	}{{"disk-group", 3, 258}, {"cache-disk", 3, 135}, {"capacity-disk", 3, 228}, {"cluster-domclient", 1, 14}, {"vsan-cluster-capacity", 1, 6}} {
+		status, body := e.postPerf(e.cl().Ref, tc.family)
+		if status != 200 {
+			t.Fatalf("%s: %d %s", tc.family, status, body)
+		}
+		got := parseShape(t, body)
+		if len(got.refs) != tc.entities || len(got.labels) != tc.labels || len(got.samples) != 4 {
+			t.Errorf("%s: %d refs, %d labels, %d samples", tc.family, len(got.refs), len(got.labels), len(got.samples))
+		}
+		refs[tc.family] = got.refs
+		if tc.family == "vsan-cluster-capacity" {
+			// Three hosts, one claimed 4000787030016-byte device each; three VMs
+			// with one 40 GiB thin disk each, half used.
+			const total, used int64 = 3 * 4000787030016, 3 * 20 << 30
+			want := map[string]string{"total": fmt.Sprint(total), "used": fmt.Sprint(used), "free": fmt.Sprint(total - used)}
+			for label, value := range want {
+				if series := perfSeries(t, body, label); series != strings.TrimSuffix(strings.Repeat(value+",", 4), ",") {
+					t.Errorf("vsan-cluster-capacity %s = %q, want four samples of %s", label, series, value)
+				}
+			}
+			if series := perfSeries(t, body, "totalDpOverhead"); series != "None,None,None,None" {
+				t.Errorf("totalDpOverhead = %q", series)
+			}
+		}
+	}
+	for i := range refs["disk-group"] {
+		group := strings.TrimPrefix(refs["disk-group"][i], "disk-group:")
+		if refs["cache-disk"][i] != "cache-disk:"+group || refs["capacity-disk"][i] == "capacity-disk:"+group {
+			t.Error("disk group identity mismatch")
+		}
+	}
+}
+
+func TestOSAPerfPrimaryStates(t *testing.T) {
+	for _, primary := range []bool{false, true} {
+		t.Run(fmt.Sprintf("primary=%v", primary), func(t *testing.T) {
+			sc := scenario.Phase1("osa-primary")
+			sc.Defaults.Architecture = "osa"
+			sc.Defaults.StatsPrimary = &primary
+			e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+			if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct{ family, fault, property string }{
+				{"disk-group", "", ""}, {"virtual-machine", "", ""}, {"clom-disk", "InvalidArgumentFault", "entityRefId"}, {"computeCluster-remotedomclient", "InvalidArgumentFault", "computeCluster-remotedomclient:*"}, {"host-pmem", "NotSupportedFault", ""},
+			} {
+				status, body := e.postPerf(e.cl().Ref, tc.family)
+				got := parseShape(t, body)
+				if !primary {
+					if status != 500 || got.fault != "NotFoundFault" || got.text["key"] != "com.vmware.vsan.perfsvc.fault.masternotfound" || got.text["message"] != "Stats primary cannot be found in the cluster." {
+						t.Errorf("%s: %d %+v", tc.family, status, got)
+					}
+				} else if tc.fault != "" {
+					if status != 500 || got.fault != tc.fault || tc.property != "" && got.text["invalidProperty"] != tc.property {
+						t.Errorf("%s: %d %+v", tc.family, status, got)
+					}
+				} else if status != 200 || (tc.family == "virtual-machine" && (len(got.refs) != 1 || got.refs[0] != "virtual-machine:*" || len(got.labels) != 0)) {
+					t.Errorf("%s: %d %+v", tc.family, status, got)
+				}
+			}
+			vc, err := vsan.NewClient(context.Background(), e.client)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nodes, err := vsanmethods.VsanPerfQueryNodeInformation(context.Background(), vc.Client, &vsantypes.VsanPerfQueryNodeInformation{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, node := range nodes.Returnval {
+				want := primary && i == 0
+				if node.IsStatsMaster != want || (node.MasterInfo != nil) != want {
+					t.Errorf("node %d: %+v", i, node)
+				}
+			}
+			info, err := vsanmethods.VsanPerfQueryStatsObjectInformation(context.Background(), vc.Client, &vsantypes.VsanPerfQueryStatsObjectInformation{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if primary && (info.Returnval.DirectoryName != ".vsan.stats" || len(info.Returnval.PolicyAttributes) != 12) || !primary && info.Returnval.DirectoryName != "unknown" {
+				t.Errorf("stats object: %+v", info.Returnval)
+			}
+			ranges, err := vsanmethods.VsanPerfQueryTimeRanges(context.Background(), vc.Client, &vsantypes.VsanPerfQueryTimeRanges{This: vsanhealth.PerfManagerRef, Cluster: &e.cl().Ref})
+			if primary && (err != nil || len(ranges.Returnval) != 0) || !primary && err == nil {
+				t.Errorf("time ranges: %+v %v", ranges, err)
+			}
+		})
+	}
+}
+
+func TestOSAHealthReads(t *testing.T) {
+	sc := scenario.Phase1("osa-health")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := vsanmethods.VsanQueryAllSupportedHealthChecks(ctx, vc.Client, &vsantypes.VsanQueryAllSupportedHealthChecks{This: vsanhealth.HealthSystemRef})
+	if err != nil || len(checks.Returnval) < 100 {
+		t.Fatalf("checks: %v %v", checks, err)
+	}
+	config, err := vsanmethods.VsanHealthQueryVsanClusterHealthConfig(ctx, vc.Client, &vsantypes.VsanHealthQueryVsanClusterHealthConfig{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
+	if err != nil || len(config.Returnval.Configs) < 100 {
+		t.Fatalf("config: %v %v", config, err)
+	}
+	interval, err := vsanmethods.VsanHealthQueryVsanClusterHealthCheckInterval(ctx, vc.Client, &vsantypes.VsanHealthQueryVsanClusterHealthCheckInterval{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
+	if err != nil || interval.Returnval != 60 {
+		t.Fatalf("interval: %v %v", interval, err)
+	}
+	summary, err := vsanmethods.VsanQueryVcClusterHealthSummary(ctx, vc.Client, &vsantypes.VsanQueryVcClusterHealthSummary{This: vsanhealth.HealthSystemRef, Cluster: &e.cl().Ref})
+	if err != nil || summary.Returnval.ClusterStatus.Status != "green" || len(summary.Returnval.ClusterVersions.HostResults) != len(e.cl().Cluster.Hosts) {
+		t.Fatalf("summary: %v %v", summary, err)
+	}
+	health, err := vsanmethods.VsanPerfQueryClusterHealth(ctx, vc.Client, &vsantypes.VsanPerfQueryClusterHealth{This: vsanhealth.PerfManagerRef, Cluster: e.cl().Ref})
+	if err != nil || len(health.Returnval) != 1 {
+		t.Fatalf("perf health: %v %v", health, err)
+	}
+	group, ok := health.Returnval[0].(*vsantypes.VsanClusterHealthGroup)
+	if !ok || group.GroupHealth != "green" {
+		t.Fatalf("perf group: %+v", health.Returnval[0])
+	}
+}
+
+func TestOSAHostViews(t *testing.T) {
+	sc := scenario.Phase1("osa-hosts")
+	sc.Defaults.Architecture = "osa"
+	sc.Defaults.Hosts = 3
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := vsanmethods.VsanClusterGetRuntimeStats(ctx, vc.Client, &vsantypes.VsanClusterGetRuntimeStats{This: vsanhealth.ConfigSystemRef, Cluster: e.cl().Ref})
+	if err != nil || len(runtime.Returnval) != 3 || runtime.Returnval[0].Stats.SupportedClusterSize != 64 || runtime.Returnval[0].Stats.MaxWitnessClusters != 48 {
+		t.Fatalf("runtime: %v %v", runtime, err)
+	}
+	for _, host := range e.cl().Hosts {
+		maps, err := vsanmethods.QueryDiskMappings(ctx, vc.Client, &vsantypes.QueryDiskMappings{This: vsanhealth.DiskMgmtRef, Host: host})
+		if err != nil || len(maps.Returnval) != 0 {
+			t.Fatalf("mappings: %v %v", maps, err)
+		}
+		witness, err := vsanmethods.VSANVcIsWitnessHost(ctx, vc.Client, &vsantypes.VSANVcIsWitnessHost{This: vsanhealth.StretchSystemRef, Host: host})
+		if err != nil || witness.Returnval {
+			t.Fatalf("witness: %v %v", witness, err)
+		}
+	}
+	cap, err := vsanmethods.VsanGetCapabilities(ctx, vc.Client, &vsantypes.VsanGetCapabilities{This: vsanhealth.CapabilitySystemRef, Targets: []types.ManagedObjectReference{e.cl().Ref}})
+	if err != nil || len(cap.Returnval) != 1 || len(cap.Returnval[0].Capabilities) < 60 {
+		t.Fatalf("capabilities: %v %v", cap, err)
+	}
+	smart, err := vsanmethods.VsanQueryVcClusterSmartStatsSummary(ctx, vc.Client, &vsantypes.VsanQueryVcClusterSmartStatsSummary{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
+	if err != nil || len(smart.Returnval) != 3 || len(smart.Returnval[0].SmartStats) == 0 || len(smart.Returnval[0].SmartStats[0].Stats) != 7 {
+		t.Fatalf("smart: %v %v", smart, err)
+	}
+}
+
+func TestOSACapturedFaultsAndHTTP(t *testing.T) {
+	sc := scenario.Phase1("osa-faults")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"VsanVitGetIscsiTargets", "VsanVitGetIscsiLUNs", "VsanVitGetIscsiInitiatorGroups", "VsanVitGetHomeObject"} {
+		req := `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body><` + name + ` xmlns="urn:vsan"><_this type="VsanIscsiTargetSystem">vsan-cluster-iscsi-target-system</_this><cluster type="ClusterComputeResource">` + e.cl().Ref.Value + `</cluster></` + name + `></Body></Envelope>`
+		status, body := e.post("/vsanHealth", req)
+		got := parseShape(t, body)
+		if status != 500 || got.fault != "VsanFaultFault" || got.text["key"] != "com.vmware.vsan.iscsi.msg.notEnabled" {
+			t.Errorf("%s: %d %+v", name, status, got)
+		}
+	}
+	for path, want := range map[string]int{"/sdk": 404, "/sdk/": 404, "/sdk/vimService.wsdl": 200, "/vsanHealth": 501, "/vsanHealth/": 501, "/vsanHealth/vsanServiceVersions.xml": 501} {
+		res, err := http.Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("%s: %d", path, res.StatusCode)
+		}
+	}
+}
+
+func TestRestCapturedFailuresRequireSession(t *testing.T) {
+	sc := scenario.Phase1("rest-faults")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{Credentials: map[string]string{"reader": "pass"}})
+	client := e.srv.Client()
+	req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/api/content/library", nil)
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != 401 {
+		t.Fatalf("unauthenticated: %d", res.StatusCode)
+	}
+	req, _ = http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "pass")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != 201 || token == "" {
+		t.Fatalf("session: %d", res.StatusCode)
+	}
+	for path, want := range map[string]int{"/api/content/library": 403, "/api/esx/settings/hosts/host-1/software": 403, "/api/vcenter/storage/policies": 500, "/api/vcenter/vm/vm-1/storage/policy": 500, "/api/vcenter/inventory/datastore": 400, "/api/vcenter/host/host-1": 404} {
+		req, _ = http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err = client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("%s: %d", path, res.StatusCode)
+		}
+	}
+	req, _ = http.NewRequest(http.MethodDelete, e.srv.URL+"/api/session", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != 204 {
+		t.Fatal(res.StatusCode)
+	}
+	req, _ = http.NewRequest(http.MethodGet, e.srv.URL+"/api/content/library", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != 401 {
+		t.Fatalf("deleted session: %d", res.StatusCode)
 	}
 }

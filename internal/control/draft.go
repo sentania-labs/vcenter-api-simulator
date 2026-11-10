@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
+	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
 
 // ErrNoDraft is returned when there is nothing pending.
@@ -479,7 +481,7 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 
 	if topoChanged {
 		rv.Changes = append(rv.Changes, topologyChanges(old, nt, d, oldProj, newProj)...)
-		rv.Identities = identityRows(old.topo, nt, oldProj, newProj)
+		rv.Identities = identityRows(old.topo, nt, c.cat)
 		if old.sc.Seed == d.Scenario.Seed {
 			rv.Renumbered = renumbered(old.topo, nt)
 		}
@@ -499,18 +501,27 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 			rv.TelemetryCount++
 		}
 	}
-	if len(rv.Changes) > 120 {
-		rv.More = len(rv.Changes) - 120
-		rv.Changes = rv.Changes[:120]
-	}
 	for _, r := range rv.Identities {
 		// churn is an identity that goes away: additions only grow the inventory
 		if r.Removed > 0 && r.Label != "Performance entities" && r.Label != "Virtual disk identities" {
 			rv.Churn = true
 		}
 	}
+	for _, change := range rv.Changes {
+		if change.Field == "Architecture" {
+			for _, row := range rv.Identities {
+				if row.Label == "Performance entities" && row.Removed > 0 {
+					rv.Churn = true
+				}
+			}
+		}
+	}
 	if rv.Renumbered.Total() > 0 {
 		rv.Churn = true
+	}
+	if len(rv.Changes) > 120 {
+		rv.More = len(rv.Changes) - 120
+		rv.Changes = rv.Changes[:120]
 	}
 	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged, rv.Renumbered)
 	rv.Warnings = warnings(old, nt, d, rv, newProj)
@@ -536,7 +547,14 @@ func specFields(s scenario.ClusterSpec) [][2]string {
 		}
 		return "off"
 	}
+	architecture := s.Architecture
+	if architecture == "" {
+		architecture = "esa"
+	}
+	primary := s.StatsPrimary == nil || *s.StatsPrimary
 	return [][2]string{
+		{"Architecture", strings.ToUpper(architecture)},
+		{"Stats primary", map[bool]string{true: "online", false: "offline"}[primary]},
 		{"Hosts", fmt.Sprint(s.Hosts)},
 		{"VMs per host", fmt.Sprint(scenario.Int(s.VMs.PerHost))},
 		{"Virtual disks per VM", fmt.Sprint(s.VMs.DisksPerVM)},
@@ -596,6 +614,12 @@ func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Proj
 			for i := range of {
 				if of[i][1] != nf[i][1] {
 					eff := "changes cardinality"
+					if of[i][0] == "Architecture" {
+						eff = "changes performance identities"
+					}
+					if of[i][0] == "Stats primary" {
+						eff = "changes sample availability"
+					}
 					a, e1 := strconv.Atoi(of[i][1])
 					b, e2 := strconv.Atoi(nf[i][1])
 					if e1 == nil && e2 == nil && a != b {
@@ -710,7 +734,7 @@ func telemetryChanges(o, n *scenario.Scenario) []Change {
 }
 
 // identityRows compares two topologies by (key, serial).
-func identityRows(o, n *topology.Topology, op, np *Projection) []IdentityRow {
+func identityRows(o, n *topology.Topology, cat *catalog.Catalog) []IdentityRow {
 	type id struct {
 		key    string
 		serial int
@@ -774,36 +798,70 @@ func identityRows(o, n *topology.Topology, op, np *Projection) []IdentityRow {
 		}),
 		row("Cluster UUIDs · vSAN datastores", func(c *topology.Cluster) []id { return []id{{c.Key, c.Serial}} }),
 	}
-	// performance entities: a cluster that keeps its identity keeps its
-	// entities up to the smaller of the two counts
+	// Compare actual family/ref pairs for clusters that changed, so
+	// architecture changes account for replaced disk and performance
+	// entities. Clusters that did not change keep every entity.
 	pe := IdentityRow{Label: "Performance entities"}
-	oc, nc := map[string]*topology.Cluster{}, map[string]*topology.Cluster{}
+	oc := map[string]*topology.Cluster{}
 	for _, c := range o.Clusters() {
 		oc[c.Key] = c
 	}
-	for _, c := range n.Clusters() {
-		nc[c.Key] = c
-	}
-	for k, c := range oc {
-		ol := op.PerCluster[k].Entities
-		if x, ok := nc[k]; ok && x.Serial == c.Serial {
-			nl := np.PerCluster[k].Entities
-			pe.Kept += min(ol, nl)
-			if nl > ol {
-				pe.Added += nl - ol
-			} else {
-				pe.Removed += ol - nl
+	perfSet := func(cl *topology.Cluster) map[string]bool {
+		out := map[string]bool{}
+		// A missing stats primary hides samples, but does not destroy
+		// the underlying performance identities.
+		visible := *cl
+		visible.Spec.StatsPrimary = nil
+		for _, family := range vsanhealth.PerfFamilyNames(cat, &visible) {
+			refs, _ := vsanhealth.PerfEntities(cat, &visible, family)
+			for _, ref := range refs {
+				out[ref] = true
 			}
-		} else {
-			pe.Removed += ol
+		}
+		return out
+	}
+	seen := map[string]bool{}
+	for _, c := range n.Clusters() {
+		seen[c.Key] = true
+		old, ok := oc[c.Key]
+		if ok && sameCluster(old, c) {
+			visible := *c
+			visible.Spec.StatsPrimary = nil
+			for _, family := range vsanhealth.PerfFamilyNames(cat, &visible) {
+				k, _ := vsanhealth.PerfEntityCount(cat, &visible, family)
+				pe.Kept += k
+			}
+			continue
+		}
+		after := perfSet(c)
+		var before map[string]bool
+		if ok {
+			before = perfSet(old)
+		}
+		for ref := range before {
+			if after[ref] {
+				pe.Kept++
+			} else {
+				pe.Removed++
+			}
+		}
+		for ref := range after {
+			if !before[ref] {
+				pe.Added++
+			}
 		}
 	}
-	for k, c := range nc {
-		if x, ok := oc[k]; !ok || x.Serial != c.Serial {
-			pe.Added += np.PerCluster[k].Entities
+	for key, old := range oc {
+		if !seen[key] {
+			pe.Removed += len(perfSet(old))
 		}
 	}
 	return append(rows, pe)
+}
+
+func sameCluster(o, c *topology.Cluster) bool {
+	return o.Serial == c.Serial && len(o.Hosts) == len(c.Hosts) && len(o.VMs) == len(c.VMs) &&
+		fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed
 }
 
 func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool, rn Renumbered) []string {
@@ -816,8 +874,7 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && o.Serial == c.Serial && len(o.Hosts) == len(c.Hosts) && len(o.VMs) == len(c.VMs) &&
-				fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) {
 				kept++
 			} else {
 				touched[c.Key] = true

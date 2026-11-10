@@ -29,7 +29,7 @@ function storage() {
   return html`<section class="lat-card" aria-labelledby="cp-stor"><h2 class="lat-card-title" id="cp-stor">Storage coverage <span class="aside">what the reference MP reads · static, from the recon report</span></h2>
     <table class="lat-table"><thead><tr><th>Type</th><th>/sdk inventory</th><th>Perf kinds</th><th>MP reads</th></tr></thead><tbody>
     ${row('vSAN ESA', badge('impl', 'ok'), 'served', 'yes')}
-    ${row('vSAN OSA', badge('planned'), 'disk-group, cache/capacity disk', 'yes (empty on ESA)')}
+    ${row('vSAN OSA', badge('impl', 'ok'), 'disk-group, cache/capacity disk', 'yes · 30 of 74 wildcard families returned samples in the capture')}
     ${row('vSAN iSCSI target', badge('planned'), 'vsan-iscsi-*', 'yes, no view')}
     ${row('NFS · FC · iSCSI · local', badge('planned'), 'none', html`<span class="muted">no · native adapter</span>`)}
     </tbody></table></section>`;
@@ -37,10 +37,11 @@ function storage() {
 
 function kinds(c) {
   const total = Object.values(c.kinds).reduce((a, b) => a + b, 0);
-  return html`<section class="lat-card" aria-labelledby="cp-kinds"><h2 class="lat-card-title" id="cp-kinds">Entity kind coverage <span class="aside">${total} kinds advertised · from the captured catalog</span></h2>
-    <table class="lat-table"><thead><tr><th>Behaviour on ESA</th><th class="r">Kinds</th><th>Meaning</th></tr></thead><tbody>
-    ${kindOrder.map(([k, label, d]) => html`<tr><td class="ink">${label}</td><td class="num r">${int(c.kinds[k] || 0)}</td><td class="wrap muted">${d}</td></tr>`)}</tbody></table>
-    <div class="anno">Behaviour is what the live service did for a wildcard query in the capture. Values are synthetic inside each label's observed range.</div></section>`;
+  const osaTotal = Object.values(c.osaKinds || {}).reduce((a, b) => a + b, 0);
+  return html`<section class="lat-card" aria-labelledby="cp-kinds"><h2 class="lat-card-title" id="cp-kinds">Entity kind coverage <span class="aside">wildcard queries · service schema advertises 70 entity types</span></h2>
+    <table class="lat-table"><thead><tr><th>Outcome</th><th class="r">ESA (${total})</th><th class="r">OSA (${osaTotal})</th><th>Meaning</th></tr></thead><tbody>
+    ${kindOrder.map(([k, label, d]) => html`<tr><td class="ink">${label}</td><td class="num r">${int(c.kinds[k] || 0)}</td><td class="num r">${int((c.osaKinds || {})[k] || 0)}</td><td class="wrap muted">${d}</td></tr>`)}</tbody></table>
+    <div class="anno">OSA counts are for a primary online; without one, all ${osaTotal} queries return a missing-primary fault. Values are synthetic inside each label's observed range.</div></section>`;
 }
 
 function health(c) {

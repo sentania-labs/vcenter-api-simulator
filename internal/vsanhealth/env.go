@@ -1,16 +1,8 @@
-// Package vsanhealth serves the /vsanHealth managed objects the reference
-// management pack's collection path calls, registered on the vcsim service so
-// one session store covers /sdk and /vsanHealth:
-//
-//	VsanPerformanceManager      VsanPerfQueryNodeInformation, VsanPerfGetSupportedEntityTypes, VsanPerfQueryPerf
-//	VsanVcClusterConfigSystem   VsanClusterGetConfig
-//	VsanVcDiskManagementSystem  QueryVsanManagedDisks
-//	VsanVcClusterHealthSystem   VsanQueryVcClusterHealthSummary (hclInfo)
-//
-// Nothing else is registered, so any other managed object on /vsanHealth
-// (vcsim's stock stretched-cluster system included) is ManagedObjectNotFound.
-// vcsim's own vsan/simulator package must stay unimported. Response shapes
-// follow fixtures/live/9.1.1.
+// Package vsanhealth serves the modeled /vsanHealth managed objects on the
+// vcsim service, sharing the /sdk session store. The handlers cover performance,
+// configuration, capacity, health, disks, capabilities, witness and iSCSI
+// reads. Unmodeled objects remain ManagedObjectNotFound. Response shapes use
+// sanitized live captures; vcsim's own vsan/simulator stays unimported.
 package vsanhealth
 
 import (
@@ -87,10 +79,14 @@ func (e *Env) Host(ref vim25types.ManagedObjectReference) (*topology.Host, *topo
 
 // Refs of the managed objects, as the management pack's bindings name them.
 var (
-	PerfManagerRef  = vim25types.ManagedObjectReference{Type: "VsanPerformanceManager", Value: "vsan-performance-manager"}
-	ConfigSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterConfigSystem", Value: "vsan-cluster-config-system"}
-	DiskMgmtRef     = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcDiskManagementSystem", Value: "vsan-disk-management-system"}
-	HealthSystemRef = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
+	PerfManagerRef      = vim25types.ManagedObjectReference{Type: "VsanPerformanceManager", Value: "vsan-performance-manager"}
+	ConfigSystemRef     = vim25types.ManagedObjectReference{Type: "VsanVcClusterConfigSystem", Value: "vsan-cluster-config-system"}
+	DiskMgmtRef         = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcDiskManagementSystem", Value: "vsan-disk-management-system"}
+	HealthSystemRef     = vim25types.ManagedObjectReference{Type: "VsanVcClusterHealthSystem", Value: "vsan-cluster-health-system"}
+	IscsiSystemRef      = vim25types.ManagedObjectReference{Type: "VsanIscsiTargetSystem", Value: "vsan-cluster-iscsi-target-system"}
+	StretchSystemRef    = vim25types.ManagedObjectReference{Type: "VimClusterVsanVcStretchedClusterSystem", Value: "vsan-stretched-cluster-system"}
+	CapabilitySystemRef = vim25types.ManagedObjectReference{Type: "VsanCapabilitySystem", Value: "vsan-vc-capability-system"}
+	SpaceSystemRef      = vim25types.ManagedObjectReference{Type: "VsanSpaceReportSystem", Value: "vsan-cluster-space-report-system"}
 )
 
 // Install registers the /vsanHealth endpoint on the service. It must run after
@@ -103,6 +99,10 @@ func Install(s *simulator.Service, env *Env) {
 	r.Put(&ClusterConfigSystem{ManagedObjectReference: ConfigSystemRef, env: env})
 	r.Put(&DiskManagementSystem{ManagedObjectReference: DiskMgmtRef, env: env})
 	r.Put(&ClusterHealthSystem{ManagedObjectReference: HealthSystemRef, env: env})
+	r.Put(&SpaceReportSystem{ManagedObjectReference: SpaceSystemRef, env: env})
+	r.Put(&StretchSystem{ManagedObjectReference: StretchSystemRef, env: env})
+	r.Put(&IscsiSystem{ManagedObjectReference: IscsiSystemRef, env: env})
+	r.Put(&CapabilitySystem{ManagedObjectReference: CapabilitySystemRef, env: env})
 	s.RegisterSDK(r)
 }
 

@@ -88,7 +88,7 @@ func vsanHostConfig(ref types.ManagedObjectReference, cl *topology.Cluster, h *t
 			IpConfig: &types.VsanHostIpConfig{UpstreamIpAddress: "224.1.2.3", DownstreamIpAddress: "224.2.3.4"},
 		}}},
 		FaultDomainInfo: &types.VsanHostFaultDomainInfo{Name: ""},
-		VsanEsaEnabled:  types.NewBool(true),
+		VsanEsaEnabled:  types.NewBool(cl.Spec.Architecture != "osa"),
 	}
 }
 
@@ -337,27 +337,14 @@ func vmfsMount(name string, d *topology.Device) types.HostFileSystemMountInfo {
 
 // vsanCapacity is the raw capacity of the cluster's claimed devices.
 func vsanCapacity(cl *topology.Cluster) int64 {
-	var total int64
-	for _, h := range cl.Hosts {
-		for _, d := range h.Devices {
-			if d.Claimed {
-				total += d.CapacityBytes
-			}
-		}
-	}
-	return total
+	return topology.VsanCapacity(cl)
 }
 
 // shapeDatastoreSummary sets capacity from the claimed devices and usage
 // from the VMs placed on the datastore.
 func shapeDatastoreSummary(ds *simulator.Datastore, cl *topology.Cluster, refs *ClusterRefs) {
 	capacity := vsanCapacity(cl)
-	var committed int64
-	for _, vm := range cl.VMs {
-		for _, d := range vm.Disks {
-			committed += d.CapacityKB << 10 / 2 // thin, half used
-		}
-	}
+	committed := topology.VsanUsed(cl)
 	ds.Summary.Capacity = capacity
 	ds.Summary.FreeSpace = capacity - committed
 	ds.Summary.Uncommitted = committed
