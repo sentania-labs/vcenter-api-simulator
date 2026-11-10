@@ -16,8 +16,24 @@ func (s *restSessions) vmInventory(w http.ResponseWriter, path string) bool {
 		return false
 	}
 	vm, ok := s.registry.Get(types.ManagedObjectReference{Type: "VirtualMachine", Value: parts[1]}).(*simulator.VirtualMachine)
-	if !ok || vm.Config == nil {
+	if !ok {
 		return false
+	}
+	var body any
+	s.lock(vm, func() { body = restVMBody(vm, strings.Join(parts[2:], "/")) })
+	if body == nil {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(body)
+	return true
+}
+
+// restVMBody must be called with the VM's lock held. It returns nil for an
+// unknown sub-resource.
+func restVMBody(vm *simulator.VirtualMachine, sub string) any {
+	if vm.Config == nil {
+		return nil
 	}
 	hardware := map[string]any{"upgrade_policy": "NEVER", "upgrade_status": "NONE", "version": strings.ToUpper(strings.ReplaceAll(vm.Config.Version, "-", "_"))}
 	disks := map[string]any{}
@@ -59,23 +75,19 @@ func (s *restSessions) vmInventory(w http.ResponseWriter, path string) bool {
 			nics[key] = row
 		}
 	}
-	var body any
-	switch strings.Join(parts[2:], "/") {
+	switch sub {
 	case "hardware":
-		body = hardware
+		return hardware
 	case "hardware/disk":
-		body = diskList
+		return diskList
 	case "guest/identity":
 		if vm.Guest == nil {
-			return false
+			return nil
 		}
-		body = map[string]any{"name": "OTHER", "family": "OTHER", "full_name": map[string]any{"id": "vmsg.guestos.otherGuest.label", "default_message": vm.Guest.GuestFullName, "args": []string{}}, "host_name": vm.Guest.HostName, "ip_address": vm.Guest.IpAddress}
+		return map[string]any{"name": "OTHER", "family": "OTHER", "full_name": map[string]any{"id": "vmsg.guestos.otherGuest.label", "default_message": vm.Guest.GuestFullName, "args": []string{}}, "host_name": vm.Guest.HostName, "ip_address": vm.Guest.IpAddress}
 	case "":
-		body = map[string]any{"name": vm.Name, "identity": map[string]any{"name": vm.Name, "instance_uuid": vm.Config.InstanceUuid, "bios_uuid": vm.Config.Uuid}, "power_state": restPowerState(string(vm.Runtime.PowerState)), "instant_clone_frozen": false, "hardware": hardware, "guest_OS": "OTHER", "cpu": map[string]any{"count": vm.Config.Hardware.NumCPU, "cores_per_socket": vm.Config.Hardware.NumCoresPerSocket, "hot_add_enabled": false, "hot_remove_enabled": false}, "memory": map[string]any{"size_MiB": vm.Config.Hardware.MemoryMB, "hot_add_enabled": false, "hot_add_increment_size_MiB": 0, "hot_add_limit_MiB": vm.Config.Hardware.MemoryMB}, "disks": disks, "nics": nics, "scsi_adapters": controllers, "cdroms": map[string]any{}, "floppies": map[string]any{}, "parallel_ports": map[string]any{}, "serial_ports": map[string]any{}, "sata_adapters": map[string]any{}, "nvme_adapters": map[string]any{}, "boot": map[string]any{"type": "BIOS", "delay": 0, "retry": false, "retry_delay": 0, "enter_setup_mode": false, "efi_legacy_boot": false, "network_protocol": "IPV4"}, "boot_devices": []any{}}
+		return map[string]any{"name": vm.Name, "identity": map[string]any{"name": vm.Name, "instance_uuid": vm.Config.InstanceUuid, "bios_uuid": vm.Config.Uuid}, "power_state": restPowerState(string(vm.Runtime.PowerState)), "instant_clone_frozen": false, "hardware": hardware, "guest_OS": "OTHER", "cpu": map[string]any{"count": vm.Config.Hardware.NumCPU, "cores_per_socket": vm.Config.Hardware.NumCoresPerSocket, "hot_add_enabled": false, "hot_remove_enabled": false}, "memory": map[string]any{"size_MiB": vm.Config.Hardware.MemoryMB, "hot_add_enabled": false, "hot_add_increment_size_MiB": 0, "hot_add_limit_MiB": vm.Config.Hardware.MemoryMB}, "disks": disks, "nics": nics, "scsi_adapters": controllers, "cdroms": map[string]any{}, "floppies": map[string]any{}, "parallel_ports": map[string]any{}, "serial_ports": map[string]any{}, "sata_adapters": map[string]any{}, "nvme_adapters": map[string]any{}, "boot": map[string]any{"type": "BIOS", "delay": 0, "retry": false, "retry_delay": 0, "enter_setup_mode": false, "efi_legacy_boot": false, "network_protocol": "IPV4"}, "boot_devices": []any{}}
 	default:
-		return false
+		return nil
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(body)
-	return true
 }
