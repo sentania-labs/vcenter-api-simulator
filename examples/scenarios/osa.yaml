@@ -4,6 +4,12 @@ seed: osa
 datacenters:
   - name: dc-01
     clusters: 1
+    nfs:
+      - name: shared-nfs
+        remoteHost: nfs.sim.invalid
+        remotePath: /exports/sim
+        capacity: 1000000000000
+        freeSpace: 800000000000
 defaults:
   architecture: osa
   statsPrimary: true

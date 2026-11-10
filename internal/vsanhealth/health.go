@@ -31,7 +31,8 @@ type healthVersions struct {
 }
 type osaHealthSummary struct {
 	vsantypes.VsanClusterHealthSummary
-	Versions healthVersions `xml:"clusterVersions"`
+	Versions    healthVersions `xml:"clusterVersions"`
+	HealthScore int            `xml:"healthScore"`
 }
 type osaHealthResponse struct {
 	Returnval osaHealthSummary `xml:"returnval"`
@@ -60,6 +61,7 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 	}
 	if cl != nil {
 		if cl.Spec.Architecture == "osa" {
+			s.osaHealthDetail(ctx, &sum, cl, req.Cluster)
 			sum.ClusterStatus = &vsantypes.VsanClusterHealthSystemStatusResult{Status: "green", GoalState: "installed"}
 			sum.ClusterVersions = &vsantypes.VsanClusterHealthSystemVersionResult{VcVersion: s.env.Catalog.About.Version, UpgradePossible: vim25types.NewBool(false)}
 			for _, h := range cl.Hosts {
@@ -110,7 +112,7 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 		for _, host := range cl.Hosts {
 			versions.Hosts = append(versions.Hosts, healthHostVersion{Hostname: host.Name, Version: s.env.Catalog.About.EsxiVersion, Build: s.env.Catalog.About.EsxiBuild})
 		}
-		return &osaHealthBody{Res: &osaHealthResponse{Returnval: osaHealthSummary{VsanClusterHealthSummary: sum, Versions: versions}}}
+		return &osaHealthBody{Res: &osaHealthResponse{Returnval: osaHealthSummary{VsanClusterHealthSummary: sum, Versions: versions, HealthScore: 95}}}
 	}
 	return &methods.VsanQueryVcClusterHealthSummaryBody{Res: &vsantypes.VsanQueryVcClusterHealthSummaryResponse{Returnval: sum}}
 }

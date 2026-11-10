@@ -1,0 +1,258 @@
+[
+  {
+    "groupId": "com.vmware.vsan.health.test.network",
+    "groupName": "Network",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.clusterpartition",
+        "testName": "vSAN cluster partition"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.vsanvmknic",
+        "testName": "All hosts have a vSAN vmknic configured"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.hostconnectivity",
+        "testName": "Hosts with connectivity issues"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.hostdisconnected",
+        "testName": "Hosts disconnected from VC"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.smallping",
+        "testName": "vSAN: Basic (unicast) connectivity check"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.largeping",
+        "testName": "vSAN: MTU check (ping with large packet size)"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.vmotionpingsmall",
+        "testName": "vMotion: Basic (unicast) connectivity check"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.vmotionpinglarge",
+        "testName": "vMotion: MTU check (ping with large packet size)"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.hostlatencycheck",
+        "testName": "Network latency check"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.network.duplicateip",
+        "testName": "Hosts with duplicate IP addresses"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.network.pnictso",
+        "testName": "Hosts with pNIC TSO issues"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.network.lacpstatus",
+        "testName": "Hosts with LACP issues"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.hcl",
+    "groupName": "Hardware compatibility",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.hcldbuptodate",
+        "testName": "vSAN HCL DB up-to-date"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.autohclupdate",
+        "testName": "vSAN HCL DB Auto Update"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.controlleronhcl",
+        "testName": "SCSI controller is VMware certified"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.nvmeonhcl",
+        "testName": "NVMe device is VMware certified"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.controllerreleasesupport",
+        "testName": "Controller is VMware certified for ESXi release"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.controllerdriver",
+        "testName": "Controller driver is VMware certified"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.controllerfirmware",
+        "testName": "Controller firmware is VMware certified"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.controllerdiskmode",
+        "testName": "Controller disk group mode is VMware certified"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.cloudhealth",
+    "groupName": "Online health",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.vsanenablesupportinsight",
+        "testName": "vSAN Support Insight"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.physicaldisks",
+    "groupName": "Physical disk",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.physdiskoverall",
+        "testName": "Operation health"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.phmhealth",
+        "testName": "Vendor Reported Drive Health"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.physdiskcongestion",
+        "testName": "Congestion"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.physdiskcomplimithealth",
+        "testName": "Physical disk component utilization"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.componentmetadata",
+        "testName": "Component metadata health"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.lsomheap",
+        "testName": "Memory pools (heaps)"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.lsomslab",
+        "testName": "Memory pools (slabs)"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.physdiskcapacity",
+        "testName": "Disk capacity"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.licenseddisks",
+        "testName": "Disk licensed capacity consistency"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.data",
+    "groupName": "Data",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.objecthealth",
+        "testName": "vSAN object health"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.objectformat",
+        "testName": "vSAN object format health"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.cluster",
+    "groupName": "Cluster",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.timedrift",
+        "testName": "Time is synchronized across hosts and VC"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.advcfgsync",
+        "testName": "Advanced vSAN configuration in sync"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.clomdliveness",
+        "testName": "vSAN daemon liveness"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.diskbalance",
+        "testName": "vSAN Disk Balance"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.resynclimit",
+        "testName": "Resync operations throttling"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.vsandconfigconsistency",
+        "testName": "vSAN Direct homogeneous disk claiming"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.vcauthoritative",
+        "testName": "VMware vCenter state is authoritative"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.consistentconfig",
+        "testName": "vSAN cluster configuration consistency"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.clustermembership",
+        "testName": "vSphere cluster members match vSAN cluster members"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.upgradesoftware",
+        "testName": "Software version compatibility"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.upgradelowerhosts",
+        "testName": "Disk format version"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.extendedconfig",
+        "testName": "vSAN extended configuration in sync"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.limits",
+    "groupName": "Capacity utilization",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.diskspace",
+        "testName": "Storage space"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.nodecomponentlimit",
+        "testName": "Cluster and host component utilization"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.limit1hf",
+        "testName": "What if the most consumed host fails"
+      }
+    ]
+  },
+  {
+    "groupId": "com.vmware.vsan.health.test.perfsvc",
+    "groupName": "Performance service",
+    "groupTests": [
+      {
+        "testId": "com.vmware.vsan.health.test.statsdb",
+        "testName": "Stats DB object"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.masterexist",
+        "testName": "Stats primary election"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.collection",
+        "testName": "Performance data collection"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.hostsmissing",
+        "testName": "All hosts contributing stats"
+      },
+      {
+        "testId": "com.vmware.vsan.health.test.renameddirs",
+        "testName": "Stats DB object conflicts"
+      }
+    ]
+  }
+]

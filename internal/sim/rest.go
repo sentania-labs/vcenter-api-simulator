@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/vmware/govmomi/simulator"
 )
 
 // restSessions holds local read-only API sessions. It shares the scenario's
@@ -16,6 +19,8 @@ type restSessions struct {
 	mu          sync.Mutex
 	tokens      map[string]bool
 	credentials map[string]string
+	registry    *simulator.Registry
+	catalog     *catalog.Catalog
 }
 
 func (s *restSessions) authorized(user, password string) bool {
@@ -76,6 +81,19 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	path := r.URL.Path
+	switch path {
+	case "/api/cis/tagging/category", "/api/cis/tagging/tag", "/api/vcenter/namespace-management/clusters":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+		return true
+	case "/api/appliance/system/version":
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Patch for VMware vCenter Server 9.1", "install_time": "2026-10-23T16:41:17.074Z", "product": "VMware vCenter Server", "build": s.catalog.About.Build, "name": s.catalog.About.Version + ".0100", "releasedate": "October 08, 2026", "type": "vCenter Server with an embedded Platform Services Controller", "version": s.catalog.About.Version + ".0100"})
+		return true
+	}
+	if s.inventory(w, r) {
+		return true
+	}
 	status := http.StatusNotFound
 	switch {
 	case path == "/api/appliance/health/system", path == "/api/vcenter/system-config/deployment-type", path == "/api/content/library", path == "/api/content/local-library", path == "/api/vcenter/topology/nodes", strings.HasPrefix(path, "/api/esx/settings/"):
