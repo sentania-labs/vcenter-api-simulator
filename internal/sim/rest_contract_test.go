@@ -131,3 +131,57 @@ func TestRESTClusterConfigurationMatchesSOAP(t *testing.T) {
 	}
 	t.Fatal("cluster missing")
 }
+
+func TestRESTInventoryEnumValues(t *testing.T) {
+	sc := tenClusters(t)
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	client := e.srv.Client()
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "password")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	cl := e.sim.Clusters[0]
+	for _, tc := range []struct {
+		path, key, ref string
+		want           map[string]any
+	}{
+		{"host", "host", cl.Hosts[0].Value, map[string]any{"connection_state": "CONNECTED", "power_state": "POWERED_ON"}},
+		{"vm", "vm", cl.VMs[0].Value, map[string]any{"power_state": "POWERED_ON"}},
+		{"datastore", "datastore", cl.Datastore.Value, map[string]any{"type": "VSAN"}},
+	} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/api/vcenter/"+tc.path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []map[string]any
+		err = json.NewDecoder(res.Body).Decode(&rows)
+		res.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, row := range rows {
+			if row[tc.key] != tc.ref {
+				continue
+			}
+			found = true
+			for k, v := range tc.want {
+				if row[k] != v {
+					t.Errorf("%s %s = %v, want %v", tc.path, k, row[k], v)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: %s missing", tc.path, tc.ref)
+		}
+	}
+}
