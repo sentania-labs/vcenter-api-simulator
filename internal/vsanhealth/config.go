@@ -19,6 +19,7 @@ type ClusterConfigSystem struct {
 // The OSA response carries the newer data-efficiency subtype, whose
 // dedupStoreUuid is not represented by govmomi's base type.
 type osaDataEfficiency struct {
+	Type           string `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
 	DedupEnabled   bool   `xml:"dedupEnabled"`
 	DedupStoreUUID string `xml:"dedupStoreUuid"`
 }
@@ -74,7 +75,7 @@ func (s *ClusterConfigSystem) VsanClusterGetConfig(ctx *simulator.Context, req *
 		info.DataInTransitEncryptionConfig = &vsantypes.VsanDataInTransitEncryptionConfig{}
 	}
 	if cl != nil && cl.Spec.Architecture == "osa" {
-		return &osaConfigBody{Res: &osaConfigResponse{Returnval: osaConfig{VsanConfigInfoEx: info}}}
+		return &osaConfigBody{Res: &osaConfigResponse{Returnval: osaConfig{VsanConfigInfoEx: info, DataEfficiency: osaDataEfficiency{Type: "VsanDataEfficiencyConfigEx"}}}}
 	}
 	return &methods.VsanClusterGetConfigBody{Res: &vsantypes.VsanClusterGetConfigResponse{Returnval: info}}
 }
