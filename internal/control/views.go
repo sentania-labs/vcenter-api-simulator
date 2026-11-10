@@ -577,6 +577,9 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		v.Datastores = append(v.Datastores, DatastoreRow{Name: "local VMFS", Type: "VMFS · local", Backing: fmt.Sprintf("%d / host", scenario.Int(cl.Spec.Host.LocalDevices)),
 			Mounted: local, Perf: "inventory only"})
 	}
+	for _, nfs := range cl.Datacenter.NFS {
+		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: "inventory only"})
+	}
 	v.VDS, v.PortGroups = cl.VDS(), len(topology.Portgroups)
 	v.Checks = append(v.Checks,
 		Warning{"ok", "uplinks", fmt.Sprintf("%s uplinks cover %d hosts × %d pNICs", cl.VDS(), len(cl.Hosts), cl.Spec.Host.VsanPnics)},
@@ -680,7 +683,8 @@ var matrix = []Method{
 	{"vsanHealth", "VsanPerformanceManager", "VsanPerfGetSupportedEntityTypes", "live capture", "verified", "The advertised catalog is the captured one, verbatim.", 0, 0},
 	{"vsanHealth", "VsanVcClusterConfigSystem", "VsanClusterGetConfig", "live capture", "verified", "Captured request and response replayed.", 0, 0},
 	{"vsanHealth", "VimClusterVsanVcDiskManagementSystem", "QueryVsanManagedDisks", "live capture", "verified", "Ten captured per-host responses replayed.", 0, 0},
-	{"vsanHealth", "VsanVcClusterHealthSystem", "VsanQueryVcClusterHealthSummary", "live capture", "partial", "ESA HCL information and OSA cluster and host status are modeled; deeper health details remain incomplete.", 0, 0},
+	{"vsanHealth", "VsanVcClusterHealthSystem", "VsanQueryVcClusterHealthSummary", "live capture", "partial", "ESA HCL information and OSA status, disk, object, network, limits and health-check groups are modeled; some detailed results remain incomplete.", 0, 0},
+	{"api", "vCenter inventory", "GET inventory", "live capture", "partial", "Inventory lists and cluster and datastore detail share SOAP identities; some VM details remain incomplete.", 0, 0},
 	{"sdk", "SessionManager", "Login", "vcsim", "partial", "Accepts any user, or only the scenario's users. Token and certificate logins are refused when users are configured.", 0, 0},
 	{"sdk", "SessionManager", "Logout", "vcsim", "partial", "Faults after logout match the captured shape.", 0, 0},
 	{"sdk", "ServiceInstance", "RetrieveServiceContent", "vcsim + capture", "verified", "About block is the captured 9.1.1 identity.", 0, 0},

@@ -1,0 +1,9 @@
+{
+  "type": "NFS",
+  "remoteHost": "nfs.sim.invalid",
+  "remotePath": "/exports/sim",
+  "capacity": 1000000,
+  "freeSpace": 800000,
+  "multipleHostAccess": true,
+  "perFileThinProvisioningSupported": true
+}

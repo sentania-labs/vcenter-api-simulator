@@ -78,10 +78,10 @@ What the scenario controls, and what the simulator guarantees:
 
 Known gaps: the vDS is served under vcsim's base type
 `DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
-populated iSCSI target service, file service, NFS/FC/iSCSI datastores and
-successful REST inventory reads are not modeled (see [ROADMAP](docs/ROADMAP.md)).
-The OSA health summary covers cluster and host status and versions; many
-additional live health-detail fields are not yet modeled. The real 9.1.1
+populated iSCSI target service, file service, and FC/iSCSI-backed datastores
+are not modeled because the walk captured no populated examples. Shared NFS
+v3 datastores can be configured in a scenario. REST inventory reads share
+SOAP inventory identities; some nested VM and OSA health details remain partial. The real 9.1.1
 server returns full documents for `/sdk/vimService.wsdl` and `/sdk/vim.wsdl`.
 The simulator serves the captured service descriptor but does not serve
 `vim.wsdl`; a complete sanitized capture is needed to add it.
@@ -184,9 +184,9 @@ and gets a pty from the runner. `attach_to_vcenter` must be off under
 
 The OSA scenario and its evidence limits are described in the
 [scenario reference](docs/SCENARIO.md#osa-evidence-and-limits). The REST
-surface currently models sessions and selected captured failure statuses;
-successful inventory REST reads are not implemented. Non-vSAN storage and
-live vCenter access remain outside this milestone.
+surface models sessions, inventory reads, selected detail reads and captured
+failure statuses. Shared NFS v3 inventory is optional; live vCenter access
+remains outside this simulator.
 
 ## Running it
 

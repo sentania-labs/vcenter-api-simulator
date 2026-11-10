@@ -43,6 +43,13 @@ type Datacenter struct {
 	VDS      string
 	VDSUUID  string // the vDS uuid on /sdk (summary.uuid, proxy switch dvsUuid, vmkernel NIC switchUuid)
 	Clusters []*Cluster
+	NFS      []NFSDatastore
+}
+
+type NFSDatastore struct {
+	Spec   scenario.NFSDatastore
+	Serial int
+	UUID   string
 }
 
 // Portgroups every datacenter's vDS carries, in creation order. Host
@@ -262,6 +269,12 @@ func Generate(s *scenario.Scenario, r *registry.Registry) *Topology {
 			dc.Clusters = append(dc.Clusters, generateCluster(s, r, dc, t.TelemetrySeed, n))
 		}
 		t.Datacenters = append(t.Datacenters, dc)
+	}
+	for i, d := range s.Datacenters {
+		for _, n := range d.NFS {
+			serial := r.Serial("nfs/" + d.Name + "/" + n.Name)
+			t.Datacenters[i].NFS = append(t.Datacenters[i].NFS, NFSDatastore{Spec: n, Serial: serial, UUID: r.UUID("nfs", serial)})
+		}
 	}
 	return t
 }

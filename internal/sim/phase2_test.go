@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1184,5 +1185,180 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 	_ = res.Body.Close()
 	if res.StatusCode != 401 {
 		t.Fatalf("deleted session: %d", res.StatusCode)
+	}
+}
+
+func TestRestInventorySharesSOAPIdentities(t *testing.T) {
+	sc := tenClusters(t)
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "password")
+	res, err := e.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	for path, item := range map[string]struct{ key, ref string }{
+		"cluster":   {"cluster", e.sim.Clusters[0].Ref.Value},
+		"host":      {"host", e.sim.Clusters[0].Hosts[0].Value},
+		"datastore": {"datastore", e.sim.Clusters[0].Datastore.Value},
+		"vm":        {"vm", e.sim.Clusters[0].VMs[0].Value},
+	} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/api/vcenter/"+path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err := e.srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows []map[string]any
+		if err := json.NewDecoder(res.Body).Decode(&rows); err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		found := false
+		for _, row := range rows {
+			if row[item.key] == item.ref {
+				found = true
+				if row["name"] == "" {
+					t.Errorf("%s has empty name", path)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s did not include SOAP ref %s", path, item.ref)
+		}
+	}
+}
+
+func TestCapturedNFSDatastore(t *testing.T) {
+	data, err := os.ReadFile("fixtures/nfs-contract.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captured struct {
+		Type               string `json:"type"`
+		RemoteHost         string `json:"remoteHost"`
+		RemotePath         string `json:"remotePath"`
+		Capacity           int64  `json:"capacity"`
+		FreeSpace          int64  `json:"freeSpace"`
+		MultipleHostAccess bool   `json:"multipleHostAccess"`
+		Thin               bool   `json:"perFileThinProvisioningSupported"`
+	}
+	if err := json.Unmarshal(data, &captured); err != nil {
+		t.Fatal(err)
+	}
+	sc := tenClusters(t)
+	sc.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "shared-nfs", RemoteHost: captured.RemoteHost, RemotePath: captured.RemotePath, Capacity: captured.Capacity, FreeSpace: captured.FreeSpace}}
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("reader", "password"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	v, err := view.NewManager(e.client).CreateContainerView(ctx, e.client.ServiceContent.RootFolder, []string{"Datastore"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stores []mo.Datastore
+	if err := v.Retrieve(ctx, []string{"Datastore"}, []string{"name", "info", "summary", "host", "capability"}, &stores); err != nil {
+		t.Fatal(err)
+	}
+	for _, ds := range stores {
+		if ds.Name != "shared-nfs" {
+			continue
+		}
+		info, ok := ds.Info.(*types.NasDatastoreInfo)
+		if !ok || info.Nas == nil {
+			t.Fatalf("NFS info: %#v", ds.Info)
+		}
+		if info.Nas.RemoteHost != captured.RemoteHost || info.Nas.RemotePath != captured.RemotePath || info.Nas.Type != captured.Type {
+			t.Fatalf("NFS mount: %#v", info.Nas)
+		}
+		if ds.Summary.Capacity != captured.Capacity || ds.Summary.FreeSpace != captured.FreeSpace || ds.Summary.MultipleHostAccess == nil || *ds.Summary.MultipleHostAccess != captured.MultipleHostAccess || ds.Capability.PerFileThinProvisioningSupported != captured.Thin {
+			t.Fatalf("NFS summary: %#v", ds.Summary)
+		}
+		hosts := 0
+		for _, c := range e.sim.Clusters {
+			if c.Cluster.Datacenter == e.sim.Topology.Datacenters[0] {
+				hosts += len(c.Hosts)
+			}
+		}
+		if len(ds.Host) != hosts {
+			t.Fatalf("NFS mounts: got %d want %d", len(ds.Host), hosts)
+		}
+		return
+	}
+	t.Fatal("NFS datastore missing from SOAP inventory")
+}
+
+func TestCapturedOSAHealthDetails(t *testing.T) {
+	data, err := os.ReadFile("../vsanhealth/fixtures/osa-health-groups.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captured []struct {
+		ID    string `json:"groupId"`
+		Tests []struct {
+			ID string `json:"testId"`
+		} `json:"groupTests"`
+	}
+	if err := json.Unmarshal(data, &captured); err != nil {
+		t.Fatal(err)
+	}
+	sc := scenario.Phase1("osa-health-contract")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("reader", "password"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := vsanmethods.VsanQueryVcClusterHealthSummary(ctx, vc.Client, &vsantypes.VsanQueryVcClusterHealthSummary{This: vsanhealth.HealthSystemRef, Cluster: &e.cl().Ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := response.Returnval
+	if sum.Cluster == nil || *sum.Cluster != e.cl().Ref || sum.ObjectHealth == nil || sum.NetworkHealth == nil || sum.LimitHealth == nil || sum.DiskBalance == nil || sum.VsanConfig == nil {
+		t.Fatalf("missing health detail: %+v", sum)
+	}
+	if len(sum.PhysicalDisksHealth) != len(e.cl().Hosts) || len(sum.NetworkHealth.HostResults) != len(e.cl().Hosts) {
+		t.Fatal("health host counts differ from inventory")
+	}
+	for i, host := range sum.PhysicalDisksHealth {
+		expected := e.cl().Cluster.Hosts[i]
+		if host.Hostname != expected.Name {
+			t.Fatalf("disk host %s != %s", host.Hostname, expected.Name)
+		}
+		for _, disk := range host.Disks {
+			found := false
+			for _, d := range expected.Devices {
+				if d.Claimed && disk.Uuid == d.VsanUUID {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("unknown disk %s", disk.Uuid)
+			}
+		}
+	}
+	if len(sum.Groups) != len(captured) {
+		t.Fatalf("groups got %d want %d", len(sum.Groups), len(captured))
+	}
+	for i, group := range sum.Groups {
+		if group.GroupId != captured[i].ID || len(group.GroupTests) != len(captured[i].Tests) {
+			t.Errorf("group %d differs from fixture", i)
+			continue
+		}
+		for j, test := range group.GroupTests {
+			if test.TestId != captured[i].Tests[j].ID {
+				t.Errorf("group %d test %d differs", i, j)
+			}
+		}
 	}
 }

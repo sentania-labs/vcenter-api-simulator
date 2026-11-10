@@ -10,6 +10,10 @@ edit a running simulator in the control console (below). Examples live in
 vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443
 ```
 
+NFS entries describe simulated inventory and do not connect to the named server.
+Capacity and free space are bytes. The configured name must be unique within
+its datacenter, and the remote path must be absolute.
+
 ## Identity: seed, registry, regenerate
 
 Every identity a client keys on (the vCenter instance uuid, vSAN cluster
@@ -48,6 +52,12 @@ telemetrySeed: ""           # optional; metric values only (default: seed)
 datacenters:                # each gets one vDS (vds-01) with four portgroups
   - name: dc-01             # lower-case letters, digits, hyphens
     clusters: 10            # cluster-01 .. cluster-10
+    nfs:                    # optional shared NFS v3 inventory, mounted on every host
+      - name: shared-nfs
+        remoteHost: nfs.sim.invalid
+        remotePath: /exports/sim
+        capacity: 1000000000000
+        freeSpace: 800000000000
 
 defaults:                   # per-cluster defaults (built-in values shown)
   hosts: 4                  # at least 3: vSAN needs three hosts

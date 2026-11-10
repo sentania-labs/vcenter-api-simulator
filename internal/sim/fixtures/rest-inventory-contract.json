@@ -1,0 +1,95 @@
+{
+  "datacenter": [
+    "datacenter",
+    "name"
+  ],
+  "cluster": [
+    "cluster",
+    "drs_enabled",
+    "ha_enabled",
+    "name"
+  ],
+  "host": [
+    "connection_state",
+    "host",
+    "host_uuid",
+    "name",
+    "power_state"
+  ],
+  "datastore": [
+    "capacity",
+    "datastore",
+    "free_space",
+    "name",
+    "type"
+  ],
+  "network": [
+    "name",
+    "network",
+    "type"
+  ],
+  "vm": [
+    "cpu_count",
+    "memory_size_MiB",
+    "name",
+    "power_state",
+    "vm"
+  ],
+  "folder": [
+    "folder",
+    "name",
+    "type"
+  ],
+  "resource-pool": [
+    "name",
+    "resource_pool"
+  ],
+  "cluster-detail": [
+    "name",
+    "resource_pool"
+  ],
+  "datastore-detail": [
+    "accessible",
+    "free_space",
+    "multiple_host_access",
+    "name",
+    "thin_provisioning_supported",
+    "type"
+  ],
+  "vm-detail": [
+    "boot",
+    "boot_devices",
+    "cdroms",
+    "cpu",
+    "disks",
+    "floppies",
+    "guest_OS",
+    "hardware",
+    "identity",
+    "instant_clone_frozen",
+    "memory",
+    "name",
+    "nics",
+    "nvme_adapters",
+    "parallel_ports",
+    "power_state",
+    "sata_adapters",
+    "scsi_adapters",
+    "serial_ports"
+  ],
+  "vm-hardware": [
+    "upgrade_policy",
+    "upgrade_status",
+    "version"
+  ],
+  "vm-disk": [
+    "disk"
+  ],
+  "guest-identity": [
+    "family",
+    "full_name",
+    "host_name",
+    "ip_address",
+    "name"
+  ]
+}

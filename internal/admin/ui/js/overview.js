@@ -71,7 +71,7 @@ export default {
           ${tile('NVMe devices', int(p.nvme), p.hosts ? `${(p.nvme / p.hosts).toFixed(1)} per host claimed` : '')}
           ${tile('Logical CPUs', int(p.logicalCpus), p.hosts ? `${Math.round(p.logicalCpus / p.hosts)} per host` : '')}
           ${tile('DOM worlds', int(p.domWorlds), p.hosts ? `${Math.round(p.domWorlds / p.hosts)} per host` : '')}
-          ${tile('Datastores', int(p.datastores), `vSAN ${p.clusters} · local VMFS ${p.localDevices}`)}
+          ${tile('Datastores', int(p.datastores), `vSAN ${p.clusters} · local VMFS ${p.localDevices} · NFS ${p.nfsDatastores || 0}`)}
         </div>
         <h2 class="lat-card-title" style="margin-top:4px">Per cycle (5 min) <span class="aside">projected from topology, not measured · ${scopeName}</span></h2>
         <div class="tiles" style="grid-template-columns:repeat(4,1fr)">

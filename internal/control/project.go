@@ -75,6 +75,7 @@ type Projection struct {
 	LogicalCPUs int `json:"logicalCpus"`
 	DomWorlds   int `json:"domWorlds"`
 	Datastores  int `json:"datastores"`
+	NFS         int `json:"nfsDatastores"`
 
 	Families []FamilyProj `json:"families"`
 	All      Load         `json:"all"`
@@ -104,6 +105,10 @@ func (p *Projection) Selected(scope string) Load {
 // Project computes the cost of a topology.
 func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 	p := &Projection{PerCluster: map[string]ClusterLoad{}}
+	for _, dc := range t.Datacenters {
+		p.NFS += len(dc.NFS)
+		p.Datastores += len(dc.NFS)
+	}
 	namesSet := map[string]bool{}
 	for _, cl := range t.Clusters() {
 		for _, name := range vsanhealth.PerfFamilyNames(cat, cl) {

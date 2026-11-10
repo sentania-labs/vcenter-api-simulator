@@ -54,8 +54,18 @@ type Scenario struct {
 // Datacenter generates Clusters clusters named cluster-01, cluster-02, ...
 // under one datacenter with one vDS.
 type Datacenter struct {
-	Name     string `yaml:"name" json:"name,omitempty"`
-	Clusters int    `yaml:"clusters" json:"clusters,omitempty"`
+	Name     string         `yaml:"name" json:"name,omitempty"`
+	Clusters int            `yaml:"clusters" json:"clusters,omitempty"`
+	NFS      []NFSDatastore `yaml:"nfs" json:"nfs,omitempty"`
+}
+
+// NFSDatastore describes a shared NFS v3 mount in a datacenter.
+type NFSDatastore struct {
+	Name       string `yaml:"name" json:"name"`
+	RemoteHost string `yaml:"remoteHost" json:"remoteHost"`
+	RemotePath string `yaml:"remotePath" json:"remotePath"`
+	Capacity   int64  `yaml:"capacity" json:"capacity"`
+	FreeSpace  int64  `yaml:"freeSpace" json:"freeSpace"`
 }
 
 // ClusterSpec is the per-cluster cardinality. An unset value means "use
@@ -274,6 +284,13 @@ func (s *Scenario) Validate() error {
 			return fmt.Errorf("scenario: datacenter %q listed twice", dc.Name)
 		}
 		seen[dc.Name] = true
+		nfsNames := map[string]bool{}
+		for _, n := range dc.NFS {
+			if !nameRe.MatchString(n.Name) || nfsNames[n.Name] || n.RemoteHost == "" || !strings.HasPrefix(n.RemotePath, "/") || n.Capacity <= 0 || n.FreeSpace < 0 || n.FreeSpace > n.Capacity {
+				return fmt.Errorf("scenario: datacenter %q: invalid NFS datastore %q", dc.Name, n.Name)
+			}
+			nfsNames[n.Name] = true
+		}
 		if dc.Clusters < 0 {
 			return fmt.Errorf("scenario: datacenter %q: clusters must not be negative", dc.Name)
 		}

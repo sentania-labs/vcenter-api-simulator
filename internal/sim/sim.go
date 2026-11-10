@@ -150,7 +150,7 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0, rest: restSessions{tokens: map[string]bool{}, credentials: creds}}
+	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0, rest: restSessions{tokens: map[string]bool{}, credentials: creds, registry: m.Service.Context.Map, catalog: cat}}
 	return s, nil
 }
 
@@ -206,9 +206,20 @@ func (s *Simulator) build() error {
 	// Registries predating reservations created every local datastore during
 	// its host step, even when its device serial was allocated much later.
 	legacyOrder := s.registry == nil || s.registry.MorefHigh() == 0
+	nfsRefs := map[string]*simulator.Datastore{}
 	for _, dc := range s.Topology.Datacenters {
 		dc := dc
 		steps = append(steps, step{dc.Serial, dc.Serial, func() error { return s.createDatacenter(ctx, dc) }})
+		for _, n := range dc.NFS {
+			n := n
+			steps = append(steps, step{n.Serial, n.Serial, func() error {
+				ds, err := s.createNFS(ctx, dc, n)
+				if err == nil {
+					nfsRefs[n.UUID] = ds
+				}
+				return err
+			}})
+		}
 		for _, cl := range dc.Clusters {
 			cl := cl
 			refs := &ClusterRefs{Cluster: cl}
@@ -294,6 +305,11 @@ func (s *Simulator) build() error {
 			refs.VMs[i] = vms[vm.Name]
 		}
 		s.finishCluster(ctx, refs)
+	}
+	for _, dc := range s.Topology.Datacenters {
+		for _, nfs := range dc.NFS {
+			s.mountNFS(ctx, dc, nfs, nfsRefs[nfs.UUID])
+		}
 	}
 	return nil
 }
