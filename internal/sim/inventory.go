@@ -88,7 +88,7 @@ func vsanHostConfig(ref types.ManagedObjectReference, cl *topology.Cluster, h *t
 			IpConfig: &types.VsanHostIpConfig{UpstreamIpAddress: "224.1.2.3", DownstreamIpAddress: "224.2.3.4"},
 		}}},
 		FaultDomainInfo: &types.VsanHostFaultDomainInfo{Name: ""},
-		VsanEsaEnabled:  types.NewBool(true),
+		VsanEsaEnabled:  types.NewBool(cl.Spec.Architecture != "osa"),
 	}
 }
 

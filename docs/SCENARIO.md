@@ -51,6 +51,7 @@ datacenters:                # each gets one vDS (vds-01) with four portgroups
 
 defaults:                   # per-cluster defaults (built-in values shown)
   hosts: 4                  # at least 3: vSAN needs three hosts
+  architecture: esa         # esa (default) or osa; OSA disables dedup and compression
   dedup: true               # ESA dedup: the *-esa-dedup-* families carry data
   compression: true
   host:

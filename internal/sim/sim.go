@@ -350,7 +350,7 @@ func (s *Simulator) createCluster(ctx *simulator.Context, refs *ClusterRefs) err
 	cfg.VsanConfigInfo = &types.VsanClusterConfigInfo{
 		Enabled:        types.NewBool(false),
 		DefaultConfig:  &types.VsanClusterConfigInfoHostDefaultInfo{Uuid: cl.VsanUUID, AutoClaimStorage: types.NewBool(false)},
-		VsanEsaEnabled: types.NewBool(true),
+		VsanEsaEnabled: types.NewBool(cl.Spec.Architecture != "osa"),
 	}
 	shapeClusterConfig(cfg, cl)
 	s.Env.RegisterCluster(refs.Ref, cl)

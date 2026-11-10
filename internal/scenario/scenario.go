@@ -63,11 +63,12 @@ type Datacenter struct {
 // counts that may legitimately be zero are pointers so that zero can be
 // set.
 type ClusterSpec struct {
-	Hosts       int      `yaml:"hosts" json:"hosts,omitempty"`
-	Dedup       *bool    `yaml:"dedup" json:"dedup,omitempty"`
-	Compression *bool    `yaml:"compression" json:"compression,omitempty"`
-	Host        HostSpec `yaml:"host" json:"host,omitempty"`
-	VMs         VMSpec   `yaml:"vms" json:"vms,omitempty"`
+	Architecture string   `yaml:"architecture" json:"architecture,omitempty"`
+	Hosts        int      `yaml:"hosts" json:"hosts,omitempty"`
+	Dedup        *bool    `yaml:"dedup" json:"dedup,omitempty"`
+	Compression  *bool    `yaml:"compression" json:"compression,omitempty"`
+	Host         HostSpec `yaml:"host" json:"host,omitempty"`
+	VMs          VMSpec   `yaml:"vms" json:"vms,omitempty"`
 }
 
 // HostSpec is the per-host cardinality.
@@ -421,6 +422,8 @@ func faultMethodNames() []string {
 
 func (c ClusterSpec) check(where string) error {
 	switch {
+	case c.Architecture != "" && c.Architecture != "esa" && c.Architecture != "osa":
+		return fmt.Errorf("scenario: %s: architecture must be esa or osa", where)
 	case c.Hosts < MinHosts:
 		return fmt.Errorf("scenario: %s: hosts must be at least %d (vSAN needs three hosts)", where, MinHosts)
 	case c.Host.Threads < 1:
@@ -444,6 +447,9 @@ func (c ClusterSpec) check(where string) error {
 // merge overlays the non-zero fields of over onto base.
 func merge(base, over ClusterSpec) ClusterSpec {
 	out := base
+	if over.Architecture != "" {
+		out.Architecture = over.Architecture
+	}
 	if over.Hosts != 0 {
 		out.Hosts = over.Hosts
 	}

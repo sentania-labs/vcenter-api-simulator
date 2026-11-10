@@ -31,7 +31,7 @@ func newHostVsanSystem(hostRef types.ManagedObjectReference, cl *topology.Cluste
 			Uuid:     cl.VsanUUID,
 			NodeUuid: h.NodeUUID,
 		},
-		VsanEsaEnabled: types.NewBool(true),
+		VsanEsaEnabled: types.NewBool(cl.Spec.Architecture != "osa"),
 	}
 	return s
 }

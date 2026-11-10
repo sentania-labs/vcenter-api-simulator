@@ -772,3 +772,64 @@ defaults: {hosts: 4, vms: {perHost: 2}}
 		}
 	}
 }
+
+func TestOSAArchitectureDiscriminator(t *testing.T) {
+	sc, err := scenario.Parse([]byte(`seed: osa-test
+datacenters:
+  - name: dc-01
+    clusters: 2
+defaults:
+  hosts: 3
+  architecture: esa
+clusters:
+  - key: dc-01/cluster-02
+    architecture: osa
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	e := startWith(t, topo, sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := property.DefaultCollector(e.client)
+	for i, c := range e.sim.Clusters {
+		wantESA := i == 0
+		cfg, err := vc.VsanClusterGetConfig(ctx, c.Ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.VsanEsaEnabled == nil || *cfg.VsanEsaEnabled != wantESA {
+			t.Errorf("cluster %d vsanHealth ESA: %+v", i, cfg.VsanEsaEnabled)
+		}
+		if !wantESA && cfg.DataEfficiencyConfig.DedupEnabled {
+			t.Error("OSA dedup should be disabled")
+		}
+		if !wantESA {
+			req := `<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/"><Body><VsanClusterGetConfig xmlns="urn:vsan"><_this type="VsanVcClusterConfigSystem">vsan-cluster-config-system</_this><cluster type="ClusterComputeResource">` + c.Ref.Value + `</cluster></VsanClusterGetConfig></Body></Envelope>`
+			status, body := e.post("/vsanHealth", req)
+			if status != 200 || !strings.Contains(string(body), "<dedupStoreUuid></dedupStoreUuid>") {
+				t.Errorf("OSA data efficiency XML: status %d, %s", status, body)
+			}
+		}
+		var moCluster mo.ClusterComputeResource
+		if err := pc.RetrieveOne(ctx, c.Ref, []string{"configurationEx"}, &moCluster); err != nil {
+			t.Fatal(err)
+		}
+		config := moCluster.ConfigurationEx.(*types.ClusterConfigInfoEx)
+		if config.VsanConfigInfo.VsanEsaEnabled == nil || *config.VsanConfigInfo.VsanEsaEnabled != wantESA {
+			t.Errorf("cluster %d sdk ESA mismatch", i)
+		}
+		for _, host := range config.VsanHostConfig {
+			if host.VsanEsaEnabled == nil || *host.VsanEsaEnabled != wantESA {
+				t.Errorf("cluster %d host ESA mismatch", i)
+			}
+		}
+	}
+}

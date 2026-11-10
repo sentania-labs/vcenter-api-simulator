@@ -258,8 +258,8 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		Name: name, Key: key, Datacenter: dc,
 		Serial:        r.Serial("cluster/" + key),
 		TelemetrySeed: telemetrySeed,
-		Dedup:         *spec.Dedup,
-		Compression:   *spec.Compression,
+		Dedup:         *spec.Dedup && spec.Architecture != "osa",
+		Compression:   *spec.Compression && spec.Architecture != "osa",
 		Spec:          spec,
 	}
 	if e := s.SeedEpoch(key); e > 0 {
