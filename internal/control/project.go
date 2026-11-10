@@ -2,10 +2,10 @@ package control
 
 import (
 	"sort"
-	"strings"
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
+	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
 
 // Scopes: which entity kinds the management pack's adapter instance asks
@@ -48,7 +48,7 @@ type FamilyProj struct {
 	Behaviour string `json:"behaviour"`
 	Dashboard bool   `json:"dashboard"`
 	Objects   int    `json:"objects"`
-	Metrics   int    `json:"metrics"` // labels per object
+	Metrics   int    `json:"metrics"` // maximum labels per object across clusters
 	Series    int    `json:"series"`
 }
 
@@ -77,9 +77,10 @@ type Projection struct {
 	Families []FamilyProj `json:"families"`
 	All      Load         `json:"all"`
 	Dash     Load         `json:"dashboard"`
-	// Empty counts the PerfQuery calls whose kind answers empty or with a
-	// fault on ESA (the provisional kinds).
+	// EmptyKinds counts families with no projected entities on any cluster.
 	EmptyKinds int `json:"emptyKinds"`
+	// EmptyCalls counts per-cluster queries returning no samples or a fault.
+	EmptyCalls int `json:"emptyCalls"`
 
 	PerCluster map[string]ClusterLoad `json:"perCluster"`
 }
@@ -98,61 +99,28 @@ func (p *Projection) Selected(scope string) Load {
 	return p.All
 }
 
-// shapeCount is how many entities of one identifier shape a cluster has;
-// it mirrors vsanhealth.Entities without building the strings (a test holds
-// the two together).
-func shapeCount(shape string, cl *topology.Cluster) int {
-	n := 0
-	switch shape {
-	case "cluster":
-		return 1
-	case "node", "node|defaultTcpipStack", "node|defaultTcpipStack|vmkN", "node|vmkN":
-		return len(cl.Hosts)
-	case "node|cpu-N":
-		for _, h := range cl.Hosts {
-			n += h.Threads
-		}
-	case "node|VSAN_0xHEX_NAME|N":
-		for _, h := range cl.Hosts {
-			n += len(h.Worlds)
-		}
-	case "node|vmnicN":
-		for _, h := range cl.Hosts {
-			n += len(h.Pnics)
-		}
-	case "disk":
-		for _, h := range cl.Hosts {
-			for _, d := range h.Devices {
-				if d.Claimed {
-					n++
-				}
-			}
-		}
-	case "vm":
-		return len(cl.VMs)
-	case "vm|scsiN:M", "vdisk-path":
-		for _, vm := range cl.VMs {
-			n += len(vm.Disks)
-		}
-	}
-	return n
-}
-
 // Project computes the cost of a topology.
 func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 	p := &Projection{PerCluster: map[string]ClusterLoad{}}
-	names := make([]string, 0, len(cat.Families))
-	for n := range cat.Families {
-		names = append(names, n)
+	namesSet := map[string]bool{}
+	for _, cl := range t.Clusters() {
+		for _, name := range vsanhealth.PerfFamilyNames(cat, cl) {
+			namesSet[name] = true
+		}
+	}
+	if len(t.Clusters()) == 0 {
+		for name := range cat.Families {
+			namesSet[name] = true
+		}
+	}
+	names := make([]string, 0, len(namesSet))
+	for name := range namesSet {
+		names = append(names, name)
 	}
 	sort.Strings(names)
 	fam := map[string]*FamilyProj{}
-	for _, n := range names {
-		f := cat.Families[n]
-		fam[n] = &FamilyProj{Family: n, Behaviour: string(f.Behaviour), Dashboard: dashboardKinds[n], Metrics: len(f.Labels)}
-		if f.Behaviour != catalog.Data {
-			p.EmptyKinds++
-		}
+	for _, name := range names {
+		fam[name] = &FamilyProj{Family: name, Dashboard: dashboardKinds[name]}
 	}
 	for _, cl := range t.Clusters() {
 		p.Clusters++
@@ -176,26 +144,48 @@ func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 			p.VDisks += len(vm.Disks)
 		}
 		for _, n := range names {
-			f := cat.Families[n]
+			f, known := vsanhealth.EffectiveFamily(cat, cl, n)
+			// Unknown names are rejected by the service as InvalidArgument.
+			if !known {
+				f.Behaviour = catalog.InvalidArgument
+			}
+			row := fam[n]
+			behaviour := string(f.Behaviour)
+			if row.Behaviour == "" {
+				row.Behaviour = behaviour
+			} else if row.Behaviour != behaviour {
+				row.Behaviour = "mixed"
+			}
 			if f.Behaviour != catalog.Data {
+				p.EmptyCalls++
 				continue
 			}
-			if !cl.Dedup && strings.Contains(n, "-esa-dedup-") {
-				continue
+			refs, err := vsanhealth.PerfEntities(cat, cl, n)
+			if err != nil {
+				panic(err)
 			}
-			objs := 0
-			for _, shape := range f.RefShapes {
-				objs += shapeCount(shape, cl)
+			objs, metrics := len(refs), len(f.Labels)
+			if objs == 0 {
+				p.EmptyCalls++
 			}
-			fam[n].Objects += objs
-			fam[n].Series += objs * len(f.Labels)
+			if row.Metrics != 0 && row.Metrics != metrics {
+				row.Behaviour = "mixed"
+			}
+			if metrics > row.Metrics {
+				row.Metrics = metrics
+			}
+			row.Objects += objs
+			row.Series += objs * metrics
 			cEnt += objs
-			cSer += objs * len(f.Labels)
+			cSer += objs * metrics
 		}
 		p.PerCluster[cl.Key] = ClusterLoad{Entities: cEnt, Series: cSer}
 	}
 	for _, n := range names {
 		f := fam[n]
+		if f.Objects == 0 {
+			p.EmptyKinds++
+		}
 		p.Families = append(p.Families, *f)
 		for _, l := range []*Load{&p.All, &p.Dash} {
 			if l == &p.Dash && !f.Dashboard {

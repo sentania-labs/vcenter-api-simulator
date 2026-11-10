@@ -25,13 +25,17 @@ type osaFamily struct {
 var osaOnce sync.Once
 var osaFamilies map[string]osaFamily
 
-func osaFamilyFor(name string) (osaFamily, bool) {
+func loadOSAFamilies() map[string]osaFamily {
 	osaOnce.Do(func() {
 		if err := json.Unmarshal(osaPerfJSON, &osaFamilies); err != nil {
 			panic(err)
 		}
 	})
-	f, ok := osaFamilies[name]
+	return osaFamilies
+}
+
+func osaFamilyFor(name string) (osaFamily, bool) {
+	f, ok := loadOSAFamilies()[name]
 	return f, ok
 }
 
@@ -96,14 +100,21 @@ func osaValueIsNone(f osaFamily, label string) bool {
 }
 
 // Wildcard outcomes observed in the OSA walk with the stats primary online.
-func osaOtherBehavior(family string) (catalog.Behaviour, bool) {
-	switch family {
-	case "cluster-esa-dedup-domcompmgr-io", "cluster-esa-dedup-domowner-io", "cluster-esa-dedup-store-chunksvc", "cluster-esa-dedup-store-hashsvc", "cluster-remotedomclient", "cluster-zdom-top-stats", "computeHost-remotedomclient", "host-esa-dedup-domcompmgr-io", "host-esa-dedup-domowner-io", "host-esa-dedup-store-chunksvc", "host-esa-dedup-store-hashsvc", "host-remotedomclient", "host-zdom-top-stats", "ioinsight", "virtual-disk", "virtual-machine", "vsan-direct-cluster", "vsan-direct-host", "vsan-esa-disk-layer", "vsan-esa-disk-scsifw", "vsan-file-service", "vsan-iscsi-host", "vsan-iscsi-lun", "vsan-iscsi-target", "vscsi", "zdom-vtx":
-		return catalog.Empty, true
-	case "clom-disk", "clom-host", "cmmds-workload", "computeCluster-remotedomclient", "ddh-disk", "heap-memory", "remote-virtual-disk", "remote-virtual-machine", "remote-vscsi", "slab-memory", "vsan-dp-historical-stats", "vsan-esa-dedup-hash", "vsan-esa-dedup-journal", "vsan-esa-dedup-reorder", "vsan-esa-dedup-xip", "vsan-esa-nvme-namespace":
-		return catalog.InvalidArgument, true
-	case "host-pmem", "cluster-pmem":
-		return catalog.NotSupported, true
+var osaOtherBehaviors = func() map[string]catalog.Behaviour {
+	result := map[string]catalog.Behaviour{}
+	for _, name := range []string{"cluster-esa-dedup-domcompmgr-io", "cluster-esa-dedup-domowner-io", "cluster-esa-dedup-store-chunksvc", "cluster-esa-dedup-store-hashsvc", "cluster-remotedomclient", "cluster-zdom-top-stats", "computeHost-remotedomclient", "host-esa-dedup-domcompmgr-io", "host-esa-dedup-domowner-io", "host-esa-dedup-store-chunksvc", "host-esa-dedup-store-hashsvc", "host-remotedomclient", "host-zdom-top-stats", "ioinsight", "virtual-disk", "virtual-machine", "vsan-direct-cluster", "vsan-direct-host", "vsan-esa-disk-layer", "vsan-esa-disk-scsifw", "vsan-file-service", "vsan-iscsi-host", "vsan-iscsi-lun", "vsan-iscsi-target", "vscsi", "zdom-vtx"} {
+		result[name] = catalog.Empty
 	}
-	return "", false
+	for _, name := range []string{"clom-disk", "clom-host", "cmmds-workload", "computeCluster-remotedomclient", "ddh-disk", "heap-memory", "remote-virtual-disk", "remote-virtual-machine", "remote-vscsi", "slab-memory", "vsan-dp-historical-stats", "vsan-esa-dedup-hash", "vsan-esa-dedup-journal", "vsan-esa-dedup-reorder", "vsan-esa-dedup-xip", "vsan-esa-nvme-namespace"} {
+		result[name] = catalog.InvalidArgument
+	}
+	for _, name := range []string{"host-pmem", "cluster-pmem"} {
+		result[name] = catalog.NotSupported
+	}
+	return result
+}()
+
+func osaOtherBehavior(family string) (catalog.Behaviour, bool) {
+	behaviour, ok := osaOtherBehaviors[family]
+	return behaviour, ok
 }

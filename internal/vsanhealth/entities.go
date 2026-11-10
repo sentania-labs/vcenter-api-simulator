@@ -8,6 +8,63 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
 
+// EffectiveFamily describes the nominal wildcard response on a cluster.
+// Scenario-injected faults and time windows are intentionally not projected.
+func EffectiveFamily(c *catalog.Catalog, cl *topology.Cluster, family string) (catalog.Family, bool) {
+	f, known := c.Families[family]
+	if cl == nil {
+		return f, known
+	}
+	if cl.Spec.Architecture == "osa" {
+		if osa, ok := osaFamilyFor(family); ok {
+			f.Behaviour, f.Labels, known = catalog.Data, osa.Labels, true
+		} else if behaviour, ok := osaOtherBehavior(family); ok {
+			f.Behaviour, f.Labels, known = behaviour, nil, true
+		}
+	} else if known && f.Behaviour == catalog.Data && !cl.Dedup && strings.Contains(family, "-esa-dedup-") {
+		f.Behaviour = catalog.Empty
+	}
+	if cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		f.Behaviour, known = catalog.Behaviour("not-found"), true
+	}
+	return f, known
+}
+
+// PerfFamilyNames includes the OSA-only wildcard names the service accepts.
+func PerfFamilyNames(c *catalog.Catalog, cl *topology.Cluster) []string {
+	names := make([]string, 0, len(c.Families)+5)
+	for name := range c.Families {
+		names = append(names, name)
+	}
+	if cl != nil && cl.Spec.Architecture == "osa" {
+		for name := range loadOSAFamilies() {
+			if _, exists := c.Families[name]; !exists {
+				names = append(names, name)
+			}
+		}
+		for name := range osaOtherBehaviors {
+			if _, exists := c.Families[name]; !exists {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
+// PerfEntities enumerates exactly the entities used by the wildcard handler.
+func PerfEntities(c *catalog.Catalog, cl *topology.Cluster, family string) ([]string, error) {
+	f, known := EffectiveFamily(c, cl, family)
+	if !known || f.Behaviour != catalog.Data || cl == nil {
+		return nil, nil
+	}
+	if cl.Spec.Architecture == "osa" {
+		if _, ok := osaFamilyFor(family); ok {
+			return osaEntities(cl, family), nil
+		}
+	}
+	return Entities(c, cl, family)
+}
+
 // Entities enumerates the entityRefIds of a family on a cluster, driven by
 // the identifier shapes the catalog derived from the capture, so the
 // simulator can only emit the shapes the live service did.

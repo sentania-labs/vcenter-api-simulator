@@ -188,19 +188,11 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 	res := &queryPerfResponse{}
 	for _, spec := range req.QuerySpecs {
 		family, tail, ok := splitRef(spec.EntityRefId)
-		f, known := m.env.Catalog.Families[family]
+		f, known := EffectiveFamily(m.env.Catalog, cl, family)
 		var osa osaFamily
 		osaData := false
 		if cl != nil && cl.Spec.Architecture == "osa" {
 			osa, osaData = osaFamilyFor(family)
-			if osaData {
-				known = true
-				f.Behaviour = catalog.Data
-				f.Labels = osa.Labels
-			} else if behavior, found := osaOtherBehavior(family); found {
-				known = true
-				f.Behaviour = behavior
-			}
 		}
 		if !ok || !known || tail == "" {
 			return &queryPerfBody{Fault_: faultInvalidRef()}
@@ -229,7 +221,7 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 				return &queryPerfBody{Fault_: faultWildcardRange(family)}
 			}
 		}
-		if f.Behaviour == catalog.Empty || cl == nil || (!osaData && !cl.Dedup && strings.Contains(family, "-esa-dedup-")) {
+		if f.Behaviour == catalog.Empty || cl == nil {
 			res.Returnval = append(res.Returnval, entityMetricCSV{EntityRefId: spec.EntityRefId})
 			continue
 		}
@@ -241,13 +233,7 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 			end = *spec.EndTime
 		}
 		buckets := perf.Buckets(start, end, now)
-		var refs []string
-		var err error
-		if osaData {
-			refs = osaEntities(cl, family)
-		} else {
-			refs, err = Entities(m.env.Catalog, cl, family)
-		}
+		refs, err := PerfEntities(m.env.Catalog, cl, family)
 		if err != nil {
 			return &queryPerfBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
 		}
