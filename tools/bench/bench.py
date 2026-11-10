@@ -336,10 +336,12 @@ def git_commit():
 
 
 def run(args):
-    os.makedirs(args.out, mode=0o700, exist_ok=True)
-    os.chmod(args.out, 0o700)
+    if os.path.isdir(args.out) and os.listdir(args.out):
+        raise SystemExit(f"--out {args.out} exists and is not empty; choose a new or empty directory")
+    os.umask(0o077)
+    os.makedirs(args.out, exist_ok=True)
     data_dir = os.path.join(args.out, "data")
-    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(data_dir)
     catalog = read_catalog()
     proc, described = start_sim(args.port, args.scenario, data_dir)
     base = f"https://127.0.0.1:{args.port}"
@@ -400,7 +402,6 @@ def run(args):
         fh.write(txt + "\n")
     print(txt)
     shutil.copyfile(os.path.join(data_dir, "queries.jsonl"), os.path.join(args.out, "queries.jsonl"))
-    os.chmod(os.path.join(args.out, "queries.jsonl"), 0o600)
     shutil.copyfile(args.scenario, os.path.join(args.out, "scenario.yaml"))
     if not args.keep:
         shutil.rmtree(data_dir)
