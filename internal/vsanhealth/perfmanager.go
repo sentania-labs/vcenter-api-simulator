@@ -75,6 +75,21 @@ func (m *PerfManager) VsanPerfQueryTimeRanges(ctx *simulator.Context, req *vsant
 	return &methods.VsanPerfQueryTimeRangesBody{Res: &vsantypes.VsanPerfQueryTimeRangesResponse{}}
 }
 
+func (m *PerfManager) VsanPerfQueryClusterHealth(ctx *simulator.Context, req *vsantypes.VsanPerfQueryClusterHealth) soap.HasFault {
+	cl := m.env.Cluster(&req.Cluster)
+	status := "green"
+	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+		status = "yellow"
+	}
+	group := &vsantypes.VsanClusterHealthGroup{GroupId: "com.vmware.vsan.health.test.perfsvc", GroupName: "Performance service", GroupHealth: status}
+	if status == "yellow" {
+		group.GroupTests = []vsantypes.VsanClusterHealthTest{{TestId: "com.vmware.vsan.health.test.perfsvcstatus", TestName: "Performance service status", TestHealth: status}}
+	} else {
+		group.GroupTests = []vsantypes.VsanClusterHealthTest{{TestId: "com.vmware.vsan.health.test.statsdb", TestName: "Stats DB object", TestDescription: "Checks the health of the vSAN performance service statistics database object", TestHealth: status}, {TestId: "com.vmware.vsan.health.test.masterexist", TestName: "Stats primary election", TestHealth: status}, {TestId: "com.vmware.vsan.health.test.collection", TestName: "Performance data collection", TestHealth: status}}
+	}
+	return &methods.VsanPerfQueryClusterHealthBody{Res: &vsantypes.VsanPerfQueryClusterHealthResponse{Returnval: []vim25types.BaseDynamicData{group}}}
+}
+
 // VsanPerfQueryNodeInformation lists the cluster's hosts as the Performance
 // Service sees them (fixture nodeinfo-domain-c6004): the first host is the
 // CMMDS and stats master and carries masterInfo.

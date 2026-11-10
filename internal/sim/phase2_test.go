@@ -986,3 +986,41 @@ func TestOSAPerfPrimaryStates(t *testing.T) {
 		})
 	}
 }
+
+func TestOSAHealthReads(t *testing.T) {
+	sc := scenario.Phase1("osa-health")
+	sc.Defaults.Architecture = "osa"
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	vc, err := vsan.NewClient(ctx, e.client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := vsanmethods.VsanQueryAllSupportedHealthChecks(ctx, vc.Client, &vsantypes.VsanQueryAllSupportedHealthChecks{This: vsanhealth.HealthSystemRef})
+	if err != nil || len(checks.Returnval) < 100 {
+		t.Fatalf("checks: %v %v", checks, err)
+	}
+	config, err := vsanmethods.VsanHealthQueryVsanClusterHealthConfig(ctx, vc.Client, &vsantypes.VsanHealthQueryVsanClusterHealthConfig{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
+	if err != nil || len(config.Returnval.Configs) < 100 {
+		t.Fatalf("config: %v %v", config, err)
+	}
+	interval, err := vsanmethods.VsanHealthQueryVsanClusterHealthCheckInterval(ctx, vc.Client, &vsantypes.VsanHealthQueryVsanClusterHealthCheckInterval{This: vsanhealth.HealthSystemRef, Cluster: e.cl().Ref})
+	if err != nil || interval.Returnval != 60 {
+		t.Fatalf("interval: %v %v", interval, err)
+	}
+	summary, err := vsanmethods.VsanQueryVcClusterHealthSummary(ctx, vc.Client, &vsantypes.VsanQueryVcClusterHealthSummary{This: vsanhealth.HealthSystemRef, Cluster: &e.cl().Ref})
+	if err != nil || summary.Returnval.ClusterStatus.Status != "green" || len(summary.Returnval.ClusterVersions.HostResults) != len(e.cl().Cluster.Hosts) {
+		t.Fatalf("summary: %v %v", summary, err)
+	}
+	health, err := vsanmethods.VsanPerfQueryClusterHealth(ctx, vc.Client, &vsantypes.VsanPerfQueryClusterHealth{This: vsanhealth.PerfManagerRef, Cluster: e.cl().Ref})
+	if err != nil || len(health.Returnval) != 1 {
+		t.Fatalf("perf health: %v %v", health, err)
+	}
+	group, ok := health.Returnval[0].(*vsantypes.VsanClusterHealthGroup)
+	if !ok || group.GroupHealth != "green" {
+		t.Fatalf("perf group: %+v", health.Returnval[0])
+	}
+}
