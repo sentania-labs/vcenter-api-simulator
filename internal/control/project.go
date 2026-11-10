@@ -35,9 +35,6 @@ var dashboardKinds = map[string]bool{
 	"host-esa-dedup-store-chunksvc": true, "host-esa-dedup-store-hashsvc": true,
 }
 
-// InDashboard reports whether a family is in the dashboard scope.
-func InDashboard(family string) bool { return dashboardKinds[family] }
-
 // Estimated wire cost of one cycle's answers: a series' CSV element and its
 // three samples, an entity's wrapper. Estimates, shown as such.
 const (

@@ -189,14 +189,6 @@ func (l *Log) Totals() Totals {
 		Refused: l.refused, Denied: l.denied, Bytes: l.bytes, Held: held}
 }
 
-// Reset empties the ring and the counters.
-func (l *Log) Reset(now time.Time) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.next, l.full, l.since = 0, false, now
-	l.total, l.injected, l.faults, l.refused, l.denied, l.bytes = 0, 0, 0, 0, 0, 0
-}
-
 // ---------------------------------------------------------------------------
 // capture: reading what a handler wrote without keeping it
 

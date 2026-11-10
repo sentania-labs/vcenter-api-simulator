@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
@@ -132,14 +131,7 @@ func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 		return call, nil
 	})
 
-	// VCSIM_UI_DIR serves the console from disk instead of the embedded copy,
-	// so UI work needs no rebuild.
-	var sub fs.FS
-	if dir := os.Getenv("VCSIM_UI_DIR"); dir != "" {
-		sub = os.DirFS(dir)
-	} else {
-		sub, _ = fs.Sub(uiFiles, "ui")
-	}
+	sub, _ := fs.Sub(uiFiles, "ui")
 	mux.Handle("GET /", noCache(http.FileServerFS(sub)))
 	return guard(mux, allowedHosts)
 }
