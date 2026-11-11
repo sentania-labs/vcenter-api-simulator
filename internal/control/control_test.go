@@ -2045,3 +2045,48 @@ func TestScenarioUserRoleIsExplicit(t *testing.T) {
 		t.Fatal("unknown role accepted")
 	}
 }
+
+// Deleting a cluster must not strand a host version set for one of its hosts:
+// the review drops it and the draft stays applicable.
+func TestReviewDropsHostVersionsOfDeletedHosts(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
+	raw, err := json.Marshal(c.applied().sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["hostVersions"] = map[string]any{"dc-01/cluster-05/esx01": map[string]any{"preset": "9.0"}}
+	raw, _ = json.Marshal(doc)
+	if _, err := c.SetDraft(raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DeleteCluster("dc-01/cluster-05"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Review(); err != nil {
+		t.Fatalf("review of a draft with a stale host version: %v", err)
+	}
+	if len(c.DraftState().Scenario.HostVersions) != 0 {
+		t.Fatal("version set for a deleted host survived in the draft")
+	}
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+}
+
+func TestCredentialRoleAppliesToFlagUser(t *testing.T) {
+	ctl, err := New(Options{Scenario: scenario.Phase1("flag-role"), DataDir: t.TempDir(),
+		Credentials: map[string]string{"viewer": "pw"}, CredentialRole: "read-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	for _, u := range ctl.CredentialsView().Users {
+		if u.Name == "viewer" && u.Role != "read-only" {
+			t.Fatalf("flag user role %q", u.Role)
+		}
+	}
+}

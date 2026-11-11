@@ -147,18 +147,20 @@ reset is intended. This acceptance procedure performs none of those removals.
 
 ## Version surfaces (mixed ESX releases)
 
-This check uses no Operations instance. `tools/smoke/versions.yaml` is a 9.0
-vCenter with one cluster of 8.0 U3 hosts, one of which is already 9.0, and one
-cluster that follows the vCenter. Run by `tools/smoke/smoke.sh` in CI (govc and
-REST) and by `tools/smoke/smoke.ps1` (PowerCLI):
+This check uses no Operations instance and no management pack. It runs in the
+`smoke` job of `.github/workflows/ci.yml` (GitHub-hosted runner) as
+`tools/smoke/smoke.sh --scenario examples/scenarios/ten-clusters.yaml --powercli`,
+and locally with the same command (`--versions` skips PowerCLI).
 
-| Surface | Client | Expected |
+| What runs | Client | Asserts |
 |---|---|---|
-| vCenter about | `govc about` | 9.0.0, build 24755230, API 9.0.0.0 |
-| Host product, version and API version | `govc object.collect config.product` | 9.0.0 / 9.0.0.0 for the 9.0 hosts, 8.0.3 / 8.0.3.0 for the 8.0 U3 hosts |
-| Host version | PowerCLI `Get-VMHost` | the same per host (`-ExpectedVCenterVersion`, `-ExpectedHostVersions`) |
-| vCenter version | REST `/api/appliance/system/version` | 9.0.0.0, build 24755230 |
-| vSAN service versions | `/sdk/vsanServiceVersions.xml` | newest namespace 9.0.0.0 |
+| 8.0 U3 preset, one cluster | govc, REST, `/sdk/vsanServiceVersions.xml` | vCenter 8.0.3 build 24022515 API 8.0.3.0; every host 8.0.3 build 24022510 API 8.0.3.0; REST `8.0.3.00000`; vSAN namespace 8.0.0.4 |
+| 9.1.1 preset, one cluster | govc, REST, vSAN service versions | vCenter 9.1.1 build 25784172 API 9.1.1.0; every host 9.1.1 build 25782009; REST `9.1.1.0100`; vSAN namespace 9.1.1.0 |
+| `tools/smoke/versions.yaml`: 9.0 vCenter, one 8.0 U3 cluster with one 9.0 host, one 9.0 cluster | govc | vCenter 9.0.0 build 24755230 API 9.0.0.0; each host's version and API version as configured; REST `9.0.0.0`; vSAN namespace 9.0.0.0 |
+| the same mixed scenario | PowerCLI `smoke.ps1 -ExpectedVCenterVersion -ExpectedHostVersions` | `Connect-VIServer`/`Get-VMHost` report vCenter 9.0.0 and the configured host versions |
+
+The 9.0 preset alone is covered by the mixed scenario. The packaged-container
+job in `package.yml` runs `smoke.ps1` without version arguments.
 
 Limits: the vSphere Automation REST host list has no product-version field, so
 host versions are checked through `/sdk`. The 8.0 U3 vSAN namespace (8.0.0.4)

@@ -72,6 +72,7 @@ func main() {
 	anyLogin := flag.Bool("any-login", false, "accept any nonempty vCenter user name and password")
 	username := flag.String("username", "", "additional accepted user name (env VCSIM_USERNAME)")
 	password := flag.String("password", "", "password for -username (env VCSIM_PASSWORD)")
+	role := flag.String("role", "", "access of -username: administrator (default) or read-only (env VCSIM_ROLE)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	describe := flag.Bool("describe", false, "print the scenario's cardinality as JSON (clusters, hosts, VMs, devices, per cluster) and exit without serving; needs no data directory")
 	adminAddr := flag.String("admin", "127.0.0.1:9090", "address for the control console (plain HTTP; keep on loopback or behind TLS; empty disables; env VCSIM_ADMIN)")
@@ -97,6 +98,12 @@ func main() {
 	}
 	if *password == "" {
 		*password = os.Getenv("VCSIM_PASSWORD")
+	}
+	if *role == "" {
+		*role = os.Getenv("VCSIM_ROLE")
+	}
+	if *role != "" && *role != "administrator" && *role != "read-only" {
+		log.Fatal("-role must be administrator or read-only")
 	}
 	if *dataDir == "" {
 		// the container image sets VCSIM_DATA to its state volume so a
@@ -155,7 +162,7 @@ func main() {
 	start := time.Now()
 	ctl, err := control.New(control.Options{
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
-		Credentials: extra, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
+		Credentials: extra, CredentialRole: *role, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
 	})
 	if err != nil {

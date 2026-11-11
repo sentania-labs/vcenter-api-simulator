@@ -840,7 +840,7 @@ func (c *Controller) Banner(took time.Duration) []string {
 	r := c.applied()
 	cl, h, v, d := r.topo.Counts()
 	out := []string{
-		fmt.Sprintf("vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s", c.cat.About.Version, r.topo.InstanceUUID, r.sc.Seed, c.reg.Len(), took.Round(time.Millisecond)),
+		fmt.Sprintf("vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s", r.topo.VCenterVersion.Version, r.topo.InstanceUUID, r.sc.Seed, c.reg.Len(), took.Round(time.Millisecond)),
 		fmt.Sprintf("%d clusters, %d hosts, %d vms, %d devices", cl, h, v, d),
 	}
 	for _, ref := range r.sim.Clusters {

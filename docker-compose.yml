@@ -30,6 +30,8 @@ services:
       # vCenter credentials.
       VCSIM_USERNAME: ${VCSIM_USERNAME:-}
       VCSIM_PASSWORD: ${VCSIM_PASSWORD:-}
+      # administrator (default) or read-only, for that user.
+      VCSIM_ROLE: ${VCSIM_ROLE:-}
     ports:
       - "${VCSIM_PORT:-8443}:8443"
       # The password-protected control console is published on loopback only.

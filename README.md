@@ -83,7 +83,7 @@ chart sets it automatically for its TLS ingress.
 
 | Where to set it | Settings |
 |---|---|
-| Console | vCenter users and roles (administrator or read-only; in a scenario, `role: read-only` on an `auth.users` entry, for example one whose `passwordEnv` is `VCSIM_READONLY_PASSWORD`), idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
+| Console | vCenter users and roles (administrator or read-only; set `role: read-only` on an `auth.users` entry, `VCSIM_ROLE`/`-role` for the `VCSIM_USERNAME` user, or the chart's `credentials.role`; an environment variable's name never changes a role), idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
 | Start-up | API and console listen addresses and ports, data directory, and console allowed hosts. These are needed to locate and reach the console. |
 
 An uploaded or regenerated console certificate is kept in the data directory.
@@ -250,7 +250,7 @@ the chart an `imagePullSecrets` entry naming a registry pull secret.
 
 The published vCenter login is `administrator@vsphere.local` /
 `VMware123!VMware123!`. The scenario's `auth.users`, or `VCSIM_USERNAME` and
-`VCSIM_PASSWORD` (`-username`/`-password`), replace that default. Console
+`VCSIM_PASSWORD` (`-username`/`-password`; `VCSIM_ROLE`/`-role` makes that user `read-only`), replace that default. Console
 credential changes take precedence until the scenario file changes. Explicitly
 opt into arbitrary credentials with `auth.anyLogin: true` or `-any-login`.
 Use simulator-only credentials and never point real credentials at it.

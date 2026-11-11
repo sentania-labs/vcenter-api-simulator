@@ -388,9 +388,7 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	old := c.applied()
 	now := c.now()
 	nt, _ := c.previewTopology(d)
-	if err := validateHostVersionTargets(d.Scenario, nt); err != nil {
-		return nil, &Invalid{Msg: err.Error()}
-	}
+	dropVanishedHostVersions(d.Scenario, nt)
 	rv := &Review{From: old.version, To: old.version + 1, Origin: d.Origin, Discarded: d.Discarded, Scope: d.Scope,
 		Now: now.UTC(), Boundary: nextBoundary(now), Identities: []IdentityRow{}, Changes: []Change{},
 		NotAffected: []string{}, Warnings: []Warning{}}

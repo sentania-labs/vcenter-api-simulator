@@ -2,7 +2,9 @@ package sim
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
@@ -120,5 +122,45 @@ func TestVsanServiceVersionsFollowVCenterRelease(t *testing.T) {
 				t.Errorf("vCenter %s still lists vSAN 9.1.1.0", apiVersion)
 			}
 		}
+	}
+}
+
+// A free-form vCenter version whose full name does not follow the
+// "<version>.<build>" release layout is reported by REST with the same version
+// /sdk about reports, not with the build text left on it.
+func TestRESTVersionMatchesAboutForCustomVersion(t *testing.T) {
+	topo := topology.Phase1("rest-custom")
+	topo.VCenterVersion = scenario.Version{Version: "9.2.0", Build: "99999", APIVersion: "9.2.0.0", FullName: "VMware vCenter Server 9.2.0 build-99999"}
+	s, err := New(Options{Topology: topo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	srv := httptest.NewTLSServer(s.Handler)
+	defer srv.Close()
+	login, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
+	login.SetBasicAuth("someone", "anything")
+	res, err := srv.Client().Do(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/appliance/system/version", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got["version"] != "9.2.0" || got["name"] != "9.2.0" || got["build"] != "99999" {
+		t.Fatalf("REST version: %v", got)
 	}
 }

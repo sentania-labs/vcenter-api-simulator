@@ -88,6 +88,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "vcsim.credentialsSecretName" . }}
                   key: password
+            - name: VCSIM_ROLE
+              value: {{ .Values.credentials.role | quote }}
             {{- end }}
             {{- if .Values.admin.existingSecret }}
             - name: VCSIM_ADMIN_PASSWORD

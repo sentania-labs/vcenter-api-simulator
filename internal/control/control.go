@@ -60,7 +60,10 @@ type Options struct {
 	Regenerate bool
 	// Credentials are extra logins (flag or environment) added to the
 	// scenario's users.
-	Credentials    map[string]string
+	Credentials map[string]string
+	// CredentialRole is "administrator" (default) or "read-only" for every
+	// user in Credentials.
+	CredentialRole string
 	SessionTimeout time.Duration
 	AnyLogin       bool
 	Certificate    *serve.Certificate
@@ -202,6 +205,11 @@ func New(opts Options) (*Controller, error) {
 			readonly = append(readonly, user.Name)
 		}
 	}
+	if opts.CredentialRole == "read-only" {
+		for name := range opts.Credentials {
+			readonly = append(readonly, name)
+		}
+	}
 	c.auth, err = credentials.New(opts.DataDir, opts.SourceHash, baseCredentials, opts.AnyLogin || sc.Auth.AnyLogin, readonly)
 	if err != nil {
 		return nil, err
@@ -290,6 +298,23 @@ func validateHostVersionTargets(sc *scenario.Scenario, topo *topology.Topology) 
 		}
 	}
 	return nil
+}
+
+func dropVanishedHostVersions(sc *scenario.Scenario, topo *topology.Topology) {
+	hosts := map[string]bool{}
+	for _, cluster := range topo.Clusters() {
+		for _, host := range cluster.Hosts {
+			hosts[host.Key] = true
+		}
+	}
+	for key := range sc.HostVersions {
+		if !hosts[key] {
+			delete(sc.HostVersions, key)
+		}
+	}
+	if len(sc.HostVersions) == 0 {
+		sc.HostVersions = nil
+	}
 }
 
 // Close stops the running vCenter and any scheduled apply.

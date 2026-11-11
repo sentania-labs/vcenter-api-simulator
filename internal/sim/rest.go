@@ -110,8 +110,11 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/appliance/system/version":
 		w.Header().Set("Content-Type", "application/json")
 		v := s.catalog.About
-		release := strings.TrimPrefix(v.FullName, "VMware vCenter Server ")
-		release = strings.TrimSuffix(release, "."+v.Build)
+		release, hasPrefix := strings.CutPrefix(v.FullName, "VMware vCenter Server ")
+		release, hasBuild := strings.CutSuffix(release, "."+v.Build)
+		if !hasPrefix || !hasBuild {
+			release = v.Version
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "VMware vCenter Server " + v.Version, "product": "VMware vCenter Server", "build": v.Build, "name": release, "type": "vCenter Server with an embedded Platform Services Controller", "version": release})
 		return true
 	}

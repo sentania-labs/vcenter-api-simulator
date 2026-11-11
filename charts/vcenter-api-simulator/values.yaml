@@ -66,6 +66,8 @@ credentials:
   # When false, the built-in administrator credential is used.
   # When true, only the pair in the Secret below logs in.
   enabled: false
+  # Access of that user: administrator or read-only.
+  role: administrator
   # Name of an existing Secret with keys `username` and `password`. Preferred.
   existingSecret: ""
   # Placeholders used to create a Secret when existingSecret is empty. Never

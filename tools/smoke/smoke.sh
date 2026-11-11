@@ -2,7 +2,7 @@
 # Phase 2 acceptance smoke: a plain vSphere client (govc) against the
 # running simulator, the way an operator would check a vCenter.
 #
-#   tools/smoke/smoke.sh [--scenario examples/scenarios/ten-clusters.yaml] [--port 18443] [--keep]
+#   tools/smoke/smoke.sh [--scenario examples/scenarios/ten-clusters.yaml] [--port 18443] [--keep] [--versions] [--powercli]
 #
 # Builds the simulator, starts it with the scenario in a fresh data
 # directory, then with govc: logs in with the scenario's credentials
@@ -14,6 +14,10 @@
 # data directory and checks that the dump is byte-identical: identities
 # survive a restart. Exit status is non-zero on any mismatch.
 #
+# --versions adds govc and REST checks of the 8.0 U3, 9.0 and 9.1.1 presets and
+# of a mixed-ESX cluster; --powercli also runs tools/smoke/smoke.ps1 on the
+# mixed-version scenario (needs pwsh; installs PowerCLI).
+#
 # Needs: go, govc (release binary: https://github.com/vmware/govmomi/releases/tag/v0.56.2),
 # python3. No management pack, no Docker.
 set -euo pipefail
@@ -23,12 +27,16 @@ scenario=$here/examples/scenarios/ten-clusters.yaml
 port=18443
 keep=no
 storage=no
+versions=no
+powercli=no
 while [ $# -gt 0 ]; do
   case $1 in
     --scenario) scenario=$2; shift 2 ;;
     --port) port=$2; shift 2 ;;
     --keep) keep=yes; shift ;;
     --storage) storage=yes; shift ;;
+    --versions) versions=yes; shift ;;
+    --powercli) versions=yes; powercli=yes; shift ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -230,30 +238,65 @@ if ! diff -u "$work/dump-1.txt" "$work/dump-2.txt" > "$work/dump.diff"; then
   fail "identities changed across the restart"
 fi
 pass "identities identical across restart ($(wc -l < "$work/dump-2.txt") lines)"
-echo "== mixed versions: 9.0 vCenter, one 8.0 U3 cluster with one 9.0 host"
-stop_sim
-scenario=$here/tools/smoke/versions.yaml
-rm -rf "$work/data"
-username=administrator@vsphere.local password='VMware123!VMware123!'
-export GOVC_USERNAME=$username GOVC_PASSWORD=$password
-start_sim versions
-govc about -json | python3 -c 'import json,sys; a=json.load(sys.stdin)["about"]; sys.exit(0 if (a["version"], a["build"], a["apiVersion"]) == ("9.0.0", "24755230", "9.0.0.0") else f"vCenter about: {a}")' || fail "govc about does not report the 9.0 vCenter"
-pass "govc about: vCenter 9.0.0 build 24755230"
-products=$(govc object.collect -s -type h / name config.product.version config.product.apiVersion | paste - - - | sort)
-want=$(printf '%s\n' \
-  "esx01.cluster-01.dc-01.sim.invalid	9.0.0	9.0.0.0" \
-  "esx02.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
-  "esx03.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
-  "esx04.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
-  "esx01.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
-  "esx02.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
-  "esx03.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
-  "esx04.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" | sort)
-[ "$products" = "$want" ] || { diff <(echo "$want") <(echo "$products") >&2; fail "host product versions are not mixed as configured"; }
-pass "govc host products: 8.0 U3 cluster with one 9.0 host, 9.0 cluster"
-token=$(curl -sk -X POST -u "$username:$password" "https://127.0.0.1:$port/api/session" | tr -d '"')
-curl -sk -H "vmware-api-session-id: $token" "https://127.0.0.1:$port/api/appliance/system/version" | python3 -c 'import json,sys; v=json.load(sys.stdin); sys.exit(0 if v["version"] == "9.0.0.0" and v["build"] == "24755230" else f"REST version: {v}")' || fail "REST appliance version does not follow the 9.0 vCenter"
-pass "REST /api/appliance/system/version: 9.0.0.0"
-curl -sk "https://127.0.0.1:$port/sdk/vsanServiceVersions.xml" | grep -q '<version>9.0.0.0</version>' || fail "vSAN service versions do not follow the 9.0 vCenter"
-pass "vSAN service versions: 9.0.0.0"
+if [ $versions = yes ]; then
+  stop_sim
+  username=administrator@vsphere.local password='VMware123!VMware123!'
+  export GOVC_USERNAME=$username GOVC_PASSWORD=$password
+
+  # One vCenter release with hosts that follow it: the vCenter, every host,
+  # the REST appliance version and the vSAN service version must agree.
+  # check_release <preset> <vc version> <vc build> <api> <esx version> <esx build> <REST version> <vSAN namespace>
+  check_release() {
+    local preset=$1 vcver=$2 vcbuild=$3 api=$4 esxver=$5 esxbuild=$6 rest=$7 vsan=$8
+    echo "== $preset vCenter with hosts of the same release"
+    stop_sim
+    rm -rf "$work/data"
+    printf 'seed: smoke-%s\ndatacenters:\n  - name: dc-01\n    clusters: 1\nvcenterVersion: {preset: "%s"}\n' "$preset" "$preset" > "$work/release.yaml"
+    scenario=$work/release.yaml
+    start_sim "release-$preset"
+    govc about -json | VER=$vcver BUILD=$vcbuild API=$api python3 -c 'import json,os,sys; a=json.load(sys.stdin)["about"]; sys.exit(0 if (a["version"], a["build"], a["apiVersion"]) == (os.environ["VER"], os.environ["BUILD"], os.environ["API"]) else f"vCenter about: {a}")' || fail "$preset: govc about does not report the preset"
+    local hostproducts
+    hostproducts=$(govc object.collect -s -type h / config.product.version config.product.build config.product.apiVersion | paste - - - | sort -u)
+    [ "$hostproducts" = "$(printf '%s\t%s\t%s' "$esxver" "$esxbuild" "$api")" ] || fail "$preset: host products are '$hostproducts'"
+    local token
+    token=$(curl -sk -X POST -u "$username:$password" "https://127.0.0.1:$port/api/session" | tr -d '"')
+    curl -sk -H "vmware-api-session-id: $token" "https://127.0.0.1:$port/api/appliance/system/version" | VER=$rest BUILD=$vcbuild python3 -c 'import json,os,sys; v=json.load(sys.stdin); sys.exit(0 if v["version"] == os.environ["VER"] and v["build"] == os.environ["BUILD"] else f"REST version: {v}")' || fail "$preset: REST appliance version does not follow the preset"
+    curl -sk "https://127.0.0.1:$port/sdk/vsanServiceVersions.xml" | grep -q "<namespace><name>urn:vsan</name><version>$vsan</version>" || fail "$preset: vSAN service version is not $vsan"
+    pass "$preset: govc about, host products, REST and vSAN service versions"
+  }
+  check_release 8.0u3 8.0.3 24022515 8.0.3.0 8.0.3 24022510 8.0.3.00000 8.0.0.4
+  check_release 9.1.1 9.1.1 25784172 9.1.1.0 9.1.1 25782009 9.1.1.0100 9.1.1.0
+
+  echo "== mixed versions: 9.0 vCenter, one 8.0 U3 cluster with one 9.0 host"
+  stop_sim
+  scenario=$here/tools/smoke/versions.yaml
+  rm -rf "$work/data"
+  start_sim versions
+  govc about -json | python3 -c 'import json,sys; a=json.load(sys.stdin)["about"]; sys.exit(0 if (a["version"], a["build"], a["apiVersion"]) == ("9.0.0", "24755230", "9.0.0.0") else f"vCenter about: {a}")' || fail "govc about does not report the 9.0 vCenter"
+  pass "govc about: vCenter 9.0.0 build 24755230"
+  products=$(govc object.collect -s -type h / name config.product.version config.product.apiVersion | paste - - - | sort)
+  want=$(printf '%s\n' \
+    "esx01.cluster-01.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+    "esx02.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
+    "esx03.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
+    "esx04.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
+    "esx01.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+    "esx02.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+    "esx03.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+    "esx04.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" | sort)
+  [ "$products" = "$want" ] || { diff <(echo "$want") <(echo "$products") >&2; fail "host product versions are not mixed as configured"; }
+  pass "govc host products: 8.0 U3 cluster with one 9.0 host, 9.0 cluster"
+  token=$(curl -sk -X POST -u "$username:$password" "https://127.0.0.1:$port/api/session" | tr -d '"')
+  curl -sk -H "vmware-api-session-id: $token" "https://127.0.0.1:$port/api/appliance/system/version" | python3 -c 'import json,sys; v=json.load(sys.stdin); sys.exit(0 if v["version"] == "9.0.0.0" and v["build"] == "24755230" else f"REST version: {v}")' || fail "REST appliance version does not follow the 9.0 vCenter"
+  pass "REST /api/appliance/system/version: 9.0.0.0"
+  curl -sk "https://127.0.0.1:$port/sdk/vsanServiceVersions.xml" | grep -q '<version>9.0.0.0</version>' || fail "vSAN service versions do not follow the 9.0 vCenter"
+  pass "vSAN service versions: 9.0.0.0"
+  if [ $powercli = yes ]; then
+    pwsh -NoLogo -File "$here/tools/smoke/smoke.ps1" -Server 127.0.0.1 -Port "$port" -Install -Hosts 8 -VMs 16 \
+      -ExpectedVCenterVersion 9.0.0 \
+      -ExpectedHostVersions esx01.cluster-01.dc-01.sim.invalid=9.0.0,esx02.cluster-01.dc-01.sim.invalid=8.0.3,esx01.cluster-02.dc-01.sim.invalid=9.0.0 \
+      || fail "PowerCLI does not see the mixed versions"
+    pass "PowerCLI: vCenter 9.0.0, mixed host versions"
+  fi
+fi
 echo "smoke: all checks passed"
