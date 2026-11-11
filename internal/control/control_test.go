@@ -1784,6 +1784,19 @@ func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
 	if status != http.StatusOK || strings.Contains(body, "NoPermission") {
 		t.Fatalf("read-only performance query denied: %d", status)
 	}
+	for _, op := range []string{
+		"VsanQueryVcClusterHealthSummary", "VsanQueryAllSupportedHealthChecks", "VsanQueryVcClusterSmartStatsSummary",
+		"VsanHealthQueryVsanClusterHealthConfig", "VsanHealthGetVsanClusterSilentChecks", "VsanHealthQueryVsanClusterHealthCheckInterval",
+		"VsanHealthQueryVsanProxyConfig", "VsanHealthIsRebalanceRunning", "VsanGetCapabilities", "VsanClusterGetConfig",
+		"VsanClusterGetRuntimeStats", "VsanClusterGetClaimedCapacity", "VsanQuerySpaceUsage", "VsanQueryEntitySpaceUsage",
+		"VsanPerfGetSupportedEntityTypes", "VsanPerfQueryNodeInformation", "VsanPerfQueryTimeRanges",
+		"VsanVitGetIscsiTargets", "VsanVitGetIscsiLUNs", "VsanVitGetIscsiInitiatorGroups", "VsanVitGetHomeObject", "VsanVitQueryIscsiTargetServiceVersion",
+	} {
+		status, body = reader.post("/vsanHealth", `<`+op+` xmlns="urn:vsan"><_this type="VsanVcClusterHealthSystem">vsan-cluster-health-system</_this></`+op+`>`)
+		if strings.Contains(body, "NoPermission") {
+			t.Fatalf("read-only user refused vSAN read %s: %d %s", op, status, body)
+		}
+	}
 	u, _ := url.Parse(reader.srv.URL)
 	cookies := reader.hc.Jar.Cookies(u)
 	if len(cookies) == 0 {

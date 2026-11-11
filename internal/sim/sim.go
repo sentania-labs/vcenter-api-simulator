@@ -961,7 +961,7 @@ func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
 		return false
 	}
 	op := soapOperation(body)
-	for _, prefix := range []string{"Retrieve", "Query", "Fetch", "Find", "Has", "List", "Search", "Get", "VsanPerfQuery", "VsanPerfGet", "VsanQuery", "VsanClusterGet"} {
+	for _, prefix := range []string{"Retrieve", "Query", "Fetch", "Find", "Has", "List", "Search", "Get", "VsanPerfQuery", "VsanPerfGet", "VsanQuery", "VsanGet", "VsanClusterGet", "VsanHealthQuery", "VsanHealthGet", "VsanHealthIs", "VsanVitGet", "VsanVitQuery"} {
 		if strings.HasPrefix(op, prefix) {
 			return false
 		}
