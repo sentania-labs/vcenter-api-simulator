@@ -1,0 +1,22 @@
+{{- if .Values.admin.service.enabled }}
+{{- if not .Values.admin.enabled }}{{ fail "admin.service.enabled requires admin.enabled" }}{{ end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vcsim.fullname" . }}-admin
+  labels:
+    {{- include "vcsim.labels" . | nindent 4 }}
+  {{- with .Values.admin.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: admin
+      port: {{ .Values.admin.service.port }}
+      targetPort: admin
+      protocol: TCP
+  selector:
+    {{- include "vcsim.selectorLabels" . | nindent 4 }}
+{{- end }}

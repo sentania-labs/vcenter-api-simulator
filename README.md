@@ -62,6 +62,18 @@ or redacted, but request bodies can contain inventory identifiers. Treat the
 records accordingly. Unanswered records are bounded in memory; the full file
 continues growing until cleared.
 
+The console uses a separate password from vCenter. On first access, claim it
+with a password, or set `VCSIM_ADMIN_PASSWORD` (the chart's
+`admin.existingSecret` points to a Secret with key `password`). A claim persists
+as a bcrypt hash in `console-password` under the data directory; sessions expire
+after 30 minutes idle and do not survive restart. To reset the console, stop it,
+remove that file or run `-admin-reset` against its data directory, then restart
+and claim it again. Remove the pre-seed first if you want a new claim. The chart
+keeps the console on loopback unless `admin.service.enabled` is set; an optional
+`admin.ingress` exposes that Service. Use TLS outside loopback. For a
+TLS-terminating proxy, set `-admin-secure-cookie` so cookies require HTTPS; the
+chart sets it automatically for its TLS ingress.
+
 What the scenario controls, and what the simulator guarantees:
 
 - **Topology.** Any number of datacenters and clusters. Each cluster draws

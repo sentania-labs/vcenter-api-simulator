@@ -56,9 +56,16 @@ spec:
             - -unanswered-stdout
             {{- end }}
             - -tls-names={{ include "vcsim.tlsNames" . }}
-            - -admin={{ if .Values.admin.enabled }}{{ ternary "0.0.0.0" "127.0.0.1" .Values.admin.exposeToPodNetwork }}:{{ .Values.admin.port }}{{ end }}
-            {{- if and .Values.admin.enabled .Values.admin.allowedHosts }}
-            - -admin-allowed-hosts={{ join "," .Values.admin.allowedHosts }}
+            - -admin={{ if .Values.admin.enabled }}{{ ternary "0.0.0.0" "127.0.0.1" (or .Values.admin.exposeToPodNetwork .Values.admin.service.enabled) }}:{{ .Values.admin.port }}{{ end }}
+            {{- $hosts := .Values.admin.allowedHosts }}
+            {{- if and .Values.admin.ingress.enabled .Values.admin.ingress.host }}
+            {{- $hosts = append $hosts .Values.admin.ingress.host }}
+            {{- end }}
+            {{- if and .Values.admin.enabled $hosts }}
+            - -admin-allowed-hosts={{ join "," $hosts }}
+            {{- end }}
+            {{- if and .Values.admin.ingress.enabled .Values.admin.ingress.tls.enabled }}
+            - -admin-secure-cookie
             {{- end }}
             {{- range .Values.simulator.extraArgs }}
             - {{ . | quote }}
@@ -76,6 +83,13 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "vcsim.credentialsSecretName" . }}
+                  key: password
+            {{- end }}
+            {{- if .Values.admin.existingSecret }}
+            - name: VCSIM_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.existingSecret }}
                   key: password
             {{- end }}
             {{- with .Values.extraEnv }}

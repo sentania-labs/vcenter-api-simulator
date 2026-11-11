@@ -17,9 +17,16 @@ Try it from your workstation:
   curl -sk https://127.0.0.1:8443/sdk/vimServiceVersions.xml
 {{- if .Values.admin.enabled }}
 
-Control console (no login; it listens on {{ if .Values.admin.exposeToPodNetwork }}the pod network, so only an authenticated proxy should reach it{{ else }}the pod's loopback, so only a port-forward reaches it{{ end }}):
+Control console (password protected; {{ if .Values.admin.service.enabled }}the Service exposes it on the pod network{{ else }}the listener is on loopback unless explicitly exposed{{ end }}):
   kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "vcsim.fullname" . }} {{ .Values.admin.port }}:{{ .Values.admin.port }}
   open http://127.0.0.1:{{ .Values.admin.port }}/
+  Claim the console on first access, or supply admin.existingSecret. Use TLS when exposing it beyond loopback.
+{{- if .Values.admin.ingress.enabled }}
+  ingress: {{ if .Values.admin.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.admin.ingress.host }}/
+  {{- if .Values.admin.ingress.tls.enabled }}
+  The session cookie requires HTTPS, including when using the port-forward.
+  {{- end }}
+{{- end }}
 {{- end }}
 {{- if .Values.admin.allowedHosts }}
   also answers to Host: {{ join ", " .Values.admin.allowedHosts }}

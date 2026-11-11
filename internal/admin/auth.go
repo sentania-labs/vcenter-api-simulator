@@ -144,7 +144,12 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 				http.Error(w, "console authentication unavailable", http.StatusInternalServerError)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]bool{"claimed": claimed})
+			authenticated := false
+			if cookie, err := r.Cookie("vcsim_console"); err == nil {
+				authenticated = a.valid(cookie.Value)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]bool{"claimed": claimed, "authenticated": authenticated})
 			return
 		}
 		if (path == "/api/auth/claim" || path == "/api/auth/login") && r.Method == http.MethodPost {
