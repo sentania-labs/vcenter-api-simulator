@@ -31,6 +31,13 @@ simulator:
   tlsNames: []
   # Additional command-line arguments passed to vcsimulator.
   extraArgs: []
+  # Defaults for live capture settings. The console can override these.
+  capture:
+    # Write the full, redacted query log to /data/query-log.jsonl. It can
+    # contain inventory identifiers and grows until cleared.
+    queryLog: false
+    # Also emit unanswered requests as JSON lines to container stdout.
+    unansweredStdout: false
 
 # The control console: topology editor, scenario presets and request log.
 # Plain HTTP and no login, so no Service or Ingress exposes it. By default it

@@ -18,6 +18,7 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/control"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 )
 
 //go:embed ui
@@ -25,7 +26,7 @@ var uiFiles embed.FS
 
 // Handler returns the admin plane's handler. Requests are served only for the
 // Host names localhost, 127.0.0.1 and ::1 (any port) and for allowedHosts.
-func Handler(c *control.Controller, allowedHosts []string) http.Handler {
+func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog.Capture) http.Handler {
 	a := &api{c: c}
 	mux := http.NewServeMux()
 	get := func(p string, h func(*http.Request) (any, error)) { mux.HandleFunc("GET "+p, a.wrap(h)) }
@@ -131,9 +132,51 @@ func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 		return call, nil
 	})
 
+	if len(captures) > 0 && captures[0] != nil {
+		capture := captures[0]
+		get("/api/capture", func(r *http.Request) (any, error) { return capture.State(), nil })
+		send("PUT", "/api/capture", func(r *http.Request) (any, error) {
+			var settings querylog.Settings
+			if err := decode(r, &settings); err != nil {
+				return nil, err
+			}
+			if err := capture.Set(settings); err != nil {
+				return nil, err
+			}
+			return capture.State(), nil
+		})
+		send("DELETE", "/api/capture", func(r *http.Request) (any, error) {
+			if err := capture.Clear(); err != nil {
+				return nil, err
+			}
+			return capture.State(), nil
+		})
+		get("/api/capture/unanswered", func(r *http.Request) (any, error) { return capture.Records(true), nil })
+		get("/api/capture/full", func(r *http.Request) (any, error) { return capture.Records(false), nil })
+		for _, kind := range []string{"full", "unanswered"} {
+			kind := kind
+			mux.HandleFunc("GET /api/capture/"+kind+".jsonl", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-ndjson")
+				w.Header().Set("Cache-Control", "no-store")
+				w.Header().Set("Content-Disposition", "attachment; filename="+kind+"-requests.jsonl")
+				_ = capture.WriteJSONL(w, kind == "unanswered")
+			})
+		}
+	}
+
 	sub, _ := fs.Sub(uiFiles, "ui")
 	mux.Handle("GET /", noCache(http.FileServerFS(sub)))
 	return guard(mux, allowedHosts)
+}
+
+// ProtectedHandler requires a console session and keeps host and origin checks
+// on the authentication routes as well as the rest of the console.
+func ProtectedHandler(c *control.Controller, hosts []string, dir, seed string, secureCookie bool, capture *querylog.Capture) (http.Handler, error) {
+	a, err := newConsoleAuth(dir, seed)
+	if err != nil {
+		return nil, err
+	}
+	return guard(a.protectConsole(Handler(c, hosts, capture), secureCookie), hosts), nil
 }
 
 type api struct{ c *control.Controller }

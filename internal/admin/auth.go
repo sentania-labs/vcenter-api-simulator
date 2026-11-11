@@ -133,7 +133,8 @@ func (a *consoleAuth) logout(token string) {
 
 // protectConsole exposes authentication operations and protects the console API.
 // The host and origin guard must wrap this handler as well as its child.
-func (a *consoleAuth) protectConsole(next http.Handler) http.Handler {
+func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) http.Handler {
+	forceSecure := len(secureProxy) > 0 && secureProxy[0]
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		path := r.URL.Path
@@ -175,7 +176,7 @@ func (a *consoleAuth) protectConsole(next http.Handler) http.Handler {
 				http.Error(w, "unable to sign in", status)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: "vcsim_console", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(w, &http.Cookie{Name: "vcsim_console", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil || forceSecure, SameSite: http.SameSiteStrictMode})
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -186,7 +187,7 @@ func (a *consoleAuth) protectConsole(next http.Handler) http.Handler {
 		}
 		if path == "/api/auth/logout" && r.Method == http.MethodPost {
 			a.logout(cookie.Value)
-			http.SetCookie(w, &http.Cookie{Name: "vcsim_console", Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+			http.SetCookie(w, &http.Cookie{Name: "vcsim_console", Path: "/", HttpOnly: true, Secure: r.TLS != nil || forceSecure, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

@@ -38,6 +38,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/sim"
@@ -287,7 +288,8 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	env := cur.sim.Env
 	if surface == "vsanHealth" {
 		call.Family, call.Cluster = env.Target(body)
-		call.Body = string(body[:min(len(body), activity.MaxBody)])
+		safeBody := querylog.Redact(body)
+		call.Body = safeBody[:min(len(safeBody), activity.MaxBody)]
 	}
 	if c.paused.Load() {
 		call.Result, call.Status = activity.ResultRefused, 0

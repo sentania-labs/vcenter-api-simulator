@@ -2,7 +2,7 @@
 
 A configurable, deployable vCenter and vSAN ESA/OSA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
-The built-in vCenter adapter in a licensed VCF Operations 9.1 instance will not collect from the simulator today: the reported adapter start was rejected because it had no VCF license, before Operations sent a collection request. Custom management packs with their own adapter kinds can still collect. License states and the license service at `/ls/sdk` are not modelled; the Operations exchange and license association behavior needed to reproduce them have not yet been captured.
+The built-in vCenter adapter in a licensed VCF Operations 9.1 instance will not collect from the simulator today: the reported adapter start was rejected because it had no VCF license, before Operations sent a collection request. Custom management packs with their own adapter kinds can still collect. License states and the license service at `/ls/sdk` are not modelled; the Operations exchange and license association behavior needed to reproduce them have not yet been captured. On a real vCenter, assigned-license records contained properties named `entitlementId`, `licenseServerId`, `licenseServerName`, `signedEntitlement`, and `vcScopeId`; an advanced setting named `config.OPERATIONS.vcf.sso.ops.cluster.id` and extensions referencing the licensing Operations instance were also observed. Their role in the licensing decision is unknown and they are not modelled.
 
 > Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack) with the Phase 5 control console. No production-grade vCenter emulation is claimed.
 
@@ -43,13 +43,24 @@ go build ./cmd/vcsimulator
 | `-scenario FILE` | the scenario ([reference](docs/SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
 | `-data DIR` | holds `registry.json` (identities) and `tls/` (the self-signed certificate, created once); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
-| `-query-log PATH` | append one JSON line per request (method, path, operation, status, bytes, duration) to `PATH`, created owner-only; SOAP request bodies are included except for `SessionManager` operations, so it can hold inventory identifiers; see [scale replay](tools/bench/README.md) |
+| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. Console capture settings override this default after they are changed. |
+| `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; console capture settings can override this default |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
-| `-admin ADDR` | the control console (plain HTTP, no login); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
+| `-admin ADDR` | the password-protected control console (plain HTTP); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
 | `-admin-allowed-hosts NAMES` | comma-separated Host names the console answers to besides `localhost`, `127.0.0.1` and `::1` (any port); every other Host gets 403, which stops a web page from reaching the console through DNS rebinding. Add the name your proxy or ingress forwards; env `VCSIM_ADMIN_ALLOWED_HOSTS` |
+
+To capture what a client asks for, enable the full request log in the console
+or start with `-query-log /data/query-log.jsonl`, then repeat the action in the
+client. In API Activity, choose **Unanswered** and download the records, or
+download the full log from the capture settings. The chart's
+`simulator.capture.queryLog` and `simulator.capture.unansweredStdout` set the
+initial defaults. SOAP credentials, session operations and headers are omitted
+or redacted, but request bodies can contain inventory identifiers. Treat the
+records accordingly. Unanswered records are bounded in memory; the full file
+continues growing until cleared.
 
 What the scenario controls, and what the simulator guarantees:
 

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/sentania/vcenter-api-simulator/internal/control"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
@@ -207,5 +208,76 @@ func TestConsoleScriptTests(t *testing.T) {
 	cmd := exec.Command(node, "--test", "ui/js/telemetry.test.mjs", "ui/js/topology.test.mjs")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node --test: %v\n%s", err, out)
+	}
+}
+
+func TestProtectedCaptureAPI(t *testing.T) {
+	dir := t.TempDir()
+	c, err := control.New(control.Options{Scenario: scenario.Phase1("capture"), SourceHash: "capture", DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protected, err := ProtectedHandler(c, nil, dir, "console-test-password", false, capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(protected)
+	defer srv.Close()
+	req, _ := http.NewRequest("GET", srv.URL+"/api/capture", nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated: %d", res.StatusCode)
+	}
+	req, _ = http.NewRequest("POST", srv.URL+"/api/auth/login", strings.NewReader(`{"password":"console-test-password"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("login: %d", res.StatusCode)
+	}
+	cookie := res.Cookies()[0]
+	call := func(method, path, body string) *http.Response {
+		t.Helper()
+		r, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		r.AddCookie(cookie)
+		if body != "" {
+			r.Header.Set("Content-Type", "application/json")
+		} else if method == "DELETE" {
+			r.Header.Set("X-Console", "1")
+		}
+		out, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	res = call("PUT", "/api/capture", `{"full":true,"unanswered":true,"stdout":false}`)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("settings: %d", res.StatusCode)
+	}
+	res.Body.Close()
+	capture.Wrap(http.NotFoundHandler()).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/ls/sdk", strings.NewReader(`<Envelope><Body><Fetch><_this type="PropertyCollector">pc</_this><pathSet>config.product</pathSet></Fetch></Body></Envelope>`)))
+	res = call("GET", "/api/capture/unanswered.jsonl", "")
+	b, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil || res.StatusCode != http.StatusOK || !strings.Contains(string(b), "config.product") {
+		t.Fatalf("download: %d %s %v", res.StatusCode, b, err)
+	}
+	res = call("DELETE", "/api/capture", "")
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || capture.State().UnansweredHeld != 0 {
+		t.Fatalf("clear: %d", res.StatusCode)
 	}
 }

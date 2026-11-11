@@ -5,7 +5,7 @@
 import { api, html, raw, join, badge, tile, banner, int, bytes, ms, hms, hmsms, hm, plural } from './lib.js';
 
 const LIMIT = 5000;
-const RESULTS = ['all', 'ok', 'injected', 'unexpected', 'denied', 'empty'];
+const RESULTS = ['all', 'unanswered', 'ok', 'injected', 'unexpected', 'denied', 'empty'];
 
 // Module state: it survives navigation, as filters should.
 const S = {
@@ -143,8 +143,8 @@ export default {
 
   async load(ctx) {
     if (S.frozen && S.cache) return S.cache;
-    const [res] = await Promise.all([api(`/activity?limit=${LIMIT}`), ctx.refreshState()]);
-    S.cache = { calls: res.calls, totals: res.totals };
+    const [res, unanswered] = await Promise.all([api(`/activity?limit=${LIMIT}`), api('/capture/unanswered'), ctx.refreshState()]);
+    S.cache = { calls: res.calls, totals: res.totals, unanswered };
     const list = filtered(ctx, S.cache);
     if (!S.sel && list.length) S.sel = (list.find((c) => c.result === 'injected' || c.result === 'fault') || list[0]).seq;
     if (S.sel) ensureDetail(ctx, S.sel);
@@ -163,13 +163,25 @@ export default {
     const rows = filtered(ctx, data);
     const truncated = data.totals.held > all.length;
 
+    if (S.result === 'unanswered') {
+      const records = [...(data.unanswered || [])].reverse();
+      return html`<section class="lat-card"><h2 class="lat-card-title">Unanswered requests <span class="aside">${int(records.length)} held · newest first</span></h2>
+        <p>These requests could not be answered. Records can include inventory identifiers.</p>
+        <div class="row"><button type="button" class="lat-btn" data-act="act.result" data-arg="all">All requests</button>
+          <a class="lat-btn" href="/api/capture/unanswered.jsonl" download>Download unanswered requests</a></div>
+        ${records.length ? records.map((r) => html`<details class="well"><summary>${hmsms(r.time)} · ${r.method} ${r.path} · ${r.operation || 'request'} · HTTP ${r.status}${r.fault ? ` · ${r.fault}` : ''}</summary>
+          <p>Object: ${r.objectType || '—'} · Properties: ${(r.properties || []).join(', ') || '—'}</p>
+          ${r.request ? html`<pre class="code-well">${r.request}</pre>` : html`<p>No request body was kept.</p>`}</details>`)
+          : html`<div class="empty">No unanswered requests have been captured.</div>`}</section>`;
+    }
+
     if (!data.totals.requests) {
       return html`<section class="lat-card" style="max-width:720px"><h2 class="lat-card-title">No requests yet</h2>
         <p style="margin:0">Nothing has called this simulator since it started at ${hms(data.totals.since)}. Point the collector at the API endpoint
         <span class="mono ink">${st.endpoint}:${(st.API && st.API[0] || '').split(':').pop()}</span> (paths <span class="mono">/sdk</span> and <span class="mono">/vsanHealth</span>),
         log in with ${st.auth.users.length ? html`one of <span class="mono ink">${st.auth.users.join(', ')}</span>` : 'any user name and password'}, and run a collection.
         Each request appears here within a few seconds.</p>
-        <p class="anno" style="margin:0">Request bodies of <span class="mono">/sdk</span> calls, cookies and credentials are never kept.</p></section>`;
+        <p class="anno" style="margin:0">Cookies and credentials are never kept.</p><button type="button" class="lat-btn" data-act="act.result" data-arg="unanswered">Unanswered requests</button></section>`;
     }
 
     const counts = { injected: 0, unexpected: 0, denied: 0 };

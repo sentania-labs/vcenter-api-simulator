@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -67,5 +68,138 @@ func TestLogRejectsOversizedBody(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest("POST", "/sdk", strings.NewReader(strings.Repeat("x", maxBody+1))))
 	if rec.Code != http.StatusRequestEntityTooLarge || called {
 		t.Fatalf("code %d, downstream called %v", rec.Code, called)
+	}
+}
+
+func TestCaptureRedactsAndFindsUnanswered(t *testing.T) {
+	var stdout bytes.Buffer
+	c, err := NewCapture(t.TempDir(), "", Settings{Full: true, Unanswered: true, Stdout: true}, &stdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ls/sdk" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/xml")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`<Envelope><Body><Fault><detail><InvalidPropertyFault /></detail></Fault></Body></Envelope>`))
+	}))
+	body := `<Envelope><Header><session>HEADER_SECRET</session></Header><Body><RetrievePropertiesEx><_this type="PropertyCollector">propertyCollector</_this><pathSet>config.product</pathSet><password>PASSWORD_SECRET</password><token>TOKEN_SECRET</token><sessionId>SESSION_SECRET</sessionId></RetrievePropertiesEx></Body></Envelope>`
+	for _, path := range []string{"/sdk", "/ls/sdk"} {
+		r := httptest.NewRequest("POST", path, strings.NewReader(body))
+		r.Header.Set("Authorization", "HEADER_SECRET")
+		r.AddCookie(&http.Cookie{Name: "session", Value: "COOKIE_SECRET"})
+		h.ServeHTTP(httptest.NewRecorder(), r)
+	}
+	if c.State().UnansweredHeld != 2 || c.State().FullHeld != 2 {
+		t.Fatalf("counts: %+v", c.State())
+	}
+	records := c.Records(true)
+	if records[0].Fault != "InvalidProperty" || records[0].ObjectType != "PropertyCollector" || len(records[0].Properties) != 1 || records[0].Properties[0] != "config.product" || records[1].Status != 404 {
+		t.Fatalf("records: %+v", records)
+	}
+	for _, secret := range []string{"HEADER_SECRET", "PASSWORD_SECRET", "TOKEN_SECRET", "SESSION_SECRET", "COOKIE_SECRET"} {
+		if strings.Contains(stdout.String(), secret) {
+			t.Fatalf("stdout leaked %s", secret)
+		}
+		b, _ := json.Marshal(records)
+		if strings.Contains(string(b), secret) {
+			t.Fatalf("records leaked %s", secret)
+		}
+	}
+	if !strings.Contains(records[0].Request, "config.product") {
+		t.Fatalf("missing research data: %s", records[0].Request)
+	}
+}
+
+func TestCaptureSettingsPersistAndClear(t *testing.T) {
+	dir := t.TempDir()
+	c, err := NewCapture(dir, "", Settings{Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Settings{Full: true, Unanswered: true, Stdout: true}
+	if err = c.Set(want); err != nil {
+		t.Fatal(err)
+	}
+	h := c.Wrap(http.NotFoundHandler())
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/missing", nil))
+	if c.State().FullHeld != 1 || c.State().UnansweredHeld != 1 {
+		t.Fatalf("state: %+v", c.State())
+	}
+	restarted, err := NewCapture(dir, "", Settings{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restarted.State().Settings != want {
+		t.Fatalf("settings: %+v", restarted.State())
+	}
+	before, err := os.ReadFile(c.State().Path)
+	if err != nil || len(before) == 0 {
+		t.Fatalf("log missing: %v", err)
+	}
+	if err = c.Clear(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(c.State().Path)
+	if err != nil || len(after) != 0 || c.State().FullHeld != 0 {
+		t.Fatalf("clear: %q %v", after, err)
+	}
+}
+
+func TestCaptureOmitsMalformedAndSessionBodies(t *testing.T) {
+	for _, body := range []string{`<Envelope><Body><Fetch><password>LEAK`, `<Envelope><Body><CloneSession><_this type="SessionManager">x</_this><ticket>LEAK</ticket></CloneSession></Body></Envelope>`, `{"password":"LEAK"}`} {
+		if got := Redact([]byte(body)); got != "" {
+			t.Fatalf("unsafe body retained: %q", got)
+		}
+	}
+}
+
+func TestCapturePartialPropertyFaultWithSuccessfulHTTP(t *testing.T) {
+	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<Envelope><Body><RetrievePropertiesExResponse><returnval><objects><missingSet><path>config.invalid</path><fault type="InvalidProperty"/></missingSet></objects></returnval></RetrievePropertiesExResponse></Body></Envelope>`))
+	}))
+	body := `<Envelope><Body><RetrievePropertiesEx><_this type="PropertyCollector">pc</_this><specSet><propSet><type>HostSystem</type><pathSet>config.invalid</pathSet></propSet></specSet></RetrievePropertiesEx></Body></Envelope>`
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(body)))
+	got := c.Records(true)
+	if len(got) != 1 || got[0].Status != 200 || got[0].Fault != "InvalidProperty" || got[0].ObjectType != "HostSystem" || len(got[0].Properties) != 1 {
+		t.Fatalf("partial fault not captured: %+v", got)
+	}
+}
+
+func TestCaptureLicensingDiscoveryRequests(t *testing.T) {
+	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not supported", http.StatusInternalServerError)
+	}))
+	requests := []struct{ op, target, inner, property string }{
+		{"QueryAssignedLicenses", "LicenseAssignmentManager", `<entityId>root</entityId>`, ""},
+		{"QueryOptions", "OptionManager", `<name>config.OPERATIONS.vcf.sso.ops.cluster.id</name>`, "config.OPERATIONS.vcf.sso.ops.cluster.id"},
+		{"FindExtension", "ExtensionManager", `<extensionKey>example.extension</extensionKey>`, "example.extension"},
+	}
+	for _, r := range requests {
+		body := `<Envelope><Body><` + r.op + `><_this type="` + r.target + `">instance</_this>` + r.inner + `</` + r.op + `></Body></Envelope>`
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(body)))
+	}
+	got := c.Records(true)
+	if len(got) != len(requests) {
+		t.Fatalf("got %d records", len(got))
+	}
+	for i, r := range requests {
+		if got[i].Operation != r.op || got[i].ObjectType != r.target || !strings.Contains(got[i].Request, r.inner) {
+			t.Errorf("%s: %+v", r.op, got[i])
+		}
+		if r.property != "" && (len(got[i].Properties) != 1 || got[i].Properties[0] != r.property) {
+			t.Errorf("%s property: %v", r.op, got[i].Properties)
+		}
 	}
 }
