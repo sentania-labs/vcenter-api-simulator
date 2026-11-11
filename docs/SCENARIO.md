@@ -97,7 +97,7 @@ telemetrySeed: ""           # optional; metric values only (default: seed)
 datacenters:                # each gets one vDS (vds-01) with four portgroups
   - name: dc-01             # lower-case letters, digits, hyphens
     clusters: 10            # cluster-01 .. cluster-10
-    nfs:                    # optional shared NFS v3 inventory, mounted on every host
+    nfs:                    # optional shared NFS v3 inventory; see storage.yaml for scope and iSCSI
       - name: shared-nfs
         remoteHost: nfs.sim.invalid
         remotePath: /exports/sim
