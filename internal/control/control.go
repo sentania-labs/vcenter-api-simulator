@@ -241,6 +241,9 @@ func bucket(t time.Time) time.Time { return t.UTC().Truncate(perf.Interval) }
 func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, version int) (*running, error) {
 	start := time.Now()
 	topo := topology.Generate(sc, reg)
+	if err := validateHostVersionTargets(sc, topo); err != nil {
+		return nil, err
+	}
 	s, err := sim.New(sim.Options{
 		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Now: c.now,
@@ -272,6 +275,21 @@ func (c *Controller) credentials(sc *scenario.Scenario) (map[string]string, erro
 		creds[DefaultUsername] = DefaultPassword
 	}
 	return creds, nil
+}
+
+func validateHostVersionTargets(sc *scenario.Scenario, topo *topology.Topology) error {
+	hosts := map[string]bool{}
+	for _, cluster := range topo.Clusters() {
+		for _, host := range cluster.Hosts {
+			hosts[host.Key] = true
+		}
+	}
+	for key := range sc.HostVersions {
+		if !hosts[key] {
+			return fmt.Errorf("host version override %q does not match a host", key)
+		}
+	}
+	return nil
 }
 
 // Close stops the running vCenter and any scheduled apply.
@@ -339,6 +357,11 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	call.Result = activity.ResultOK
 	typ, msg, faulted := cap.Fault()
 	if faulted || cap.Status >= 400 {
+		// A server fault can echo input. Do not keep its text when the request
+		// contained credentials, a session value, or an unparseable body.
+		if len(body) > 0 && querylog.Redact(body) != string(body) {
+			msg = ""
+		}
 		call.Result, call.Fault, call.Message = activity.ResultFault, typ, msg
 		if typ == "NotAuthenticated" || typ == "InvalidLogin" {
 			call.Result = activity.ResultDenied

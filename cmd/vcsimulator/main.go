@@ -1,4 +1,4 @@
-// Command vcsimulator serves a simulated vCenter 9.1.1 with vSAN ESA
+// Command vcsimulator serves a simulated vCenter with vSAN ESA
 // clusters on /sdk and /vsanHealth, for the vSAN host metrics management
 // pack and the native vCenter adapter.
 //
@@ -12,9 +12,9 @@
 // change. Without -scenario the built-in Phase 1 scenario (one four-host
 // cluster) runs under -seed.
 //
-// Login accepts any user name and password (vcsim's default) unless the
-// scenario configures users or -username is set (or VCSIM_USERNAME /
-// VCSIM_PASSWORD in the environment), in which case only those users log in.
+// Login uses the published administrator credential by default. Scenario or
+// environment users replace that default; -any-login explicitly permits any
+// non-empty username and password.
 package main
 
 import (
@@ -256,7 +256,7 @@ func adminNote(addr string) string {
 	if ip := net.ParseIP(host); host == "localhost" || (ip != nil && ip.IsLoopback()) {
 		return "loopback only"
 	}
-	return "reachable beyond this host: put it behind your own authentication"
+	return "reachable beyond this host: use TLS when accessing remotely"
 }
 
 func loginMode(users []string) string {

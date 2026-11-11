@@ -19,6 +19,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/control"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
+	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
 //go:embed ui
@@ -122,6 +123,10 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 		return c.PreviewGenerate(p)
 	})
 	get("/api/presets", func(r *http.Request) (any, error) { return c.Presets(), nil })
+	get("/api/version-presets", func(r *http.Request) (any, error) {
+		vcenter, esx := scenario.VersionPresets()
+		return map[string]any{"vcenter": vcenter, "esx": esx}, nil
+	})
 	send("POST", "/api/draft/preset", func(r *http.Request) (any, error) {
 		var req struct {
 			Name string `json:"name"`

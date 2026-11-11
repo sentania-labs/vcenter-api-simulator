@@ -48,6 +48,16 @@ func resolveVersion(v Version, presets map[string]Version, fallback string) (Ver
 	}
 	return v, nil
 }
+
+// VersionPresets lists selectable vCenter and host releases in ascending order.
+func VersionPresets() (vcenter, esx []Version) {
+	for _, id := range []string{"8.0u3", "9.0", "9.1.1"} {
+		vcenter = append(vcenter, vcVersions[id])
+		esx = append(esx, esxVersions[id])
+	}
+	return
+}
+
 func (s *Scenario) VCenterVersion() (Version, error) {
 	return resolveVersion(s.VCenter, vcVersions, "9.1.1")
 }

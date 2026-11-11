@@ -51,7 +51,7 @@ func do(t *testing.T, method, url, ctype, body string, hdr map[string]string) (i
 
 func TestReadEndpoints(t *testing.T) {
 	srv, _ := newAdmin(t)
-	for _, p := range []string{"/api/state", "/api/tree", "/api/draft", "/api/presets", "/api/timeline", "/api/families", "/api/compat",
+	for _, p := range []string{"/api/state", "/api/tree", "/api/draft", "/api/presets", "/api/version-presets", "/api/timeline", "/api/families", "/api/compat",
 		"/api/activity", "/api/clusters/dc-01/cluster-03"} {
 		code, b := do(t, "GET", srv.URL+p, "", "", nil)
 		if code != 200 || !json.Valid(b) {

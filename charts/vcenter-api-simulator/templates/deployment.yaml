@@ -61,6 +61,7 @@ spec:
             - -tls-names={{ include "vcsim.tlsNames" . }}
             {{- if include "vcsim.tlsSecretName" . }}
             - -tls-managed
+            - -tls-dir=/data/tls
             {{- end }}
             - -admin={{ if .Values.admin.enabled }}{{ ternary "0.0.0.0" "127.0.0.1" (or .Values.admin.exposeToPodNetwork .Values.admin.service.enabled) }}:{{ .Values.admin.port }}{{ end }}
             {{- $hosts := .Values.admin.allowedHosts }}

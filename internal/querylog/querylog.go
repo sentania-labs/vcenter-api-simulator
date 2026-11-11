@@ -168,7 +168,7 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 			}
 			redact := t.Name.Local == "Header" || sensitive(t.Name.Local)
 			for _, a := range t.Attr {
-				if sensitive(a.Name.Local) {
+				if sensitive(a.Name.Local) || (a.Name.Local == "type" && sensitive(a.Value)) {
 					redact = true
 				}
 			}
