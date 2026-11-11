@@ -287,3 +287,34 @@ resumes unless the scenario file changed since, in which case the file wins.
 | Reset cluster seed | `seedEpoch` + 1 on the cluster | unchanged; every sample of the cluster changes |
 | generator / new global seed | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new seed replaces every identity |
 | latency, fault rules | `latency:`, `faults:` | none; the running vCenter is not rebuilt |
+
+## Product versions
+
+`vcenterVersion` and `esxVersion` accept presets `8.0u3`, `9.0`, and
+`9.1.1`. ESX defaults to the selected vCenter release; a cluster can set
+`esxVersion` and `hostVersions` can override a host by its topology key.
+A custom version supplies `version`, `build`, `apiVersion`, and `fullName`.
+Hosts newer than vCenter are rejected unless `forceNewerHosts: true` is set;
+the review lists each forced mismatch. Version changes rebuild the simulator
+at apply, preserve inventory identities, and end sessions.
+
+```yaml
+vcenterVersion: {preset: "9.0"}
+esxVersion: {preset: "9.0"}
+clusters:
+  - key: dc-01/cluster-01
+    esxVersion: {preset: "8.0u3"}
+hostVersions:
+  dc-01/cluster-01/esx01: {preset: "9.0"}
+```
+
+The release and build pairs come from Broadcom's [vCenter build table](https://knowledge.broadcom.com/external/article/326316/build-numbers-and-versions-of-vmware-vcen.html)
+ and [ESX build table](https://knowledge.broadcom.com/external/article/316595/build-numbers-and-versions-of-vmware-esxi.html).
+The 9.1.1 names and API versions also come from the repository's live capture.
+For 8.0 U3 and 9.0 the full product names are synthesized; ESX API-version
+strings and release-specific vSAN version documents have not been verified.
+Those ESX API-version fields are left empty and the vSAN version document
+continues to report the captured 9.1.1 service. The REST host list does not
+currently report product versions. Apart from selected version metadata and
+the advertised vCenter API versions, release-specific namespaces, properties,
+and vSAN behavior are not modelled.

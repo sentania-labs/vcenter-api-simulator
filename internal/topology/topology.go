@@ -28,10 +28,11 @@ import (
 
 // Topology is one simulated vCenter.
 type Topology struct {
-	Seed          string
-	TelemetrySeed string // feeds metric values; identities never depend on it
-	InstanceUUID  string // ServiceContent.about.instanceUuid
-	Datacenters   []*Datacenter
+	VCenterVersion scenario.Version
+	Seed           string
+	TelemetrySeed  string // feeds metric values; identities never depend on it
+	InstanceUUID   string // ServiceContent.about.instanceUuid
+	Datacenters    []*Datacenter
 }
 
 // Datacenter holds clusters and the one vDS their hosts share.
@@ -120,6 +121,7 @@ func (c *Cluster) VDSUUID() string { return c.Datacenter.VDSUUID }
 
 // Host is one ESXi host.
 type Host struct {
+	Version       scenario.Version
 	Index         int // within the cluster
 	Name          string
 	Key           string
@@ -267,7 +269,8 @@ var (
 // numbers the inventory the same way every time and an existing one keeps
 // its numbers.
 func Generate(s *scenario.Scenario, r *registry.Registry) *Topology {
-	t := &Topology{Seed: s.Seed, TelemetrySeed: s.TelemetrySeed, InstanceUUID: r.UUID("vcenter", 0)}
+	vc, _ := s.VCenterVersion()
+	t := &Topology{Seed: s.Seed, TelemetrySeed: s.TelemetrySeed, InstanceUUID: r.UUID("vcenter", 0), VCenterVersion: vc}
 	if t.TelemetrySeed == "" {
 		t.TelemetrySeed = s.Seed
 	}
@@ -336,7 +339,9 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		cl.Datastore = fmt.Sprintf("vsanDatastore (%d)", n-1)
 	}
 	for hi := 1; hi <= spec.Hosts; hi++ {
-		cl.Hosts = append(cl.Hosts, generateHost(r, cl, hi))
+		host := generateHost(r, cl, hi)
+		host.Version, _ = s.HostVersion(cl.Key, host.Key)
+		cl.Hosts = append(cl.Hosts, host)
 	}
 	nvms := spec.Hosts * scenario.Int(spec.VMs.PerHost)
 	for vi := 1; vi <= nvms; vi++ {

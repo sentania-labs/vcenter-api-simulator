@@ -203,3 +203,20 @@ func TestCaptureLicensingDiscoveryRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestCaptureFetchPropertyWhenUnauthenticated(t *testing.T) {
+	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte(`<Envelope><Body><Fault><detail><NotAuthenticatedFault/></detail></Fault></Body></Envelope>`))
+	}))
+	body := `<Envelope><Body><Fetch><_this type="HostSystem">host-1</_this><prop>config.product</prop></Fetch></Body></Envelope>`
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(body)))
+	got := c.Records(true)
+	if len(got) != 1 || got[0].Fault != "NotAuthenticated" || got[0].ObjectType != "HostSystem" || len(got[0].Properties) != 1 || got[0].Properties[0] != "config.product" {
+		t.Fatalf("Fetch not captured: %+v", got)
+	}
+}

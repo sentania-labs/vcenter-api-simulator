@@ -92,7 +92,10 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	case "/api/appliance/system/version":
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "Patch for VMware vCenter Server 9.1", "install_time": "2026-10-23T16:41:17.074Z", "product": "VMware vCenter Server", "build": s.catalog.About.Build, "name": s.catalog.About.Version + ".0100", "releasedate": "October 08, 2026", "type": "vCenter Server with an embedded Platform Services Controller", "version": s.catalog.About.Version + ".0100"})
+		v := s.catalog.About
+		release := strings.TrimPrefix(v.FullName, "VMware vCenter Server ")
+		release = strings.TrimSuffix(release, "."+v.Build)
+		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "VMware vCenter Server " + v.Version, "product": "VMware vCenter Server", "build": v.Build, "name": release, "type": "vCenter Server with an embedded Platform Services Controller", "version": release})
 		return true
 	}
 	if s.inventory(w, r) {

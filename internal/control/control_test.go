@@ -1745,3 +1745,50 @@ func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
 		t.Fatalf("removed user's session survived: %d", status)
 	}
 }
+
+func TestVersionChangeReviewsAndKeepsIdentity(t *testing.T) {
+	ctl, err := New(Options{Scenario: scenario.Phase1("version-swap"), DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("login failed")
+	}
+	before := nodeUUIDs(ctl)
+	draft := editable(t, ctl)
+	draft.VCenter = scenario.Version{Preset: "8.0u3"}
+	draft.ESX = scenario.Version{Preset: "9.0"}
+	draft.ForceNewerHosts = true
+	put(t, ctl, draft)
+	review, err := ctl.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !review.RebuildsVCenter || !review.SessionsDropped {
+		t.Fatalf("version review did not explain the restart: %+v", review)
+	}
+	warned := false
+	for _, w := range review.Warnings {
+		if w.Title == "Host newer than vCenter" {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatal("forced newer host warning missing")
+	}
+	if _, err = ctl.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	after := nodeUUIDs(ctl)
+	for name, id := range before {
+		if after[name] != id {
+			t.Fatalf("identity changed: %s", name)
+		}
+	}
+	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("old session remained: %d", status)
+	}
+}

@@ -407,13 +407,17 @@ func normal(sc *scenario.Scenario, parts ...string) string {
 		switch p {
 		case "topology":
 			v = struct {
-				Seed, Tel string
-				DC        []scenario.Datacenter
-				Def       scenario.ClusterSpec
-				Vary      scenario.Vary
-				Cl        []scenario.ClusterOverride
-				Rm        []string
-			}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed}
+				Seed, Tel       string
+				DC              []scenario.Datacenter
+				Def             scenario.ClusterSpec
+				Vary            scenario.Vary
+				Cl              []scenario.ClusterOverride
+				Rm              []string
+				VCenter         scenario.Version
+				ESX             scenario.Version
+				HostVersions    map[string]scenario.Version
+				ForceNewerHosts bool
+			}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed, s.VCenter, s.ESX, s.HostVersions, s.ForceNewerHosts}
 		case "telemetry":
 			v = struct {
 				F []scenario.Fault

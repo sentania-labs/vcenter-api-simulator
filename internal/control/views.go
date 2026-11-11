@@ -126,7 +126,7 @@ func (c *Controller) State() *State {
 	r := c.applied()
 	now := c.now()
 	s := &State{Version: c.opts.Version, Commit: c.opts.Commit, Endpoint: c.opts.Endpoint, API: c.opts.APIAddrs, Admin: c.opts.AdminAddr}
-	s.Profile.FullName, s.Profile.Version, s.Profile.Build = c.cat.About.FullName, c.cat.About.Version, c.cat.About.Build
+	s.Profile.FullName, s.Profile.Version, s.Profile.Build = r.topo.VCenterVersion.FullName, r.topo.VCenterVersion.Version, r.topo.VCenterVersion.Build
 	s.Profile.Source = c.cat.Source
 	s.Clock.Now, s.Clock.Bucket, s.Clock.Next = now.UTC(), bucket(now), nextBoundary(now)
 	s.Running = !c.paused.Load()

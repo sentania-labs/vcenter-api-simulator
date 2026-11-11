@@ -117,6 +117,13 @@ func New(opts Options) (*Simulator, error) {
 		return nil, err
 	}
 	topo := opts.Topology
+	// The embedded catalog is shared; only the per-instance copy may change.
+	instanceCatalog := *cat
+	cat = &instanceCatalog
+	if v := topo.VCenterVersion; v.Version != "" {
+		cat.About.Version, cat.About.Build, cat.About.ApiVersion, cat.About.FullName = v.Version, v.Build, v.APIVersion, v.FullName
+		cat.VimServiceVersions = selectVimVersions(cat.VimServiceVersions, v.APIVersion)
+	}
 
 	content := vpx.ServiceContent
 	content.About = aboutInfo(cat, topo)
@@ -738,7 +745,7 @@ func (s *Simulator) finishCluster(ctx *simulator.Context, refs *ClusterRefs) {
 		hc := vsanHostConfig(ref, cl, h)
 		cfg.VsanHostConfig = append(cfg.VsanHostConfig, hc)
 		hs.Config.VsanHostConfig = &hc
-		shapeHostProduct(hs, s.Catalog)
+		shapeHostProduct(hs, h)
 		shapeHostRuntime(hs, cl, h, s.Env.Now)
 	}
 	for i, vref := range refs.VMs {

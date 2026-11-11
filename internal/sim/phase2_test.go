@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1476,4 +1477,63 @@ func TestPrivilegeChecksRequireValidSession(t *testing.T) {
 	}
 	check(false)
 
+}
+
+func TestMixedProductVersionsAcrossAPIs(t *testing.T) {
+	sc := scenario.Phase1("mixed-version")
+	sc.VCenter = scenario.Version{Preset: "9.0"}
+	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-01", ESX: scenario.Version{Preset: "8.0u3"}}}
+	sc.HostVersions = map[string]scenario.Version{"dc-01/cluster-01/esx01": {Preset: "9.0"}}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	e := startWith(t, topo, sim.Options{})
+	if err := e.login("administrator@vsphere.local", "test-credential"); err != nil {
+		t.Fatal(err)
+	}
+	about := e.client.ServiceContent.About
+	if about.Version != "9.0.0" || about.Build != "24755230" || about.ApiVersion != "9.0.0.0" {
+		t.Fatalf("vCenter about: %+v", about)
+	}
+	pc := property.DefaultCollector(e.client)
+	for i, ref := range e.sim.Clusters[0].Hosts {
+		var host mo.HostSystem
+		if err := pc.RetrieveOne(context.Background(), ref, []string{"config.product", "summary.config.product"}, &host); err != nil {
+			t.Fatal(err)
+		}
+		wantVersion, wantBuild := "8.0.3", "24022510"
+		if i == 0 {
+			wantVersion, wantBuild = "9.0.0", "24755229"
+		}
+		if host.Config.Product.Version != wantVersion || host.Config.Product.Build != wantBuild || host.Summary.Config.Product.Version != wantVersion {
+			t.Fatalf("host %d product: %+v", i, host.Config.Product)
+		}
+	}
+	for _, path := range []string{"/sdk/vimServiceVersions.xml", "/api/appliance/system/version"} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
+		if strings.HasPrefix(path, "/api/") {
+			login, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+			login.SetBasicAuth("administrator@vsphere.local", "test-credential")
+			res, err := http.DefaultClient.Do(login)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var token string
+			if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			req.Header.Set("vmware-api-session-id", token)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != 200 || !bytes.Contains(b, []byte("9.0.0")) || bytes.Contains(b, []byte("9.1.1")) {
+			t.Errorf("%s: %d %s", path, res.StatusCode, b)
+		}
+	}
 }

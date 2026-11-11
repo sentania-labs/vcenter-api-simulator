@@ -157,3 +157,28 @@ func TestDelayDuration(t *testing.T) {
 		t.Errorf("%v %v", d.Duration(0), d.Duration(1))
 	}
 }
+
+func TestVersionPresetsAndNewerHostValidation(t *testing.T) {
+	s := Phase1("version-test")
+	s.VCenter = Version{Preset: "8.0u3"}
+	s.ESX = Version{Preset: "9.0"}
+	if err := s.Validate(); err == nil {
+		t.Fatal("newer ESX was accepted without an override")
+	}
+	s.ForceNewerHosts = true
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	vc, err := s.VCenterVersion()
+	if err != nil || vc.Build != "24022515" {
+		t.Fatalf("vCenter preset: %+v %v", vc, err)
+	}
+	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
+	if err != nil || host.Build != "24755229" {
+		t.Fatalf("ESX preset: %+v %v", host, err)
+	}
+	s.HostVersions = map[string]Version{"dc-01/cluster-01/esx01": {Preset: "invalid"}}
+	if err := s.Validate(); err == nil {
+		t.Fatal("unknown preset accepted")
+	}
+}

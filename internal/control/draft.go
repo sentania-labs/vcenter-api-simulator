@@ -460,6 +460,13 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	}
 	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged)
 	rv.Warnings = warnings(old, nt, d, rv, newProj)
+	for _, cluster := range nt.Clusters() {
+		for _, host := range cluster.Hosts {
+			if newer, _ := scenario.VersionNewer(host.Version.Version, nt.VCenterVersion.Version); newer {
+				rv.Warnings = append(rv.Warnings, Warning{Severity: "warn", Title: "Host newer than vCenter", Text: host.Name + " is newer than vCenter; this combination was explicitly allowed."})
+			}
+		}
+	}
 	return rv, nil
 }
 
@@ -506,6 +513,22 @@ func specFields(s scenario.ClusterSpec) [][2]string {
 func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Projection) []Change {
 	var out []Change
 	osc, nsc := old.sc, d.Scenario
+	if old.topo.VCenterVersion != nt.VCenterVersion {
+		out = append(out, Change{Object: "vCenter", Field: "Version", Before: old.topo.VCenterVersion.FullName, After: nt.VCenterVersion.FullName, Effect: "sessions end at apply", Area: "Topology"})
+	}
+	oldHosts := map[string]*topology.Host{}
+	for _, cluster := range old.topo.Clusters() {
+		for _, host := range cluster.Hosts {
+			oldHosts[host.Key] = host
+		}
+	}
+	for _, cluster := range nt.Clusters() {
+		for _, host := range cluster.Hosts {
+			if before := oldHosts[host.Key]; before != nil && before.Version != host.Version {
+				out = append(out, Change{Object: host.Key, Field: "ESX version", Before: before.Version.FullName, After: host.Version.FullName, Effect: "host identity retained", Area: "Topology"})
+			}
+		}
+	}
 	out = append(out, nfsChanges(osc, nsc)...)
 	out = append(out, iscsiChanges(osc, nsc)...)
 	if osc.Seed != nsc.Seed {
