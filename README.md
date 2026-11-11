@@ -75,6 +75,19 @@ keeps the console on loopback unless `admin.service.enabled` is set; an optional
 TLS-terminating proxy, set `-admin-secure-cookie` so cookies require HTTPS; the
 chart sets it automatically for its TLS ingress.
 
+| Where to set it | Settings |
+|---|---|
+| Console | vCenter users and roles, idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
+| Start-up | API and console listen addresses and ports, data directory, and console allowed hosts. These are needed to locate and reach the console. |
+
+An uploaded or regenerated console certificate is kept in the data directory.
+Changing it ends sessions, and clients must trust the new certificate. A
+certificate supplied through `-tls-cert`/`-tls-key`, scenario `tls`, or the
+chart's existing Secret or cert-manager takes precedence and is read-only in
+the console. `tls.managed: true` explicitly asserts chart ownership and
+requires a chart-supplied Secret or cert-manager certificate. If that supply is
+removed, the previously configured console certificate is used again.
+
 What the scenario controls, and what the simulator guarantees:
 
 - **Topology.** Any number of datacenters and clusters. Each cluster draws

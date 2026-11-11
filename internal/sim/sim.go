@@ -154,7 +154,7 @@ func New(opts Options) (*Simulator, error) {
 			creds[n] = p
 		}
 	}
-	installAuth(m, creds, opts.Authenticate, opts.SessionTimeout)
+	installAuth(m, creds, opts.Authenticate, 0)
 	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
 	m.Service.Context.Map.Put(&authorization{AuthorizationManager: am, role: opts.UserRole})
 	if err := s.build(); err != nil {
@@ -163,7 +163,10 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]string{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}}
+	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}}
+	h.timeout.Store(int64(opts.SessionTimeout))
+	h.rest.timeout = &h.timeout
+	s.Handler = h
 	return s, nil
 }
 
@@ -788,6 +791,7 @@ type handler struct {
 	env         *vsanhealth.Env
 	strictLogin bool
 	accessMu    sync.RWMutex
+	timeout     atomic.Int64
 	role        func(string) string
 	registry    *simulator.Registry
 	rest        restSessions
@@ -821,13 +825,38 @@ func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
 		sm.TerminateSession(&simulator.Context{Session: &simulator.Session{}, Map: reg}, &types.TerminateSession{SessionId: ids})
 	}
 	h.rest.mu.Lock()
-	for token, user := range h.rest.tokens {
-		if affected["*"] || affected[user] {
+	for token, session := range h.rest.tokens {
+		if affected["*"] || affected[session.user] {
 			delete(h.rest.tokens, token)
 		}
 	}
 	h.rest.mu.Unlock()
 	return nil
+}
+
+// SetSessionTimeout changes the idle timeout for both existing and new sessions.
+func (s *Simulator) SetSessionTimeout(timeout time.Duration) {
+	s.Handler.(*handler).timeout.Store(int64(timeout))
+}
+
+func (h *handler) expireSOAPSession(r *http.Request) {
+	timeout := time.Duration(h.timeout.Load())
+	if timeout <= 0 {
+		return
+	}
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	if err != nil {
+		return
+	}
+	sm := h.registry.SessionManager()
+	probe := &simulator.Session{Map: h.registry, Registry: simulator.NewRegistry()}
+	view := probe.Get(sm.Reference()).(*simulator.SessionManager)
+	for _, session := range view.SessionList {
+		if session.Key == cookie.Value && time.Since(session.LastActiveTime) >= timeout {
+			sm.TerminateSession(&simulator.Context{Session: &simulator.Session{}, Map: h.registry}, &types.TerminateSession{SessionId: []string{session.Key}})
+			return
+		}
+	}
 }
 
 // otherLogins are vcsim's alternative login methods: LoginByToken takes
@@ -839,6 +868,7 @@ var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginByS
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.accessMu.RLock()
 	defer h.accessMu.RUnlock()
+	h.expireSOAPSession(r)
 	if h.rest.serve(w, r) {
 		return
 	}

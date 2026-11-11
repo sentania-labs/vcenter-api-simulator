@@ -1,3 +1,6 @@
+{{- if and .Values.tls.managed (not (include "vcsim.tlsSecretName" .)) }}
+{{- fail "tls.managed requires tls.existingSecret or tls.certManager.enabled" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,6 +59,9 @@ spec:
             - -unanswered-stdout
             {{- end }}
             - -tls-names={{ include "vcsim.tlsNames" . }}
+            {{- if include "vcsim.tlsSecretName" . }}
+            - -tls-managed
+            {{- end }}
             - -admin={{ if .Values.admin.enabled }}{{ ternary "0.0.0.0" "127.0.0.1" (or .Values.admin.exposeToPodNetwork .Values.admin.service.enabled) }}:{{ .Values.admin.port }}{{ end }}
             {{- $hosts := .Values.admin.allowedHosts }}
             {{- if and .Values.admin.ingress.enabled .Values.admin.ingress.host }}

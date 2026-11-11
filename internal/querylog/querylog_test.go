@@ -220,3 +220,17 @@ func TestCaptureFetchPropertyWhenUnauthenticated(t *testing.T) {
 		t.Fatalf("Fetch not captured: %+v", got)
 	}
 }
+
+func TestCaptureReportsWriteFailure(t *testing.T) {
+	if _, err := os.Stat("/dev/full"); err != nil {
+		t.Skip("/dev/full unavailable")
+	}
+	c, err := NewCapture(t.TempDir(), "/dev/full", Settings{Full: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Wrap(http.NotFoundHandler()).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/missing", nil))
+	if c.State().Error == "" {
+		t.Fatal("full log write failure was not reported")
+	}
+}

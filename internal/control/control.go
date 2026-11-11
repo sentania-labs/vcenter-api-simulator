@@ -42,6 +42,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/sim"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
@@ -62,6 +63,7 @@ type Options struct {
 	Credentials    map[string]string
 	SessionTimeout time.Duration
 	AnyLogin       bool
+	Certificate    *serve.Certificate
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 
@@ -149,6 +151,9 @@ func New(opts Options) (*Controller, error) {
 	now := opts.Now
 	c := &Controller{opts: opts, cat: cat, now: func() time.Time { return now().UTC() }, base: opts.Scenario, scope: ScopeAll}
 	c.started = c.now()
+	if err := c.loadRuntimeSettings(); err != nil {
+		return nil, fmt.Errorf("runtime settings: %w", err)
+	}
 	c.Log = activity.New(activity.DefaultSize, c.started)
 	c.Log.EmptyKind = func(f string) bool { fam, ok := cat.Families[f]; return ok && fam.Behaviour != catalog.Data }
 

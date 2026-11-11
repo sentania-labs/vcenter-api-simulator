@@ -18,6 +18,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
 
@@ -1790,5 +1791,101 @@ func TestVersionChangeReviewsAndKeepsIdentity(t *testing.T) {
 	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
 	if status != http.StatusInternalServerError {
 		t.Fatalf("old session remained: %d", status)
+	}
+}
+
+func TestRuntimeSessionTimeoutAppliesAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	sc := scenario.Phase1("runtime-timeout")
+	ctl, err := New(Options{Scenario: sc, DataDir: dir, SessionTimeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("SOAP login failed")
+	}
+	req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
+	req.SetBasicAuth(DefaultUsername, DefaultPassword)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if _, err = ctl.SetRuntimeSettings(RuntimeSettings{SessionTimeoutSeconds: 1}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("SOAP idle session remained: %d", status)
+	}
+	req, _ = http.NewRequest(http.MethodGet, api.srv.URL+"/api/vcenter/datastore", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("REST idle session remained: %d", res.StatusCode)
+	}
+	if _, err = ctl.SetRuntimeSettings(RuntimeSettings{}); err != nil {
+		t.Fatal(err)
+	}
+	ctl.Close()
+	ctl, err = New(Options{Scenario: sc, DataDir: dir, SessionTimeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	if got := ctl.RuntimeSettings().SessionTimeoutSeconds; got != 0 {
+		t.Fatalf("saved timeout %d, want zero", got)
+	}
+}
+
+func TestChangingCertificateEndsSessionsAndRejectsInvalidUpload(t *testing.T) {
+	dir := t.TempDir()
+	cert, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "tls"), []string{"localhost"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = cert.EnableConsole(dir); err != nil {
+		t.Fatal(err)
+	}
+	ctl, err := New(Options{Scenario: scenario.Phase1("certificate-change"), DataDir: dir, Certificate: cert})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("SOAP login failed")
+	}
+	before := cert.Info()
+	if _, err = ctl.UploadCertificate("not a certificate", "not a key"); err == nil {
+		t.Fatal("invalid pair accepted")
+	}
+	if cert.Info().Fingerprint != before.Fingerprint {
+		t.Fatal("invalid upload changed certificate")
+	}
+	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != 200 {
+		t.Fatal("invalid upload ended session")
+	}
+	info, err := ctl.RegenerateCertificate([]string{"localhost", "new.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Fingerprint == before.Fingerprint || len(info.Names) != 2 {
+		t.Fatalf("certificate metadata not updated: %+v", info)
+	}
+	status, _ = api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != 500 {
+		t.Fatal("certificate change did not end SOAP session")
 	}
 }

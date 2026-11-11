@@ -64,6 +64,7 @@ func main() {
 	queryLog := flag.String("query-log", "", "enable full query capture to this JSONL path (may contain inventory identifiers)")
 	unansweredStdout := flag.Bool("unanswered-stdout", false, "write unanswered requests as JSON lines to stdout")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
+	tlsManaged := flag.Bool("tls-managed", false, "the deployment manages the certificate pair in -tls-dir")
 	tlsDir := flag.String("tls-dir", "", "directory holding the persisted self-signed certificate (default <data>/tls)")
 	tlsCert := flag.String("tls-cert", "", "serve this certificate (PEM) instead of a self-signed one; needs -tls-key")
 	tlsKey := flag.String("tls-key", "", "private key (PEM) for -tls-cert")
@@ -138,7 +139,7 @@ func main() {
 		}
 		return
 	}
-	cert, err := certificate(sc, *dataDir, *tlsDir, *tlsCert, *tlsKey, *names)
+	cert, err := certificate(sc, *dataDir, *tlsDir, *tlsCert, *tlsKey, *names, *tlsManaged)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -154,7 +155,7 @@ func main() {
 	start := time.Now()
 	ctl, err := control.New(control.Options{
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
-		Credentials: extra, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin,
+		Credentials: extra, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
 	})
 	if err != nil {
@@ -267,18 +268,33 @@ func loginMode(users []string) string {
 
 // certificate picks the key pair: flags over the scenario, a provided pair
 // over a persisted self-signed one.
-func certificate(sc *scenario.Scenario, dataDir, tlsDir, certFile, keyFile, names string) (*serve.Certificate, error) {
-	if certFile == "" {
-		certFile, keyFile = sc.TLS.CertFile, sc.TLS.KeyFile
-	}
+func certificate(sc *scenario.Scenario, dataDir, tlsDir, certFile, keyFile, names string, managed bool) (*serve.Certificate, error) {
 	if certFile != "" {
-		return serve.LoadCertificateFiles(certFile, keyFile)
+		cert, err := serve.LoadCertificateFiles(certFile, keyFile)
+		if err == nil {
+			cert.MarkManaged()
+		}
+		return cert, err
 	}
 	if tlsDir == "" {
 		tlsDir = sc.TLS.Dir
 	}
 	if tlsDir == "" {
 		tlsDir = filepath.Join(dataDir, "tls")
+	}
+	if managed {
+		cert, err := serve.LoadCertificateFiles(filepath.Join(tlsDir, "cert.pem"), filepath.Join(tlsDir, "key.pem"))
+		if err == nil {
+			cert.MarkManaged()
+		}
+		return cert, err
+	}
+	if sc.TLS.CertFile != "" {
+		cert, err := serve.LoadCertificateFiles(sc.TLS.CertFile, sc.TLS.KeyFile)
+		if err == nil {
+			cert.MarkManaged()
+		}
+		return cert, err
 	}
 	san := []string{"localhost", "127.0.0.1"}
 	if h, err := os.Hostname(); err == nil {
@@ -290,7 +306,14 @@ func certificate(sc *scenario.Scenario, dataDir, tlsDir, certFile, keyFile, name
 			san = append(san, n)
 		}
 	}
-	return serve.LoadOrCreateCertificate(tlsDir, san)
+	cert, err := serve.LoadOrCreateCertificate(tlsDir, san)
+	if err != nil {
+		return nil, err
+	}
+	if err := cert.EnableConsole(dataDir); err != nil {
+		return nil, err
+	}
+	return cert, nil
 }
 
 // jsonLine renders a description with the listen address.

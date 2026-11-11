@@ -73,6 +73,9 @@ credentials:
   password: change-me
 
 tls:
+  # Assert the chart owns the certificate. Requires existingSecret or certManager.
+  # A supplied chart certificate is always deployment-managed, even when false.
+  managed: false
   # Name of an existing kubernetes.io/tls Secret (tls.crt, tls.key) to serve.
   # Takes precedence over certManager and over the generated certificate.
   existingSecret: ""

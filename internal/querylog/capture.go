@@ -21,6 +21,8 @@ type State struct {
 	FullHeld       int      `json:"fullHeld"`
 	UnansweredHeld int      `json:"unansweredHeld"`
 	Path           string   `json:"path"`
+	FileBytes      int64    `json:"fileBytes"`
+	Error          string   `json:"error,omitempty"`
 }
 
 const capacity = 1000
@@ -31,6 +33,7 @@ type Capture struct {
 	settingsPath, path string
 	stdout             io.Writer
 	full, unanswered   []record
+	lastError          string
 }
 
 // NewCapture loads persisted settings or uses the supplied startup defaults.
@@ -65,7 +68,11 @@ func NewCapture(dir, path string, defaults Settings, stdout io.Writer) (*Capture
 func (c *Capture) State() State {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), Path: c.path}
+	var size int64
+	if info, err := os.Stat(c.path); err == nil {
+		size = info.Size()
+	}
+	return State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), Path: c.path, FileBytes: size, Error: c.lastError}
 }
 func (c *Capture) Set(s Settings) error {
 	c.mu.Lock()
@@ -113,15 +120,25 @@ func (c *Capture) save(r record) {
 	defer c.mu.Unlock()
 	if c.settings.Full {
 		c.full = appendBounded(c.full, r)
-		if f, err := os.OpenFile(c.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); err == nil {
-			_ = json.NewEncoder(f).Encode(r)
-			_ = f.Close()
+		f, err := os.OpenFile(c.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err == nil {
+			err = json.NewEncoder(f).Encode(r)
+			if closeErr := f.Close(); err == nil {
+				err = closeErr
+			}
+		}
+		if err != nil {
+			c.lastError = "The full request log could not be written. Check its storage."
+		} else {
+			c.lastError = ""
 		}
 	}
 	if c.settings.Unanswered && r.Unanswered {
 		c.unanswered = appendBounded(c.unanswered, r)
 		if c.settings.Stdout && c.stdout != nil {
-			_ = json.NewEncoder(c.stdout).Encode(r)
+			if err := json.NewEncoder(c.stdout).Encode(r); err != nil {
+				c.lastError = "Unanswered requests could not be written to stdout."
+			}
 		}
 	}
 }
@@ -139,18 +156,19 @@ func (c *Capture) Records(unanswered bool) []record {
 
 // WriteJSONL downloads the retained full log or the bounded unanswered list.
 func (c *Capture) WriteJSONL(w io.Writer, unanswered bool) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if unanswered {
+		records := c.Records(true)
 		enc := json.NewEncoder(w)
-		for _, record := range c.unanswered {
+		for _, record := range records {
 			if err := enc.Encode(record); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
+	c.mu.Lock()
 	f, err := os.Open(c.path)
+	c.mu.Unlock()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}

@@ -33,6 +33,34 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 	send := func(m, p string, h func(*http.Request) (any, error)) { mux.HandleFunc(m+" "+p, a.wrap(h)) }
 
 	get("/api/state", func(r *http.Request) (any, error) { return c.State(), nil })
+	get("/api/settings", func(r *http.Request) (any, error) { return c.RuntimeSettings(), nil })
+	get("/api/certificate", func(r *http.Request) (any, error) { return c.CertificateInfo() })
+	send("POST", "/api/certificate/regenerate", func(r *http.Request) (any, error) {
+		var req struct {
+			Names []string `json:"names"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.RegenerateCertificate(req.Names)
+	})
+	send("PUT", "/api/certificate", func(r *http.Request) (any, error) {
+		var req struct {
+			Certificate string `json:"certificate"`
+			PrivateKey  string `json:"privateKey"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.UploadCertificate(req.Certificate, req.PrivateKey)
+	})
+	send("PUT", "/api/settings", func(r *http.Request) (any, error) {
+		var req control.RuntimeSettings
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.SetRuntimeSettings(req)
+	})
 	get("/api/credentials", func(r *http.Request) (any, error) { return c.CredentialsView(), nil })
 	send("PUT", "/api/credentials/user", func(r *http.Request) (any, error) {
 		var req struct {
