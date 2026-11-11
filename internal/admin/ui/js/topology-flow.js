@@ -34,7 +34,7 @@ function seedForm(scn, projection) {
   }
   form = {
     seed: scn.seed || '',
-    dcs: (scn.datacenters || []).map((x) => ({ name: x.name, clusters: String(x.clusters ?? 1), nfs: x.nfs || [] })),
+    dcs: (scn.datacenters || []).map((x) => ({ name: x.name, clusters: String(x.clusters ?? 1), nfs: x.nfs || [], iscsi: x.iscsi || [] })),
     hosts: String(d.hosts ?? 4),
     architecture: projection?.clusters > 0 && projection.osaClusters === projection.clusters ? 'osa' : projection?.clusters > 0 && projection.osaClusters === 0 ? 'esa' : (d.architecture || 'esa'),
     statsPrimary: primaryStates.length && primaryStates.every((x) => x === primaryStates[0]) ? primaryStates[0] : d.statsPrimary !== false,
@@ -54,7 +54,7 @@ function seedForm(scn, projection) {
 function params() {
   return {
     seed: form.seed.trim(),
-    datacenters: form.dcs.map((d) => ({ name: d.name.trim(), clusters: num(d.clusters), ...(d.nfs?.length ? { nfs: d.nfs } : {}) })),
+    datacenters: form.dcs.map((d) => ({ name: d.name.trim(), clusters: num(d.clusters), ...(d.nfs?.length ? { nfs: d.nfs } : {}), ...(d.iscsi?.length ? { iscsi: d.iscsi } : {}) })),
     hosts: num(form.hosts),
     architecture: form.architecture,
     statsPrimary: form.statsPrimary,
@@ -279,11 +279,11 @@ function reviewRender(ctx, data) {
     <div class="g" style="grid-template-columns: 1.25fr 1fr;">
       <div class="stack" style="gap:10px">
         <h2 class="lat-card-title">Changes <span class="aside">${int(rv.topologyChanges)} topology · ${int(rv.telemetryChanges)} telemetry</span></h2>
-        <table class="lat-table"><thead><tr><th>Object</th><th>Field</th><th class="r">Before</th><th class="r">After</th><th>Effect</th></tr></thead>
-          <tbody>${shownChanges.map((c) => html`<tr><td class="ink mono">${c.object}</td><td>${c.field}</td><td class="num r">${c.before}</td><td class="num r">${c.after}</td><td>${badge(c.effect, effectKind(c.effect))}</td></tr>`)}
+        <div class="lat-table-scroll"><table class="lat-table review-changes"><thead><tr><th>Object</th><th>Field</th><th>Before</th><th>After</th><th>Effect</th></tr></thead>
+          <tbody>${shownChanges.map((c) => html`<tr><td class="wrap ink">${c.object}</td><td class="wrap">${c.field}</td><td class="wrap">${c.before}</td><td class="wrap">${c.after}</td><td class="wrap">${badge(c.effect, effectKind(c.effect))}</td></tr>`)}
             ${!showAll && hiddenChanges > 0 ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show all ${int(rv.changes.length + rv.moreChanges)} changes</button> <span class="subtle">· ${int(hiddenChanges + rv.moreChanges)} more</span></td></tr>` : ''}
             ${(showAll || hiddenChanges === 0) && rv.moreChanges ? html`<tr><td class="subtle" colspan="5">… ${int(rv.moreChanges)} more changes not listed</td></tr>` : ''}
-            ${showAll && rv.changes.length > CAP ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show fewer</button></td></tr>` : ''}</tbody></table>
+            ${showAll && rv.changes.length > CAP ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show fewer</button></td></tr>` : ''}</tbody></table></div>
         ${topoOnly && ids.length ? html`
           <h2 class="lat-card-title">Identity consequences</h2>
           <table class="lat-table"><thead><tr><th>Identity</th><th class="r">Kept</th><th class="r">Added</th><th class="r">Restored</th><th class="r">Removed</th></tr></thead>

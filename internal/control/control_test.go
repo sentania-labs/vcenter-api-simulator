@@ -1423,3 +1423,122 @@ defaults: {hosts: 3, vms: {perHost: 1}}
 		}
 	}
 }
+
+func TestISCSIDraftReviewAndStableIdentity(t *testing.T) {
+	sc := scenario.Phase1("iscsi-review")
+	sc.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{Cluster: "dc-01/cluster-01", Adapters: []scenario.ISCSIAdapter{{Name: "adapter-1", Kind: "software"}}, Targets: []scenario.ISCSITarget{{Name: "array", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}}, LUNs: []scenario.ISCSILUN{{Name: "shared-vmfs", Target: "array", Number: 1, Capacity: 1048576, FreeSpace: 1024, Paths: []scenario.ISCSIPath{{Adapter: "adapter-1", State: "active"}}}}}}
+	c := newCtl(t, sc, "", "test")
+	read := func() (string, string, string) {
+		t.Helper()
+		r := c.applied()
+		lun := r.topo.Datacenters[0].ISCSI[0].LUNs[0]
+		srv := httptest.NewServer(r.sim.Handler)
+		defer srv.Close()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
+		req.SetBasicAuth("reader", "password")
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var token string
+		if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/vcenter/datastore", nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err = srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var rows []struct {
+			Name string `json:"name"`
+			ID   string `json:"datastore"`
+		}
+		if err = json.NewDecoder(res.Body).Decode(&rows); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			if row.Name == "shared-vmfs" {
+				return row.ID, lun.UUID, lun.CanonicalName
+			}
+		}
+		t.Fatal("datastore missing")
+		return "", "", ""
+	}
+	id, uuid, canonical := read()
+	draft := editable(t, c)
+	draft.Datacenters[0].ISCSI[0].LUNs[0].FreeSpace = 2048
+	draft.Datacenters[0].ISCSI[0].LUNs[0].Paths[0].State = "dead"
+	put(t, c, draft)
+	review, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, change := range review.Changes {
+		if change.Field == "iSCSI storage" && strings.Contains(change.After, "dead") {
+			found = true
+		}
+	}
+	if !found || !review.RebuildsVCenter {
+		t.Fatal("storage change missing from review")
+	}
+	if _, err = c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	nextID, nextUUID, nextCanonical := read()
+	if id != nextID || uuid != nextUUID || canonical != nextCanonical {
+		t.Fatalf("identity changed after path edit")
+	}
+}
+
+func TestGeneratePrunesStorageReferencesToMissingHosts(t *testing.T) {
+	sc := scenario.Phase1("gen-storage")
+	sc.Datacenters[0].Clusters = 1
+	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{Hosts: 6}}}
+	nfs := scenario.NFSDatastore{Name: "shared-nfs", RemoteHost: "nfs01.example.test", RemotePath: "/vol/shared", Capacity: 5_000_000_000_000, FreeSpace: 3_000_000_000_000, InaccessibleHosts: []string{"dc-01/cluster-01/esx06"}}
+	sc.Datacenters[0].NFS = []scenario.NFSDatastore{nfs}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	c := newCtl(t, sc, "", "t")
+	p := GenParams{Seed: "gen-storage", Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1, NFS: []scenario.NFSDatastore{nfs}}}, Hosts: 4}
+	if _, err := c.PreviewGenerate(p); err != nil {
+		t.Fatalf("preview with a host that the generated topology no longer has: %v", err)
+	}
+	if _, err := c.Generate(p); err != nil {
+		t.Fatalf("generate with a host that the generated topology no longer has: %v", err)
+	}
+}
+
+func TestStorageDraftMarksAffectedClusterAndStandby(t *testing.T) {
+	sc := scenario.Phase1("storage-pending")
+	sc.Datacenters[0].Clusters = 2
+	c := newCtl(t, sc, "", "pending")
+	draft := editable(t, c)
+	draft.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "scoped", RemoteHost: "nfs.example.test", RemotePath: "/shared", Capacity: 4096, FreeSpace: 2048, Clusters: []string{"dc-01/cluster-01"}}}
+	draft.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{Cluster: "dc-01/cluster-01", Adapters: []scenario.ISCSIAdapter{{Name: "a", Kind: "software"}}, Targets: []scenario.ISCSITarget{{Name: "t", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}}, LUNs: []scenario.ISCSILUN{{Name: "shared", Target: "t", Capacity: 1048576, FreeSpace: 1024, Paths: []scenario.ISCSIPath{{Adapter: "a", State: "standby"}}}}}}
+	put(t, c, draft)
+	tree := c.Tree()
+	if tree.PendingN != 1 || tree.Datacenters[0].Clusters[0].State != "pending" || tree.Datacenters[0].Clusters[1].State != "" {
+		t.Fatalf("tree pending: %+v", tree)
+	}
+	v, err := c.Cluster("dc-01/cluster-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State != "pending" {
+		t.Fatalf("cluster pending state %q", v.State)
+	}
+	found := false
+	for _, ds := range v.Datastores {
+		if ds.Name == "shared" && strings.Contains(ds.State, "standby") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("standby path missing from storage state")
+	}
+}

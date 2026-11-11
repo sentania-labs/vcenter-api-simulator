@@ -1,0 +1,35 @@
+# Synthetic storage and fault examples. No real storage is contacted.
+seed: storage-example
+datacenters:
+  - name: dc-01
+    clusters: 1
+    nfs:
+      - name: shared-nfs
+        remoteHost: nfs.example.test
+        remotePath: /exports/shared
+        capacity: 1099511627776
+        freeSpace: 549755813888
+        inaccessibleHosts: [dc-01/cluster-01/esx02]
+    iscsi:
+      - cluster: dc-01/cluster-01
+        adapters:
+          - {name: adapter-1, kind: software}
+          - {name: adapter-2, kind: hardware}
+        targets:
+          - {name: array, address: iscsi.example.test, iqn: 'iqn.2026-01.test.example:array', port: 3260}
+        luns:
+          - name: shared-vmfs
+            target: array
+            number: 1
+            capacity: 1099511627776
+            freeSpace: 10737418240
+            policy: VMW_PSP_RR
+            paths:
+              - {adapter: adapter-1, state: active}
+              - {adapter: adapter-2, state: standby}
+              - {adapter: adapter-1, host: dc-01/cluster-01/esx02, state: dead}
+              - {adapter: adapter-2, host: dc-01/cluster-01/esx02, state: dead}
+defaults:
+  hosts: 4
+  host: {threads: 16, domWorlds: 12, vsanPnics: 2, claimedDevices: 1, localDevices: 1}
+  vms: {perHost: 1, disksPerVM: 1}

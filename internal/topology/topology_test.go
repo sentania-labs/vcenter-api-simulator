@@ -374,3 +374,21 @@ func TestSeedEpochChangesOnlyTheClusterTelemetrySeed(t *testing.T) {
 		}
 	}
 }
+
+func TestStorageFaultHostsFollowVariedTopology(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		s := scenario.Phase1(fmt.Sprintf("storage-varied-%d", i))
+		s.Vary.Hosts = []int{3, 5, 7}
+		s.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "shared", RemoteHost: "nfs.example.test", RemotePath: "/share", Capacity: 1000, FreeSpace: 500}}
+		topo := Generate(s, registry.InMemory(s.Seed))
+		count := len(topo.Clusters()[0].Hosts)
+		s.Datacenters[0].NFS[0].InaccessibleHosts = []string{fmt.Sprintf("dc-01/cluster-01/esx%02d", count)}
+		if err := s.Validate(); err != nil {
+			t.Fatalf("seed %d valid host: %v", i, err)
+		}
+		s.Datacenters[0].NFS[0].InaccessibleHosts = []string{fmt.Sprintf("dc-01/cluster-01/esx%02d", count+1)}
+		if err := s.Validate(); err == nil {
+			t.Fatalf("seed %d accepted nonexistent host %d", i, count+1)
+		}
+	}
+}

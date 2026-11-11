@@ -24,7 +24,7 @@ Single emulator instance can contain multiple datacenters and clusters. Per clus
 - Name, deterministic UUID, location, HA/DRS/vSAN ESA features, optional services.
 - Host count and independently overridden per-host CPU/socket/core count, RAM, NICs/vmk/vDS/uplinks, disk inventory, controller/firmware details, health, connection state.
 - VM count and host placement, CPU/memory/disk count, UUID and instanceUuid, virtual disk paths.
-- Storage: vSAN ESA pools/devices and datastore objects; optional NFS/VMFS for later native-adapter coverage. Datastore accessibility and host membership are relationships, not simple counts.
+- Storage: vSAN ESA pools/devices and datastore objects, local VMFS, and optional shared NFS v3 and iSCSI-backed VMFS. Datastore accessibility and host membership are relationships, not simple counts.
 - vDS count, port groups and host/VM associations. Permit variable clusters with different device counts, not merely uniform duplication.
 
 Support a wizard to generate topologies and a detailed per-cluster editor. Define reproducible seeds, globally unique stable identifiers (MoRef, host UUID, vSAN node UUID, cluster UUID, VM UUID/instance UUID, physical disk UUID), and reset semantics. No identity churn across service restart unless an explicit reset/regenerate operation occurs.

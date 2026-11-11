@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -158,9 +159,19 @@ func New(opts Options) (*Controller, error) {
 			c.scope = st.Scope
 		}
 		if st.Source == opts.SourceHash && st.Scenario != nil {
-			restored, err := fromJSON(st.Scenario, opts.Scenario)
+			restored, err := decodeScenarioJSON(st.Scenario, opts.Scenario)
+			var removed int
+			if err == nil {
+				removed, err = reconcileStorage(restored, nil)
+			}
+			if err == nil {
+				err = restored.Validate()
+			}
 			if err != nil {
 				return nil, fmt.Errorf("control: console state %s: %w (delete it to start from the scenario file)", c.statePath(), err)
+			}
+			if removed > 0 {
+				log.Printf("control: recovered saved console state: removed %d dangling storage references", removed)
 			}
 			sc, version = restored, st.Version
 		} else {
@@ -338,9 +349,8 @@ func Strip(sc *scenario.Scenario) *scenario.Scenario {
 	return out
 }
 
-// fromJSON parses an editable scenario and validates it, taking auth and TLS
-// from the baseline.
-func fromJSON(b []byte, base *scenario.Scenario) (*scenario.Scenario, error) {
+// decodeScenarioJSON takes credentials and TLS settings from the baseline.
+func decodeScenarioJSON(b []byte, base *scenario.Scenario) (*scenario.Scenario, error) {
 	var sc scenario.Scenario
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -348,9 +358,6 @@ func fromJSON(b []byte, base *scenario.Scenario) (*scenario.Scenario, error) {
 		return nil, fmt.Errorf("scenario: %w", err)
 	}
 	sc.Auth, sc.TLS = base.Auth, base.TLS
-	if err := sc.Validate(); err != nil {
-		return nil, err
-	}
 	return &sc, nil
 }
 

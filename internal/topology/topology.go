@@ -20,7 +20,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math/rand/v2"
 	"strings"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -44,12 +43,25 @@ type Datacenter struct {
 	VDSUUID  string // the vDS uuid on /sdk (summary.uuid, proxy switch dvsUuid, vmkernel NIC switchUuid)
 	Clusters []*Cluster
 	NFS      []NFSDatastore
+	ISCSI    []ISCSIStorage
 }
 
 type NFSDatastore struct {
 	Spec   scenario.NFSDatastore
 	Serial int
 	UUID   string
+}
+
+type ISCSIStorage struct {
+	Spec scenario.ISCSIStorage
+	LUNs []ISCSILUN
+}
+
+type ISCSILUN struct {
+	Spec          scenario.ISCSILUN
+	Serial        int
+	UUID          string
+	CanonicalName string
 }
 
 // Portgroups every datacenter's vDS carries, in creation order. Host
@@ -275,6 +287,14 @@ func Generate(s *scenario.Scenario, r *registry.Registry) *Topology {
 			serial := r.Serial("nfs/" + d.Name + "/" + n.Name)
 			t.Datacenters[i].NFS = append(t.Datacenters[i].NFS, NFSDatastore{Spec: n, Serial: serial, UUID: r.UUID("nfs", serial)})
 		}
+		for _, st := range d.ISCSI {
+			store := ISCSIStorage{Spec: st}
+			for _, lun := range st.LUNs {
+				serial := r.Serial("iscsi/" + st.Cluster + "/" + lun.Name)
+				store.LUNs = append(store.LUNs, ISCSILUN{Spec: lun, Serial: serial, UUID: r.UUID("iscsi-vmfs", serial), CanonicalName: "naa.6" + r.Hex("iscsi-naa", serial, 31)})
+			}
+			t.Datacenters[i].ISCSI = append(t.Datacenters[i].ISCSI, store)
+		}
 	}
 	return t
 }
@@ -327,7 +347,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 
 // draw makes a cluster's independent draws from Vary with its own seed.
 func draw(v scenario.Vary, sub uint64) scenario.ClusterSpec {
-	rng := rand.New(rand.NewPCG(sub, sub^0x9E3779B97F4A7C15))
+	rng := scenario.DrawSource(sub)
 	var d scenario.ClusterSpec
 	choice := func(opts []int) int {
 		u := rng.Uint64()
@@ -345,7 +365,7 @@ func draw(v scenario.Vary, sub uint64) scenario.ClusterSpec {
 	}
 	// one draw per knob, always, so adding a knob to the file later does not
 	// re-roll the earlier ones
-	d.Hosts = choice(v.Hosts)
+	d.Hosts = v.DrawHosts(rng)
 	if n := rng1(v.VMsPerHost); v.VMsPerHost != nil {
 		d.VMs.PerHost = scenario.IntPtr(n)
 	}

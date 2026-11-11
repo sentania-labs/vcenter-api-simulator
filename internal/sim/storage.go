@@ -33,7 +33,58 @@ func storageDevice(h *topology.Host) *types.HostStorageDeviceInfo {
 		sd.ScsiLun = append(sd.ScsiLun, &disk)
 		sd.ScsiTopology = appendTopology(sd.ScsiTopology, hbaKey, d.ScsiKey)
 	}
+	populatePlugStore(sd)
 	return sd
+}
+
+// populatePlugStore relates each SCSI topology path to its adapter and LUN.
+func populatePlugStore(sd *types.HostStorageDeviceInfo) {
+	p := &types.HostPlugStoreTopology{}
+	devices := map[string]int{}
+	if sd.ScsiTopology == nil {
+		sd.PlugStoreTopology = p
+		return
+	}
+	deviceNames := map[string]string{}
+	for _, hba := range sd.HostBusAdapter {
+		b := hba.GetHostHostBusAdapter()
+		deviceNames[b.Key] = b.Device
+	}
+	for _, adapter := range sd.ScsiTopology.Adapter {
+		devName, ok := deviceNames[adapter.Adapter]
+		if !ok {
+			devName = adapter.Adapter
+		}
+		a := types.HostPlugStoreTopologyAdapter{Key: "plug-" + adapter.Adapter, Adapter: adapter.Adapter}
+		for _, target := range adapter.Target {
+			for _, lun := range target.Lun {
+				idx, ok := devices[lun.ScsiLun]
+				if !ok {
+					idx = len(p.Device)
+					devices[lun.ScsiLun] = idx
+					p.Device = append(p.Device, types.HostPlugStoreTopologyDevice{Key: "plug-" + lun.ScsiLun, Lun: lun.ScsiLun})
+				}
+				name := fmt.Sprintf("%s:C0:T%d:L%d", devName, target.Target, lun.Lun)
+				if sd.MultipathInfo != nil {
+					for _, m := range sd.MultipathInfo.Lun {
+						if m.Lun == lun.ScsiLun {
+							for _, path := range m.Path {
+								if path.Adapter == adapter.Adapter {
+									name = path.Name
+								}
+							}
+						}
+					}
+				}
+				key := "plug-path-" + name
+				a.Path = append(a.Path, key)
+				p.Device[idx].Path = append(p.Device[idx].Path, key)
+				p.Path = append(p.Path, types.HostPlugStoreTopologyPath{Key: key, Name: name, Adapter: a.Key, Device: p.Device[idx].Key, TargetNumber: target.Target, LunNumber: lun.Lun})
+			}
+		}
+		p.Adapter = append(p.Adapter, a)
+	}
+	sd.PlugStoreTopology = p
 }
 
 func appendTopology(t *types.HostScsiTopology, hbaKey, lunKey string) *types.HostScsiTopology {

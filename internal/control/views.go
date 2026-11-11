@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -344,6 +346,37 @@ func (c *Controller) Tree() *Tree {
 	return t
 }
 
+func storageForCluster(cl *topology.Cluster) (nfs []scenario.NFSDatastore, iscsi []scenario.ISCSIStorage) {
+	if cl == nil {
+		return nil, nil
+	}
+	for _, n := range cl.Datacenter.NFS {
+		if len(n.Spec.Clusters) > 0 && !slices.Contains(n.Spec.Clusters, cl.Key) {
+			continue
+		}
+		x := n.Spec
+		x.Clusters = nil
+		x.InaccessibleHosts = nil
+		for _, h := range n.Spec.InaccessibleHosts {
+			if strings.HasPrefix(h, cl.Key+"/") {
+				x.InaccessibleHosts = append(x.InaccessibleHosts, h)
+			}
+		}
+		nfs = append(nfs, x)
+	}
+	for _, st := range cl.Datacenter.ISCSI {
+		if st.Spec.Cluster == cl.Key {
+			iscsi = append(iscsi, st.Spec)
+		}
+	}
+	return
+}
+func clusterStorageChanged(a, b *topology.Cluster) bool {
+	an, ai := storageForCluster(a)
+	bn, bi := storageForCluster(b)
+	return !reflect.DeepEqual(an, bn) || !reflect.DeepEqual(ai, bi)
+}
+
 func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) TreeCluster {
 	tc := TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name, Architecture: cl.Spec.Architecture, Hosts: len(cl.Hosts), HostsBefore: -1,
 		VMsPerHost: scenario.Int(cl.Spec.VMs.PerHost), Devices: cl.Spec.Host.ClaimedDevices, Regenerate: regen}
@@ -354,7 +387,7 @@ func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) T
 		tc.State = "new"
 	default:
 		tc.HostsBefore = len(old.Hosts)
-		if fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed {
+		if fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed || clusterStorageChanged(old, cl) {
 			tc.State = "pending"
 		}
 	}
@@ -388,12 +421,15 @@ type HostRow struct {
 }
 
 // DatastoreRow is one datastore of a cluster.
+const sharedStoragePerf = "queried: capacity and used space, I/O counters read zero"
+
 type DatastoreRow struct {
 	Name    string `json:"name"`
 	Type    string `json:"type"`
 	Backing string `json:"backing"`
 	Mounted int    `json:"mounted"`
 	Perf    string `json:"perfService"`
+	State   string `json:"state,omitempty"`
 }
 
 // FieldSource says where a cluster's value comes from.
@@ -474,7 +510,7 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		switch {
 		case old == nil:
 			v.State = "new"
-		case fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed:
+		case fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed || clusterStorageChanged(old, cl):
 			v.State = "pending"
 		}
 	}
@@ -578,7 +614,58 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 			Mounted: local, Perf: "inventory only"})
 	}
 	for _, nfs := range cl.Datacenter.NFS {
-		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: "inventory only"})
+		if len(nfs.Spec.Clusters) > 0 && !slices.Contains(nfs.Spec.Clusters, cl.Key) {
+			continue
+		}
+		bad := 0
+		for _, h := range cl.Hosts {
+			if slices.Contains(nfs.Spec.InaccessibleHosts, h.Key) {
+				bad++
+			}
+		}
+		state := "Accessible"
+		if bad > 0 {
+			if bad == 1 {
+				state = "1 host mount inaccessible"
+			} else {
+				state = fmt.Sprintf("%d host mounts inaccessible", bad)
+			}
+		}
+		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
+	}
+	for _, st := range cl.Datacenter.ISCSI {
+		if st.Spec.Cluster != cl.Key {
+			continue
+		}
+		for _, lun := range st.LUNs {
+			bad, standby := 0, 0
+			for _, h := range cl.Hosts {
+				if !lun.Spec.Reachable(st.Spec.Adapters, h.Key) {
+					bad++
+				}
+				for _, a := range st.Spec.Adapters {
+					if state, _ := lun.Spec.PathState(a.Name, h.Key); state == "standby" {
+						standby++
+						break
+					}
+				}
+			}
+			state := "Accessible"
+			if bad > 0 {
+				if bad == 1 {
+					state = "1 host has no working path"
+				} else {
+					state = fmt.Sprintf("%d hosts have no working path", bad)
+				}
+			} else if standby > 0 {
+				if standby == 1 {
+					state = "1 host has a standby path"
+				} else {
+					state = fmt.Sprintf("%d hosts have a standby path", standby)
+				}
+			}
+			v.Datastores = append(v.Datastores, DatastoreRow{Name: lun.Spec.Name, Type: "VMFS · iSCSI", Backing: lun.Spec.Target, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
+		}
 	}
 	v.VDS, v.PortGroups = cl.VDS(), len(topology.Portgroups)
 	v.Checks = append(v.Checks,
@@ -707,7 +794,7 @@ func (c *Controller) Compatibility() *Compat {
 			"Behaviour on a real vCenter 9.1.1 other than the captured one",
 			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
 			"vSAN OSA beyond a single-disk-group, three-host cluster: per-VM and virtual-disk performance, multiple disk groups per host, stretched clusters and OSA deduplication",
-			"FC and iSCSI datastores, populated iSCSI target and file service are not emulated: no populated sanitized captures are available",
+			"iSCSI inventory and path faults are plausible but not verified against a lab iSCSI host; Fibre Channel and file service are not emulated",
 			"/sdk/vim.wsdl is not served: a complete sanitized capture is unavailable",
 			"The VCF Operations ingestion path (Phase 3)",
 		}}

@@ -155,6 +155,15 @@ jobs:
           fi
           echo "wrong password refused"
 
+      - name: smoke shared storage with PowerCLI
+        run: |
+          container="storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
+          docker run -d --name "$container" -p 127.0.0.1:18446:8443 \
+            -e VCSIM_ADMIN= -v "$PWD/examples/scenarios/storage.yaml:/scenario.yaml:ro" \
+            "$IMAGE:ci" -listen 0.0.0.0:8443 -data /tmp/storage-data -scenario /scenario.yaml
+          pwsh -NoLogo -File tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 18446 -Storage
+
       # The identity registry must live on the state volume: with the root
       # filesystem read-only a registry anywhere else fails the first start,
       # and one that is not persisted changes every identity on a restart.

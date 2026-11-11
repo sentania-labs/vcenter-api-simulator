@@ -284,6 +284,10 @@ func vsanDatastoreInfo(cl *topology.Cluster) *types.VsanDatastoreInfo {
 }
 
 func vmfsDatastoreInfo(name string, d *topology.Device) *types.VmfsDatastoreInfo {
+	return vmfsInfo(vmfsVolume(name, d))
+}
+
+func vmfsInfo(vol *types.HostVmfsVolume) *types.VmfsDatastoreInfo {
 	return &types.VmfsDatastoreInfo{
 		DatastoreInfo: types.DatastoreInfo{
 			MaxFileSize:            70368744177664,
@@ -295,7 +299,7 @@ func vmfsDatastoreInfo(name string, d *topology.Device) *types.VmfsDatastoreInfo
 		},
 		MaxPhysicalRDMFileSize: 70368744177664,
 		MaxVirtualRDMFileSize:  68169720922112,
-		Vmfs:                   vmfsVolume(name, d),
+		Vmfs:                   vol,
 	}
 }
 

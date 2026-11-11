@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -129,7 +130,17 @@ func (c *Controller) SetDraft(raw []byte, scope string) (DraftView, error) {
 	if c.scheduled != nil {
 		return DraftView{}, invalid("a change is scheduled for %s; cancel it to edit again", c.scheduled.At.UTC().Format("15:04:05Z"))
 	}
-	sc, err := fromJSON(raw, c.base)
+	sc, err := decodeScenarioJSON(raw, c.base)
+	if err == nil {
+		previous := c.applied().sc
+		if c.draft != nil {
+			previous = c.draft.Scenario
+		}
+		_, err = reconcileStorage(sc, previous)
+	}
+	if err == nil {
+		err = sc.Validate()
+	}
 	if err != nil {
 		return DraftView{}, &Invalid{err.Error()}
 	}
@@ -237,7 +248,8 @@ func (c *Controller) DeleteCluster(key string) (DraftView, error) {
 	if len(d.Scenario.ClusterKeys()) == 1 {
 		return DraftView{}, invalid("the last cluster cannot be deleted; a simulator needs at least one")
 	}
-	sc := d.Scenario
+	previous := d.Scenario
+	sc := clone(previous)
 	sc.Removed = append(sc.Removed, key)
 	sort.Strings(sc.Removed)
 	var cl []scenario.ClusterOverride
@@ -248,6 +260,13 @@ func (c *Controller) DeleteCluster(key string) (DraftView, error) {
 	}
 	sc.Clusters = cl
 	sc.Faults = retainFaults(sc.Faults, func(k string) bool { return k != key })
+	if _, err := reconcileStorage(sc, previous); err != nil {
+		return DraftView{}, &Invalid{err.Error()}
+	}
+	if err := sc.Validate(); err != nil {
+		return DraftView{}, &Invalid{err.Error()}
+	}
+	d.Scenario = sc
 	d.Regenerate = without(d.Regenerate, key)
 	return c.draftView(), nil
 }
@@ -357,6 +376,9 @@ func (c *Controller) previewTopology(d *Draft) (*topology.Topology, *registry.Re
 }
 
 func (c *Controller) review(d *Draft) (*Review, error) {
+	if err := clone(d.Scenario).Validate(); err != nil {
+		return nil, &Invalid{err.Error()}
+	}
 	old := c.applied()
 	now := c.now()
 	nt, _ := c.previewTopology(d)
@@ -481,6 +503,7 @@ func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Proj
 	var out []Change
 	osc, nsc := old.sc, d.Scenario
 	out = append(out, nfsChanges(osc, nsc)...)
+	out = append(out, iscsiChanges(osc, nsc)...)
 	if osc.Seed != nsc.Seed {
 		out = append(out, Change{Object: "Identity", Field: "Global seed", Before: osc.Seed, After: nsc.Seed,
 			Effect: "replaces every identity", Area: "Topology"})
@@ -558,6 +581,71 @@ func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Proj
 	return out
 }
 
+func iscsiChanges(old, next *scenario.Scenario) []Change {
+	collect := func(sc *scenario.Scenario) map[string]scenario.ISCSIStorage {
+		out := map[string]scenario.ISCSIStorage{}
+		for _, dc := range sc.Datacenters {
+			for _, st := range dc.ISCSI {
+				out[st.Cluster] = st
+			}
+		}
+		return out
+	}
+	a, b := collect(old), collect(next)
+	keys := map[string]bool{}
+	for k := range a {
+		keys[k] = true
+	}
+	for k := range b {
+		keys[k] = true
+	}
+	ordered := make([]string, 0, len(keys))
+	for k := range keys {
+		ordered = append(ordered, k)
+	}
+	sort.Strings(ordered)
+	var changes []Change
+	describe := func(st scenario.ISCSIStorage, ok bool) string {
+		if !ok {
+			return "—"
+		}
+		var adapters, targets []string
+		for _, a := range st.Adapters {
+			adapters = append(adapters, fmt.Sprintf("%s (%s)", a.Name, a.Kind))
+		}
+		for _, t := range st.Targets {
+			port := t.Port
+			if port == 0 {
+				port = 3260
+			}
+			targets = append(targets, fmt.Sprintf("%s at %s:%d", t.Name, t.Address, port))
+		}
+		var stores []string
+		for _, l := range st.LUNs {
+			var paths []string
+			for _, p := range l.Paths {
+				host := shortStorageHost(p.Host)
+				if host == "" {
+					host = "all hosts"
+				}
+				paths = append(paths, fmt.Sprintf("%s on %s: %s", p.Adapter, host, p.State))
+			}
+			policy := map[string]string{"": "round robin", "VMW_PSP_RR": "round robin", "VMW_PSP_FIXED": "fixed", "VMW_PSP_MRU": "most recently used"}[l.Policy]
+			stores = append(stores, fmt.Sprintf("%s uses %s, LUN %d. %s free of %s, %s policy. Paths: %s", l.Name, l.Target, l.Number, humanStorageBytes(l.FreeSpace), humanStorageBytes(l.Capacity), policy, strings.Join(paths, ", ")))
+		}
+		return fmt.Sprintf("Adapters per host: %s. Targets: %s. Datastores: %s", strings.Join(adapters, ", "), strings.Join(targets, ", "), strings.Join(stores, ", "))
+	}
+	for _, k := range ordered {
+		before, had := a[k]
+		after, has := b[k]
+		if had && has && reflect.DeepEqual(before, after) {
+			continue
+		}
+		changes = append(changes, Change{Object: k, Field: "iSCSI storage", Before: describe(before, had), After: describe(after, has), Effect: "updates shared datastores, adapters and paths", Area: "Topology"})
+	}
+	return changes
+}
+
 // nfsChanges compares every datacenter regardless of whether the draft came
 // from the editor, a generator, or a replacement preset.
 func nfsChanges(old, next *scenario.Scenario) []Change {
@@ -586,7 +674,23 @@ func nfsChanges(old, next *scenario.Scenario) []Change {
 	}
 	sort.Strings(keys)
 	describe := func(n scenario.NFSDatastore) string {
-		return fmt.Sprintf("%s:%s · capacity %d B · free %d B", n.RemoteHost, n.RemotePath, n.Capacity, n.FreeSpace)
+		scope := "Available to all clusters"
+		if len(n.Clusters) > 0 {
+			names := make([]string, 0, len(n.Clusters))
+			for _, k := range n.Clusters {
+				names = append(names, shortStorageHost(k))
+			}
+			scope = "Available to " + strings.Join(names, ", ")
+		}
+		var faults []string
+		for _, h := range n.InaccessibleHosts {
+			faults = append(faults, shortStorageHost(h))
+		}
+		state := "All hosts can reach it"
+		if len(faults) > 0 {
+			state = "Cannot be reached by " + strings.Join(faults, ", ")
+		}
+		return fmt.Sprintf("%s:%s. %s free of %s. %s. %s.", n.RemoteHost, n.RemotePath, humanStorageBytes(n.FreeSpace), humanStorageBytes(n.Capacity), scope, state)
 	}
 	var changes []Change
 	for _, key := range keys {
@@ -597,11 +701,31 @@ func nfsChanges(old, next *scenario.Scenario) []Change {
 			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: "—", After: describe(b.spec), Effect: "adds datastore and mounts on datacenter hosts", Area: "Topology"})
 		case !has:
 			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: describe(a.spec), After: "—", Effect: "removes datastore and host mounts", Area: "Topology"})
-		case a.spec != b.spec:
+		case !reflect.DeepEqual(a.spec, b.spec):
 			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: describe(a.spec), After: describe(b.spec), Effect: "updates datastore and host mounts", Area: "Topology"})
 		}
 	}
 	return changes
+}
+
+func shortStorageHost(key string) string {
+	if i := strings.LastIndexByte(key, '/'); i >= 0 {
+		return key[i+1:]
+	}
+	return key
+}
+func humanStorageBytes(n int64) string {
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	v := float64(n)
+	i := 0
+	for v >= 1024 && i < len(units)-1 {
+		v /= 1024
+		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%d B", n)
+	}
+	return fmt.Sprintf("%.1f %s", v, units[i])
 }
 
 func orDash(s string) string {
@@ -753,8 +877,38 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog, previous *regis
 			}
 		}
 	}
+	iscsiIDs := func(t *topology.Topology) map[id]bool {
+		out := map[id]bool{}
+		for _, dc := range t.Datacenters {
+			for _, st := range dc.ISCSI {
+				for _, lun := range st.LUNs {
+					out[id{"iscsi/" + st.Spec.Cluster + "/" + lun.Spec.Name, lun.Serial}] = true
+				}
+			}
+		}
+		return out
+	}
+	iscsiBefore, iscsiAfter := iscsiIDs(o), iscsiIDs(n)
+	iscsiRow := IdentityRow{Label: "iSCSI datastore and LUN identities"}
+	for id := range iscsiBefore {
+		if iscsiAfter[id] {
+			iscsiRow.Kept++
+		} else {
+			iscsiRow.Removed++
+		}
+	}
+	for id := range iscsiAfter {
+		if !iscsiBefore[id] {
+			if previous != nil && previous.Has(id.key) && previous.Serial(id.key) == id.serial {
+				iscsiRow.Restored++
+			} else {
+				iscsiRow.Added++
+			}
+		}
+	}
 	rows := []IdentityRow{
 		nfsRow,
+		iscsiRow,
 		row("Host UUIDs · vSAN node UUIDs", "host/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				out = append(out, id{h.Key, h.Serial})
@@ -865,9 +1019,12 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		for _, change := range nfsChanges(old.sc, d.Scenario) {
 			affectedDC[strings.SplitN(change.Object, "/", 2)[0]] = true
 		}
+		for _, change := range iscsiChanges(old.sc, d.Scenario) {
+			touched[change.Object] = true
+		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] && !touched[c.Key] {
 				kept++
 			} else {
 				touched[c.Key] = true
