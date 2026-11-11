@@ -144,6 +144,8 @@ func New(opts Options) (*Simulator, error) {
 		}
 	}
 	installAuth(m, creds, opts.SessionTimeout)
+	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
+	m.Service.Context.Map.Put(&authorization{AuthorizationManager: am})
 	if err := s.build(); err != nil {
 		s.Close()
 		return nil, err

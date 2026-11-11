@@ -2,6 +2,8 @@
 
 A configurable, deployable vCenter and vSAN ESA/OSA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
+The built-in vCenter adapter in a licensed VCF Operations 9.1 instance will not collect from the simulator today: the reported adapter start was rejected because it had no VCF license, before Operations sent a collection request. Custom management packs with their own adapter kinds can still collect. License states and the license service at `/ls/sdk` are not modelled; the Operations exchange and license association behavior needed to reproduce them have not yet been captured.
+
 > Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack) with the Phase 5 control console. No production-grade vCenter emulation is claimed.
 
 ## Mission

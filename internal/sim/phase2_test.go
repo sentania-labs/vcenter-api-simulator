@@ -1422,3 +1422,58 @@ func TestOSAHealthDetails(t *testing.T) {
 		})
 	}
 }
+
+// A nonexistent session grants no privileges, as documented by the
+// AuthorizationManager API and observed on the 9.1.1 reference server.
+func TestPrivilegeChecksRequireValidSession(t *testing.T) {
+	e := startWith(t, topology.Phase1("privileges"), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	auth := *e.client.ServiceContent.AuthorizationManager
+	root := e.client.ServiceContent.RootFolder
+	for _, tc := range []struct {
+		name, session string
+		want          bool
+	}{
+		{"empty", "", false}, {"invalid", "not-a-session", false}, {"administrator", e.cookie, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			single, err := methods.HasPrivilegeOnEntity(ctx, e.client, &types.HasPrivilegeOnEntity{This: auth, Entity: root, SessionId: tc.session, PrivId: []string{"Global.Licenses"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(single.Returnval) != 1 || single.Returnval[0] != tc.want {
+				t.Errorf("single privilege: %v, want %v", single.Returnval, tc.want)
+			}
+			multiple, err := methods.HasPrivilegeOnEntities(ctx, e.client, &types.HasPrivilegeOnEntities{This: auth, Entity: []types.ManagedObjectReference{root}, SessionId: tc.session, PrivId: []string{"Global.Licenses"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(multiple.Returnval) != 1 || len(multiple.Returnval[0].PrivAvailability) != 1 || multiple.Returnval[0].PrivAvailability[0].IsGranted != tc.want {
+				t.Errorf("multiple privilege: %+v, want %v", multiple.Returnval, tc.want)
+			}
+		})
+	}
+	// Privilege checks can name another active session, and stop granting it
+	// as soon as that session logs out.
+	firstClient := e.client
+	if err := e.login("other@vsphere.local", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	otherKey, otherClient := e.cookie, e.client
+	check := func(want bool) {
+		t.Helper()
+		r, err := methods.HasPrivilegeOnEntity(ctx, firstClient, &types.HasPrivilegeOnEntity{This: auth, Entity: root, SessionId: otherKey, PrivId: []string{"Global.Licenses"}})
+		if err != nil || len(r.Returnval) != 1 || r.Returnval[0] != want {
+			t.Fatalf("other session privilege: %+v, %v; want %v", r, err, want)
+		}
+	}
+	check(true)
+	if err := session.NewManager(otherClient).Logout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+
+}
