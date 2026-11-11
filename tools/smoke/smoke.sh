@@ -22,11 +22,13 @@ here=$(cd "$(dirname "$0")/../.." && pwd)
 scenario=$here/examples/scenarios/ten-clusters.yaml
 port=18443
 keep=no
+storage=no
 while [ $# -gt 0 ]; do
   case $1 in
     --scenario) scenario=$2; shift 2 ;;
     --port) port=$2; shift 2 ;;
     --keep) keep=yes; shift ;;
+    --storage) storage=yes; shift ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -173,6 +175,37 @@ pass "Get-VMHost: $n hosts"
 n=$(govc find -type m | wc -l); [ "$n" -eq "$want_vms" ] || fail "VMs: govc sees $n, simulator built $want_vms"
 pass "Get-VM: $n VMs"
 govc ls /*/host/* >/dev/null || fail "govc ls host folder"
+
+if [ "$storage" = yes ]; then
+  govc datastore.info -json shared-nfs shared-vmfs > "$work/storage-datastores.json"
+  govc host.storage.info -json -t hba -host esx02.cluster-01.dc-01.sim.invalid > "$work/storage-hbas.json"
+  govc host.storage.info -json -t lun -host esx02.cluster-01.dc-01.sim.invalid > "$work/storage-luns.json"
+  govc metric.sample -n 1 -json /dc-01/datastore/shared-vmfs disk.capacity.latest disk.numberReadAveraged.average > "$work/storage-metrics.json"
+  python3 - "$work" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+stores = {d['name']: d for d in json.loads((p/'storage-datastores.json').read_text())['datastores']}
+assert stores['shared-nfs']['summary']['type'] == 'NFS'
+vmfs = stores['shared-vmfs']
+assert vmfs['summary']['type'] == 'VMFS' and vmfs['summary']['freeSpace'] == 10737418240
+assert vmfs['info']['vmfs']['extent']
+for d in stores.values():
+    assert len(d['host']) == 4 and any(not m['mountInfo']['accessible'] for m in d['host'])
+hbas = json.loads((p/'storage-hbas.json').read_text())['storageDeviceInfo']['hostBusAdapter']
+iscsi = [h for h in hbas if 'iScsiName' in h]
+assert len(iscsi) == 2 and all(h['configuredSendTarget'] and h['configuredStaticTarget'] for h in iscsi)
+info = json.loads((p/'storage-luns.json').read_text())['storageDeviceInfo']
+luns = [lun for lun in info['scsiLun'] if lun.get('vendor') == 'SIMULATR']
+assert len(luns) == 1 and luns[0]['operationalState'] == ['lostCommunication']
+paths = info['multipathInfo']['lun'][0]['path']
+assert len(paths) == 2 and all(path['state'] == 'dead' for path in paths)
+assert vmfs['info']['vmfs']['extent'][0]['diskName'] == luns[0]['canonicalName']
+metrics = {v['name']: v['value'] for v in json.loads((p/'storage-metrics.json').read_text())['sample'][0]['value']}
+assert metrics['disk.capacity.latest'] == [1073741824]
+assert metrics['disk.numberReadAveraged.average'] == [0]
+PY
+  pass "govc storage datastores, adapters, LUN and fault states"
+fi
 
 # every host's node uuid on /sdk is unique, every cluster has a vSAN uuid
 # and is enabled, every VM is powered on on a host of the inventory

@@ -23,6 +23,8 @@ param(
     [string]$Password = 'pass',
     [int]$Hosts = 4,
     [int]$VMs = 4,
+    # Check examples/scenarios/storage.yaml, including its failed paths.
+    [switch]$Storage,
     # Seconds to wait for /sdk/vimServiceVersions.xml before connecting.
     [int]$Wait = 60,
     # Install VMware.PowerCLI (pinned) if it is not available.
@@ -72,6 +74,22 @@ try {
     $vmList = @(Get-VM -Server $vi | Sort-Object Name)
     $vmList | ForEach-Object { Write-Host "smoke:   $($_.Name) $($_.PowerState) on $($_.VMHost.Name)" }
     if ($vmList.Count -ne $VMs) { Fail "expected $VMs VMs, got $($vmList.Count)" }
+    if ($Storage) {
+        $nfs = Get-Datastore -Server $vi -Name 'shared-nfs'
+        $vmfs = Get-Datastore -Server $vi -Name 'shared-vmfs'
+        if ($nfs.Type -ne 'NFS' -or $vmfs.Type -ne 'VMFS') { Fail 'storage datastore types differ from the scenario' }
+        $badHost = $hostList | Where-Object { $_.Name -like 'esx02.*' }
+        $hbas = @(Get-VMHostHba -VMHost $badHost -Type iScsi)
+        if ($hbas.Count -ne 2) { Fail "expected two iSCSI adapters, got $($hbas.Count)" }
+        $targets = @($hbas | Get-IScsiHbaTarget)
+        if ($targets.Count -lt 2) { Fail 'iSCSI targets missing' }
+        $luns = @(Get-ScsiLun -VMHost $badHost -LunType disk | Where-Object { $_.Vendor -eq 'SIMULATR' })
+        if ($luns.Count -ne 1) { Fail 'shared iSCSI LUN missing' }
+        $mount = $vmfs.ExtensionData.Host | Where-Object { $_.Key.Value -eq $badHost.ExtensionData.MoRef.Value }
+        $nasMount = $nfs.ExtensionData.Host | Where-Object { $_.Key.Value -eq $badHost.ExtensionData.MoRef.Value }
+        if ($mount.MountInfo.Accessible -ne $false -or $nasMount.MountInfo.Accessible -ne $false) { Fail 'host storage faults missing' }
+        Write-Host 'smoke: storage datastores, adapters, targets, LUN and fault states verified'
+    }
 } finally {
     Disconnect-VIServer -Server $vi -Confirm:$false
 }

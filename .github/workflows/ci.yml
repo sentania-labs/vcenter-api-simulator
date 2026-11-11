@@ -62,3 +62,4 @@ jobs:
       # and diff: tools/smoke/smoke.sh.
       - run: tools/smoke/smoke.sh --scenario examples/scenarios/ten-clusters.yaml --port 18443
       - run: tools/smoke/smoke.sh --scenario examples/scenarios/phase1.yaml --port 18444
+      - run: tools/smoke/smoke.sh --scenario examples/scenarios/storage.yaml --port 18445 --storage

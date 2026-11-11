@@ -78,9 +78,10 @@ What the scenario controls, and what the simulator guarantees:
 
 Known gaps: the vDS is served under vcsim's base type
 `DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
-populated iSCSI target service, file service, and FC/iSCSI-backed datastores
+populated vSAN iSCSI target service, file service, and FC-backed datastores
 are not modeled because the walk captured no populated examples. Shared NFS
-v3 datastores can be configured in a scenario. REST inventory reads share
+v3 and iSCSI-backed VMFS datastores can be configured in a scenario; the
+iSCSI shape is plausible but not verified against a lab iSCSI host. REST inventory reads share
 SOAP inventory identities. List endpoints honour `names`, the parent and state
 filters that apply to each kind (for example `clusters`, `datacenters`,
 `hosts`, `folders`, `resource_pools`, `power_states`) and the id filter of each
@@ -190,7 +191,7 @@ and gets a pty from the runner. `attach_to_vcenter` must be off under
 The OSA scenario and its evidence limits are described in the
 [scenario reference](docs/SCENARIO.md#osa-evidence-and-limits). The REST
 surface models sessions, inventory reads, selected detail reads and captured
-failure statuses. Shared NFS v3 inventory is optional; live vCenter access
+failure statuses. Shared NFS v3 and iSCSI VMFS inventory are optional; live vCenter access
 remains outside this simulator.
 
 ## Running it

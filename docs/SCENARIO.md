@@ -10,11 +10,46 @@ edit a running simulator in the control console (below). Examples live in
 vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443
 ```
 
-NFS entries describe simulated inventory and do not connect to the named server.
+NFS and iSCSI entries describe simulated inventory and do not connect to the named server.
 Capacity and free space are bytes. The configured name must be unique within
 its datacenter, and the remote path must be absolute. In Topology, choose a
 datacenter under NFS datastores to add, edit, or remove mounts in the draft.
 Review lists these changes before apply, including removals from presets.
+
+See [`storage.yaml`](../examples/scenarios/storage.yaml) for an NFS mount
+failure and a near-full shared VMFS datastore whose iSCSI paths are all down
+on one host. NFS `clusters` is optional; when omitted the mount is available
+to every cluster in the datacenter. `inaccessibleHosts` contains host keys
+such as `dc-01/cluster-01/esx02`. For iSCSI, configure one entry per cluster:
+named software or hardware adapters, targets, and LUNs. Each LUN creates a
+shared VMFS datastore with the same name. A path names an adapter and state
+(`active`, `standby`, `dead`, or `disabled`); an optional host key overrides
+that adapter's state for one host. A host with no active or standby path has
+an inaccessible datastore mount and a LUN in `lostCommunication`. Capacity
+and free space are bytes; LUN capacity must be a multiple of 512. Fault host
+keys must name hosts that exist in the resolved scenario. Adapter, target and datastore names are stable keys;
+changing a datastore name creates a new datastore identity. Round robin is
+the default policy; `VMW_PSP_FIXED` and `VMW_PSP_MRU` are also accepted.
+
+In Topology, select a cluster to edit its iSCSI storage and host-specific
+NFS mounts. Save to the draft, review, and apply. Applying topology changes
+rebuilds the simulated vCenter and drops existing sessions; clients must
+reconnect. MoRefs and other identities of unchanged datastores are retained.
+
+The NFS v3 summary, NAS information and accessible mount shape were observed
+on vCenter 9.1.1 build 25784172. The sanitized structural fixture is in
+[`fixtures/storage`](../fixtures/storage/vcenter-9.1.1-structure.json).
+The iSCSI topology, multipath policies, fault behavior, and hardware adapter
+shape are plausible simulations, not verified against the lab's iSCSI hosts.
+NFS 4.1, storage I/O, discovery or rescan operations, CHAP, live path
+transitions and non-vSAN storage health are not modeled. The eight storage
+counters observed on the lab's NFS datastore are exposed for simulated NFS
+and iSCSI datastores. Capacity and used samples track configured space;
+provisioned and unshared are approximated as used, and I/O rates are zero.
+Historical space samples use the current scenario values rather than a history
+of earlier edits. REST datastore inventory reflects the same type, capacity, free space
+and accessibility as SOAP. This inventory model does not contact a storage
+server or create real LUNs and filesystems.
 
 ## Identity: seed, registry, regenerate
 
