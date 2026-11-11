@@ -165,7 +165,7 @@ func shapeHostProduct(hs *simulator.HostSystem, host *topology.Host) {
 		ApiType:               "HostAgent",
 		ApiVersion:            host.Version.APIVersion,
 		LicenseProductName:    "VMware ESX Server",
-		LicenseProductVersion: "9.1",
+		LicenseProductVersion: host.Version.LicenseVersion(),
 	}
 	hs.Config.Product = esx
 	hs.Summary.Config.Product = &hs.Config.Product

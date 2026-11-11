@@ -29,6 +29,15 @@ var esxVersions = map[string]Version{
 }
 
 func (v Version) empty() bool { return v == Version{} }
+
+// LicenseVersion is the major.minor release used as licenseProductVersion.
+func (v Version) LicenseVersion() string {
+	parts := strings.Split(v.Version, ".")
+	if len(parts) < 2 {
+		return v.Version
+	}
+	return parts[0] + "." + parts[1]
+}
 func resolveVersion(v Version, presets map[string]Version, fallback string) (Version, error) {
 	if v.empty() {
 		v.Preset = fallback
@@ -79,7 +88,14 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 	if h, ok := s.HostVersions[host]; ok {
 		spec = h
 	}
-	return resolveVersion(spec, esxVersions, fallback)
+	hv, err := resolveVersion(spec, esxVersions, fallback)
+	if err != nil {
+		return Version{}, err
+	}
+	if hv.APIVersion == "" {
+		hv.APIVersion = vc.APIVersion
+	}
+	return hv, nil
 }
 func versionNumbers(v string) ([]int, error) {
 	parts := strings.Split(v, ".")

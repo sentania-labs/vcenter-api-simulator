@@ -182,3 +182,20 @@ func TestVersionPresetsAndNewerHostValidation(t *testing.T) {
 		t.Fatal("unknown preset accepted")
 	}
 }
+
+func TestHostVersionFallsBackToVCenterAPIVersionAndLicenseVersion(t *testing.T) {
+	s := Phase1("version-api")
+	s.VCenter = Version{Preset: "8.0u3"}
+	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host.APIVersion != "8.0.3.0" {
+		t.Errorf("host apiVersion %q, want the vCenter's 8.0.3.0", host.APIVersion)
+	}
+	for version, want := range map[string]string{"8.0.3": "8.0", "9.0.0": "9.0", "9.1.1": "9.1"} {
+		if got := (Version{Version: version}).LicenseVersion(); got != want {
+			t.Errorf("LicenseVersion(%s) = %q, want %q", version, got, want)
+		}
+	}
+}

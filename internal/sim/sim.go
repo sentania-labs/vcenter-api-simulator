@@ -122,6 +122,7 @@ func New(opts Options) (*Simulator, error) {
 	cat = &instanceCatalog
 	if v := topo.VCenterVersion; v.Version != "" {
 		cat.About.Version, cat.About.Build, cat.About.ApiVersion, cat.About.FullName = v.Version, v.Build, v.APIVersion, v.FullName
+		cat.About.LicenseVer = v.LicenseVersion()
 		cat.VimServiceVersions = selectVimVersions(cat.VimServiceVersions, v.APIVersion)
 	}
 
@@ -965,7 +966,7 @@ func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
 		}
 	}
 	switch op {
-	case "Logout", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates":
+	case "Login", "LoginByToken", "Logout", "CurrentTime", "SessionIsActive", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates":
 		return false
 	}
 	return true
