@@ -1493,3 +1493,22 @@ func TestISCSIDraftReviewAndStableIdentity(t *testing.T) {
 		t.Fatalf("identity changed after path edit")
 	}
 }
+
+func TestGeneratePrunesStorageReferencesToMissingHosts(t *testing.T) {
+	sc := scenario.Phase1("gen-storage")
+	sc.Datacenters[0].Clusters = 1
+	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{Hosts: 6}}}
+	nfs := scenario.NFSDatastore{Name: "shared-nfs", RemoteHost: "nfs01.example.test", RemotePath: "/vol/shared", Capacity: 5_000_000_000_000, FreeSpace: 3_000_000_000_000, InaccessibleHosts: []string{"dc-01/cluster-01/esx06"}}
+	sc.Datacenters[0].NFS = []scenario.NFSDatastore{nfs}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	c := newCtl(t, sc, "", "t")
+	p := GenParams{Seed: "gen-storage", Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1, NFS: []scenario.NFSDatastore{nfs}}}, Hosts: 4}
+	if _, err := c.PreviewGenerate(p); err != nil {
+		t.Fatalf("preview with a host that the generated topology no longer has: %v", err)
+	}
+	if _, err := c.Generate(p); err != nil {
+		t.Fatalf("generate with a host that the generated topology no longer has: %v", err)
+	}
+}

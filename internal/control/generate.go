@@ -87,6 +87,13 @@ func (c *Controller) generated(p GenParams) (*scenario.Scenario, error) {
 		known[k] = true
 	}
 	sc.Faults = retainFaults(sc.Faults, func(k string) bool { return known[k] })
+	previous := base
+	if c.draft != nil {
+		previous = c.draft.Scenario
+	}
+	if _, err := reconcileStorage(sc, previous); err != nil {
+		return nil, &Invalid{err.Error()}
+	}
 	if err := sc.Validate(); err != nil {
 		return nil, &Invalid{err.Error()}
 	}
