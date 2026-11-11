@@ -172,7 +172,12 @@ func (c *Capture) save(r record) {
 	}
 }
 func (c *Capture) Wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serve(w, r, next, c.save) })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serve(w, r, next, c.capturing, c.save) })
+}
+func (c *Capture) capturing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.settings.Full || c.settings.Unanswered
 }
 func (c *Capture) Records(unanswered bool) []record {
 	c.mu.Lock()

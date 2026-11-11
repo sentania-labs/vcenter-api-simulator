@@ -3,6 +3,7 @@ package querylog
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -300,5 +301,29 @@ func TestUnansweredClassification(t *testing.T) {
 				t.Fatalf("unanswered = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestCaptureDisabledDoesNotInspectRequests(t *testing.T) {
+	c, err := NewCapture(t.TempDir(), "", Settings{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen string
+	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		seen = string(b)
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/missing", strings.NewReader("payload")))
+	if seen != "payload" || len(c.Records(true)) != 0 || len(c.Records(false)) != 0 {
+		t.Fatalf("disabled capture altered or kept a request: %q %v", seen, c.State())
+	}
+	if err := c.Set(Settings{Unanswered: true}); err != nil {
+		t.Fatal(err)
+	}
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/missing", strings.NewReader("payload")))
+	if len(c.Records(true)) != 1 {
+		t.Fatalf("enabled capture did not record: %v", c.State())
 	}
 }

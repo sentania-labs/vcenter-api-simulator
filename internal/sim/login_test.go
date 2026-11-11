@@ -11,10 +11,13 @@ import (
 	"testing"
 
 	"github.com/vmware/govmomi/object"
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
+	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -94,6 +97,13 @@ func TestReadOnlyUserSessionHousekeepingAndLicenseVersion(t *testing.T) {
 	folder := object.NewFolder(vc, vc.ServiceContent.RootFolder)
 	if _, err := folder.CreateFolder(context.Background(), "denied"); err == nil {
 		t.Error("read-only user created a folder")
+	}
+	pc := property.DefaultCollector(vc)
+	if err := pc.Retrieve(context.Background(), []types.ManagedObjectReference{vc.ServiceContent.RootFolder}, []string{"name"}, &[]mo.Folder{}); err != nil {
+		t.Errorf("Retrieve refused for read-only user: %v", err)
+	}
+	if err := property.Wait(context.Background(), pc, vc.ServiceContent.RootFolder, []string{"name"}, func([]types.PropertyChange) bool { return true }); err != nil {
+		t.Errorf("CreateFilter/WaitForUpdates refused for read-only user: %v", err)
 	}
 }
 

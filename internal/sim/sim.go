@@ -967,7 +967,7 @@ func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
 		}
 	}
 	switch op {
-	case "Login", "LoginByToken", "Logout", "CurrentTime", "SessionIsActive", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates":
+	case "Login", "LoginByToken", "Logout", "CurrentTime", "SessionIsActive", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates", "CreateFilter", "CreatePropertyCollector", "DestroyPropertyFilter", "DestroyPropertyCollector", "CreateCollectorForEvents", "CreateCollectorForTasks", "ReadNextEvents", "ReadNextTasks", "ReadPreviousEvents", "ReadPreviousTasks", "DestroyCollector", "ResetCollector", "RewindCollector", "SetCollectorPageSize":
 		return false
 	}
 	return true

@@ -73,9 +73,13 @@ func Wrap(next http.Handler, dst io.Writer) http.Handler {
 	return &logger{next: next, enc: json.NewEncoder(dst)}
 }
 func (l *logger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	serve(w, r, l.next, func(rec record) { l.mu.Lock(); defer l.mu.Unlock(); _ = l.enc.Encode(rec) })
+	serve(w, r, l.next, nil, func(rec record) { l.mu.Lock(); defer l.mu.Unlock(); _ = l.enc.Encode(rec) })
 }
-func serve(w http.ResponseWriter, r *http.Request, next http.Handler, save func(record)) {
+func serve(w http.ResponseWriter, r *http.Request, next http.Handler, enabled func() bool, save func(record)) {
+	if enabled != nil && !enabled() {
+		next.ServeHTTP(w, r)
+		return
+	}
 	start := time.Now()
 	rw := &response{ResponseWriter: w}
 	rec := record{Time: start.UTC(), Path: r.URL.Path, Method: r.Method}
