@@ -831,6 +831,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/sdk") && predates90(r) {
+			serveBefore90(w, r, h.mux)
+			return
+		}
 		h.mux.ServeHTTP(w, r)
 	}
 }

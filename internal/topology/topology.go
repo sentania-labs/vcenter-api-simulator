@@ -20,7 +20,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math/rand/v2"
 	"strings"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -348,7 +347,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 
 // draw makes a cluster's independent draws from Vary with its own seed.
 func draw(v scenario.Vary, sub uint64) scenario.ClusterSpec {
-	rng := rand.New(rand.NewPCG(sub, sub^0x9E3779B97F4A7C15))
+	rng := scenario.DrawSource(sub)
 	var d scenario.ClusterSpec
 	choice := func(opts []int) int {
 		u := rng.Uint64()
@@ -366,7 +365,7 @@ func draw(v scenario.Vary, sub uint64) scenario.ClusterSpec {
 	}
 	// one draw per knob, always, so adding a knob to the file later does not
 	// re-roll the earlier ones
-	d.Hosts = choice(v.Hosts)
+	d.Hosts = v.DrawHosts(rng)
 	if n := rng1(v.VMsPerHost); v.VMsPerHost != nil {
 		d.VMs.PerHost = scenario.IntPtr(n)
 	}

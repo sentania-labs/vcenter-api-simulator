@@ -100,6 +100,35 @@ type ISCSIPath struct {
 	State   string `yaml:"state" json:"state"`
 }
 
+// PathState is the state of the LUN's path through an adapter as seen from a
+// host: the host-specific path where one is listed, otherwise the path that
+// names no host. It reports false when the host has no such path.
+func (l ISCSILUN) PathState(adapter, host string) (string, bool) {
+	state, found := "", false
+	for _, p := range l.Paths {
+		if p.Adapter == adapter && p.Host == "" {
+			state, found = p.State, true
+		}
+	}
+	for _, p := range l.Paths {
+		if p.Adapter == adapter && p.Host == host {
+			state, found = p.State, true
+		}
+	}
+	return state, found
+}
+
+// Reachable reports whether the host has a working (active or standby) path
+// to the LUN through any of the adapters.
+func (l ISCSILUN) Reachable(adapters []ISCSIAdapter, host string) bool {
+	for _, a := range adapters {
+		if state, _ := l.PathState(a.Name, host); state == "active" || state == "standby" {
+			return true
+		}
+	}
+	return false
+}
+
 // NFSDatastore describes a shared NFS v3 mount in a datacenter.
 type NFSDatastore struct {
 	Name       string `yaml:"name" json:"name"`
@@ -168,6 +197,22 @@ type Vary struct {
 	ClaimedDevices []int  `yaml:"claimedDevices" json:"claimedDevices,omitempty"`
 	DomWorlds      *Range `yaml:"domWorlds" json:"domWorlds,omitempty"`
 	Threads        []int  `yaml:"threads" json:"threads,omitempty"`
+}
+
+// DrawSource is the random source of a cluster's draws from Vary, seeded
+// from the cluster's own sub-seed.
+func DrawSource(sub uint64) *rand.Rand {
+	return rand.New(rand.NewPCG(sub, sub^0x9E3779B97F4A7C15))
+}
+
+// DrawHosts is a cluster's host count, always the first draw from its
+// source, or 0 when Vary leaves the host count alone.
+func (v Vary) DrawHosts(rng *rand.Rand) int {
+	u := rng.Uint64()
+	if len(v.Hosts) == 0 {
+		return 0
+	}
+	return v.Hosts[u%uint64(len(v.Hosts))]
 }
 
 // Range is an inclusive integer range.
@@ -503,13 +548,7 @@ func (s *Scenario) Validate() error {
 			return false
 		}
 		cluster := key[:i]
-		drawn := ClusterSpec{}
-		if len(s.Vary.Hosts) > 0 {
-			seed := r.Sub(cluster)
-			rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
-			drawn.Hosts = s.Vary.Hosts[rng.Uint64()%uint64(len(s.Vary.Hosts))]
-		}
-		return ordinal <= s.Resolve(cluster, drawn).Hosts
+		return ordinal <= s.Resolve(cluster, ClusterSpec{Hosts: s.Vary.DrawHosts(DrawSource(r.Sub(cluster)))}).Hosts
 	}
 	for _, dc := range s.Datacenters {
 		for _, n := range dc.NFS {

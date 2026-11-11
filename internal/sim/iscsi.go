@@ -36,21 +36,6 @@ func iscsiTargetNumber(name string) int32 {
 	return int32(scenario.StorageNumber(name) & 0x7fffffff)
 }
 
-func pathState(l scenario.ISCSILUN, adapter, host string) (string, bool) {
-	state, found := "", false
-	for _, p := range l.Paths {
-		if p.Adapter == adapter && p.Host == "" {
-			state, found = p.State, true
-		}
-	}
-	for _, p := range l.Paths {
-		if p.Adapter == adapter && p.Host == host {
-			state, found = p.State, true
-		}
-	}
-	return state, found
-}
-
 func (s *Simulator) mountISCSI(ctx *simulator.Context, st topology.ISCSIStorage, stores map[string]*simulator.Datastore) {
 	var refs *ClusterRefs
 	for _, c := range s.Clusters {
@@ -106,7 +91,7 @@ func (s *Simulator) mountISCSI(ctx *simulator.Context, st topology.ISCSIStorage,
 					if lun.Spec.Target != target.Name {
 						continue
 					}
-					if _, ok := pathState(lun.Spec, a.Name, h.Key); !ok {
+					if _, ok := lun.Spec.PathState(a.Name, h.Key); !ok {
 						continue
 					}
 					key := "key-vim.host.ScsiDisk-" + lun.CanonicalName
@@ -121,7 +106,7 @@ func (s *Simulator) mountISCSI(ctx *simulator.Context, st topology.ISCSIStorage,
 		for _, lun := range st.LUNs {
 			ds := stores[lun.UUID]
 			key := "key-vim.host.ScsiDisk-" + lun.CanonicalName
-			active := false
+			active := lun.Spec.Reachable(st.Spec.Adapters, h.Key)
 			policy := lun.Spec.Policy
 			if policy == "" {
 				policy = "VMW_PSP_RR"
@@ -129,15 +114,12 @@ func (s *Simulator) mountISCSI(ctx *simulator.Context, st topology.ISCSIStorage,
 			mp := types.HostMultipathInfoLogicalUnit{Key: "key-vim.host.MultipathInfo.LogicalUnit-" + lun.CanonicalName, Id: lun.CanonicalName, Lun: key, Policy: &types.HostMultipathInfoLogicalUnitPolicy{Policy: policy}}
 			target := targets[lun.Spec.Target]
 			for _, a := range st.Spec.Adapters {
-				state, ok := pathState(lun.Spec, a.Name, h.Key)
+				state, ok := lun.Spec.PathState(a.Name, h.Key)
 				if !ok {
 					continue
 				}
 				dev := iscsiDevice(a.Name)
 				path := fmt.Sprintf("%s:C0:T%d:L%d", dev, iscsiTargetNumber(target.Name), lun.Spec.Number)
-				if state == "active" || state == "standby" {
-					active = true
-				}
 				mp.Path = append(mp.Path, types.HostMultipathInfoPath{Key: path, Name: path, PathState: state, State: state, IsWorkingPath: types.NewBool(state == "active"), Adapter: "key-vim.host.InternetScsiHba-" + dev, Lun: key, Transport: &types.HostInternetScsiTargetTransport{IScsiName: target.IQN, Address: []string{target.Address}}})
 				hs.Config.MultipathState.Path = append(hs.Config.MultipathState.Path, types.HostMultipathStateInfoPath{Name: path, PathState: state})
 			}

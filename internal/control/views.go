@@ -606,24 +606,7 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		for _, lun := range st.LUNs {
 			bad := 0
 			for _, h := range cl.Hosts {
-				working := false
-				for _, a := range st.Spec.Adapters {
-					state := ""
-					for _, p := range lun.Spec.Paths {
-						if p.Adapter == a.Name && p.Host == "" {
-							state = p.State
-						}
-					}
-					for _, p := range lun.Spec.Paths {
-						if p.Adapter == a.Name && p.Host == h.Key {
-							state = p.State
-						}
-					}
-					if state == "active" || state == "standby" {
-						working = true
-					}
-				}
-				if !working {
+				if !lun.Spec.Reachable(st.Spec.Adapters, h.Key) {
 					bad++
 				}
 			}
