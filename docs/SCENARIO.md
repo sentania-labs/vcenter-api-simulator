@@ -36,6 +36,13 @@ In Topology, select a cluster to edit its iSCSI storage and host-specific
 NFS mounts. Save to the draft, review, and apply. Applying topology changes
 rebuilds the simulated vCenter and drops existing sessions; clients must
 reconnect. MoRefs and other identities of unchanged datastores are retained.
+Deleting a cluster removes its iSCSI configuration and its NFS scope and
+host-fault references. An NFS datastore limited only to deleted clusters is
+removed rather than made available everywhere. Reducing a host count removes
+fault and path overrides for removed hosts; a LUN with no paths left is removed.
+Review and apply validate the resulting scenario. On startup, a previously
+saved console state with dangling storage references is repaired and the
+removal is logged; unrelated invalid settings still prevent startup.
 
 The NFS v3 summary, NAS information and accessible mount shape were observed
 on vCenter 9.1.1 build 25784172. The sanitized structural fixture is in

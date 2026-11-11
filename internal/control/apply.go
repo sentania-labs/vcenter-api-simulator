@@ -32,6 +32,9 @@ func (c *Controller) Apply(when string) (*ApplyResult, error) {
 		}
 		return nil, ErrNoDraft
 	}
+	if err := clone(d.Scenario).Validate(); err != nil {
+		return nil, &Invalid{err.Error()}
+	}
 	switch when {
 	case "now":
 		return c.applyLocked(d)

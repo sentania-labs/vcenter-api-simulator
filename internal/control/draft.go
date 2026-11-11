@@ -130,7 +130,17 @@ func (c *Controller) SetDraft(raw []byte, scope string) (DraftView, error) {
 	if c.scheduled != nil {
 		return DraftView{}, invalid("a change is scheduled for %s; cancel it to edit again", c.scheduled.At.UTC().Format("15:04:05Z"))
 	}
-	sc, err := fromJSON(raw, c.base)
+	sc, err := decodeScenarioJSON(raw, c.base)
+	if err == nil {
+		previous := c.applied().sc
+		if c.draft != nil {
+			previous = c.draft.Scenario
+		}
+		_, err = reconcileStorage(sc, previous)
+	}
+	if err == nil {
+		err = sc.Validate()
+	}
 	if err != nil {
 		return DraftView{}, &Invalid{err.Error()}
 	}
@@ -238,7 +248,8 @@ func (c *Controller) DeleteCluster(key string) (DraftView, error) {
 	if len(d.Scenario.ClusterKeys()) == 1 {
 		return DraftView{}, invalid("the last cluster cannot be deleted; a simulator needs at least one")
 	}
-	sc := d.Scenario
+	previous := d.Scenario
+	sc := clone(previous)
 	sc.Removed = append(sc.Removed, key)
 	sort.Strings(sc.Removed)
 	var cl []scenario.ClusterOverride
@@ -249,6 +260,13 @@ func (c *Controller) DeleteCluster(key string) (DraftView, error) {
 	}
 	sc.Clusters = cl
 	sc.Faults = retainFaults(sc.Faults, func(k string) bool { return k != key })
+	if _, err := reconcileStorage(sc, previous); err != nil {
+		return DraftView{}, &Invalid{err.Error()}
+	}
+	if err := sc.Validate(); err != nil {
+		return DraftView{}, &Invalid{err.Error()}
+	}
+	d.Scenario = sc
 	d.Regenerate = without(d.Regenerate, key)
 	return c.draftView(), nil
 }
@@ -358,6 +376,9 @@ func (c *Controller) previewTopology(d *Draft) (*topology.Topology, *registry.Re
 }
 
 func (c *Controller) review(d *Draft) (*Review, error) {
+	if err := clone(d.Scenario).Validate(); err != nil {
+		return nil, &Invalid{err.Error()}
+	}
 	old := c.applied()
 	now := c.now()
 	nt, _ := c.previewTopology(d)

@@ -361,11 +361,17 @@ var (
 )
 
 func validStorageHost(name string) bool {
+	_, ok := StorageHostOrdinal(name)
+	return ok
+}
+
+// StorageHostOrdinal parses a generated host's short name.
+func StorageHostOrdinal(name string) (int, bool) {
 	if !hostRe.MatchString(name) {
-		return false
+		return 0, false
 	}
 	n, err := strconv.Atoi(name[3:])
-	return err == nil && n > 0 && fmt.Sprintf("esx%02d", n) == name
+	return n, err == nil && n > 0 && fmt.Sprintf("esx%02d", n) == name
 }
 
 // StorageNumber gives an adapter or target a stable synthetic numeric identity.
@@ -543,8 +549,8 @@ func (s *Scenario) Validate() error {
 		if i < 0 || !validStorageHost(key[i+1:]) {
 			return false
 		}
-		ordinal, err := strconv.Atoi(key[i+4:])
-		if err != nil {
+		ordinal, ok := StorageHostOrdinal(key[i+1:])
+		if !ok {
 			return false
 		}
 		cluster := key[:i]
