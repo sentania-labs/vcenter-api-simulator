@@ -71,13 +71,16 @@ stop_sim() {
 ( cd "$here" && go build -o "$work/vcsimulator" ./cmd/vcsimulator )
 
 # credentials: the first user of the scenario (password from the file or,
-# with passwordEnv, from the environment), or any name/password
+# with passwordEnv, from the environment), or the published default
 creds=$(python3 - "$scenario" <<'PY'
 import os, re, sys
 text = open(sys.argv[1]).read()
 m = re.search(r"^auth:\s*\n\s+users:\s*\n\s+- name:\s*['\"]?([^'\"\n]+?)['\"]?\s*\n\s+(password|passwordEnv):\s*['\"]?([^'\"\n]+?)['\"]?\s*$", text, re.M)
 if not m:
-    print("smoke\tsmoke")
+    if re.search(r"(?m)^\s*anyLogin:\s*true\s*$", text):
+        print("smoke\tsmoke")
+    else:
+        print("administrator@vsphere.local\tVMware123!VMware123!")
 elif m.group(2) == "password":
     print(f"{m.group(1)}\t{m.group(3)}")
 else:

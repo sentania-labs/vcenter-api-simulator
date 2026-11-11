@@ -62,7 +62,7 @@ admin:
       secretName: ""
 
 credentials:
-  # When false, any user name and password log in (vcsim's default).
+  # When false, the built-in administrator credential is used.
   # When true, only the pair in the Secret below logs in.
   enabled: false
   # Name of an existing Secret with keys `username` and `password`. Preferred.

@@ -660,7 +660,7 @@ func TestPauseRefusesConnections(t *testing.T) {
 		t.Errorf("refused calls: %+v", got)
 	}
 	c.SetPaused(false)
-	if !a.login("any", "thing") && len(c.opts.Credentials) == 0 && len(tenClusters(t).Auth.Users) == 0 {
+	if !a.login(DefaultUsername, DefaultPassword) && len(c.opts.Credentials) == 0 && len(tenClusters(t).Auth.Users) == 0 {
 		t.Error("resume should serve again")
 	}
 	if c.Paused() {
@@ -1339,7 +1339,7 @@ defaults: {hosts: 3, vms: {perHost: 1}}
 		srv := httptest.NewServer(c.applied().sim.Handler)
 		defer srv.Close()
 		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
-		req.SetBasicAuth("reader", "password")
+		req.SetBasicAuth(DefaultUsername, DefaultPassword)
 		res, err := srv.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -1540,5 +1540,63 @@ func TestStorageDraftMarksAffectedClusterAndStandby(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("standby path missing from storage state")
+	}
+}
+
+func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
+	cases := []struct {
+		name       string
+		sc         *scenario.Scenario
+		extra      map[string]string
+		any        bool
+		user, pass string
+	}{
+		{name: "default", sc: scenario.Phase1("default-auth"), user: DefaultUsername, pass: DefaultPassword},
+		{name: "environment override", sc: scenario.Phase1("env-auth"), extra: map[string]string{"operator": "example-test-credential"}, user: "operator", pass: "example-test-credential"},
+		{name: "any login", sc: scenario.Phase1("open-auth"), any: true, user: "arbitrary", pass: "example-test-credential"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctl, err := New(Options{Scenario: tc.sc, DataDir: t.TempDir(), Credentials: tc.extra, AnyLogin: tc.any})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ctl.Close()
+			api := newAPIClient(t, ctl)
+			if !tc.any {
+				bad := newAPIClient(t, ctl)
+				code, body := bad.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+tc.user+`</userName><password>wrong-credential</password></Login>`)
+				if code != http.StatusInternalServerError || !strings.Contains(body, "InvalidLogin") {
+					t.Fatalf("wrong SOAP credential: %d %s", code, body)
+				}
+			}
+			if !api.login(tc.user, tc.pass) {
+				t.Fatal("expected SOAP credential refused")
+			}
+			code, body := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+			if code != http.StatusOK || strings.Contains(body, "NotAuthenticated") {
+				t.Fatalf("vSAN session: %d", code)
+			}
+			for _, bad := range []bool{false, true} {
+				req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
+				pass := tc.pass
+				if bad {
+					pass = "wrong-credential"
+				}
+				req.SetBasicAuth(tc.user, pass)
+				res, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				res.Body.Close()
+				want := http.StatusCreated
+				if bad && !tc.any {
+					want = http.StatusUnauthorized
+				}
+				if res.StatusCode != want {
+					t.Fatalf("REST bad=%v status=%d want=%d", bad, res.StatusCode, want)
+				}
+			}
+		})
 	}
 }

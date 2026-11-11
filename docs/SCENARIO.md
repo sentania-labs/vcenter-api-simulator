@@ -139,7 +139,8 @@ removed:                    # generated clusters left out (the console's Delete)
   - dc-01/cluster-07        #   the others keep their numbers and the removed
                             #   cluster's identities stay reserved
 
-auth:                       # no users: any non-empty name and password log in
+auth:                       # no users: published administrator default
+  # anyLogin: true          # explicit opt-out: accept any non-empty pair
   users:
     - name: administrator@vsphere.local
       password: VMware1!

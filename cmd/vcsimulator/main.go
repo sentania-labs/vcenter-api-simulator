@@ -68,7 +68,8 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "serve this certificate (PEM) instead of a self-signed one; needs -tls-key")
 	tlsKey := flag.String("tls-key", "", "private key (PEM) for -tls-cert")
 	names := flag.String("tls-names", "", "comma-separated extra DNS names or IPs for a newly created certificate")
-	username := flag.String("username", "", "only user name Login accepts; empty accepts any (env VCSIM_USERNAME)")
+	anyLogin := flag.Bool("any-login", false, "accept any nonempty vCenter user name and password")
+	username := flag.String("username", "", "additional accepted user name (env VCSIM_USERNAME)")
 	password := flag.String("password", "", "password for -username (env VCSIM_PASSWORD)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	describe := flag.Bool("describe", false, "print the scenario's cardinality as JSON (clusters, hosts, VMs, devices, per cluster) and exit without serving; needs no data directory")
@@ -153,7 +154,7 @@ func main() {
 	start := time.Now()
 	ctl, err := control.New(control.Options{
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
-		Credentials: extra, SessionTimeout: *sessionTimeout,
+		Credentials: extra, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
 	})
 	if err != nil {

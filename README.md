@@ -48,6 +48,7 @@ go build ./cmd/vcsimulator
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
+| `-any-login` | explicitly allow any non-empty vCenter username and password |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
 | `-admin ADDR` | the password-protected control console (plain HTTP); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
 | `-admin-allowed-hosts NAMES` | comma-separated Host names the console answers to besides `localhost`, `127.0.0.1` and `::1` (any port); every other Host gets 403, which stops a web page from reaching the console through DNS rebinding. Add the name your proxy or ingress forwards; env `VCSIM_ADMIN_ALLOWED_HOSTS` |
@@ -94,8 +95,9 @@ What the scenario controls, and what the simulator guarantees:
 - **Auth and TLS.** Configured users are enforced on `/sdk` (password
   login; the token and certificate logins vcsim would accept from anyone
   are refused), and `/vsanHealth` shares the session (no cookie,
-  `NotAuthenticated`). With no users configured any name and password log
-  in. The certificate persists,
+  `NotAuthenticated`). With no users configured, the published default is
+  `administrator@vsphere.local` / `VMware123!VMware123!`. Set
+  `auth.anyLogin: true` or `-any-login` to accept arbitrary non-empty credentials. The certificate persists,
   so the 2.0.0 pack's certificate pin survives restarts.
 - **Faults and latency.** Per-family or per-method SOAP faults
   (`invalid-argument`, `not-supported`, `system-error`, `timeout`) by

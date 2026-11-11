@@ -19,8 +19,8 @@ tools/smoke/smoke.ps1 -Server vcsim.example.test -User operator -Password placeh
 param(
     [string]$Server = '127.0.0.1',
     [int]$Port = 8443,
-    [string]$User = 'user',
-    [string]$Password = 'pass',
+    [string]$User = 'administrator@vsphere.local',
+    [string]$Password = 'VMware123!VMware123!',
     [int]$Hosts = 4,
     [int]$VMs = 4,
     # Check examples/scenarios/storage.yaml, including its failed paths.

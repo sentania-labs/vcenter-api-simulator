@@ -60,6 +60,7 @@ type Options struct {
 	// scenario's users.
 	Credentials    map[string]string
 	SessionTimeout time.Duration
+	AnyLogin       bool
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 
@@ -218,15 +219,9 @@ func bucket(t time.Time) time.Time { return t.UTC().Truncate(perf.Interval) }
 func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, version int) (*running, error) {
 	start := time.Now()
 	topo := topology.Generate(sc, reg)
-	creds, err := sc.Credentials()
+	creds, err := c.credentials(sc)
 	if err != nil {
 		return nil, err
-	}
-	for n, p := range c.opts.Credentials {
-		if creds == nil {
-			creds = map[string]string{}
-		}
-		creds[n] = p
 	}
 	s, err := sim.New(sim.Options{
 		Topology: topo, Registry: reg, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
@@ -237,6 +232,28 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	}
 	c.buildMs = time.Since(start).Milliseconds()
 	return &running{version: version, at: c.now(), sc: sc, topo: topo, sim: s}, nil
+}
+
+const DefaultUsername = "administrator@vsphere.local"
+const DefaultPassword = "VMware123!VMware123!"
+
+// credentials applies the explicit any-login opt-out and configured users
+// before falling back to the published built-in administrator account.
+func (c *Controller) credentials(sc *scenario.Scenario) (map[string]string, error) {
+	if c.opts.AnyLogin || sc.Auth.AnyLogin {
+		return map[string]string{}, nil
+	}
+	creds, err := sc.Credentials()
+	if err != nil {
+		return nil, err
+	}
+	for name, password := range c.opts.Credentials {
+		creds[name] = password
+	}
+	if len(creds) == 0 {
+		creds[DefaultUsername] = DefaultPassword
+	}
+	return creds, nil
 }
 
 // Close stops the running vCenter and any scheduled apply.

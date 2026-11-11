@@ -783,7 +783,7 @@ type handler struct {
 // any unsigned SAML assertion and LoginExtensionByCertificate any client
 // certificate the listener would present, neither of which a vCenter with
 // real users accepts from a stranger.
-var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)`)
+var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)\b`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.rest.serve(w, r) {

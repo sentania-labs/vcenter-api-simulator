@@ -231,10 +231,10 @@ type ClusterOverride struct {
 	ClusterSpec `yaml:",inline" json:",omitempty"`
 }
 
-// Auth lists who may log in. With no users any non-empty user name and
-// password are accepted, as vcsim does.
+// Auth lists accepted users. AnyLogin explicitly permits arbitrary credentials.
 type Auth struct {
-	Users []User `yaml:"users" json:"users,omitempty"`
+	AnyLogin bool   `yaml:"anyLogin" json:"anyLogin,omitempty"`
+	Users    []User `yaml:"users" json:"users,omitempty"`
 }
 
 // User is one account. Password may come from the environment instead of
