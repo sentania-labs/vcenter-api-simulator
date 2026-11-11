@@ -1464,7 +1464,7 @@ func TestISCSIDraftReviewAndStableIdentity(t *testing.T) {
 		srv := httptest.NewServer(r.sim.Handler)
 		defer srv.Close()
 		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
-		req.SetBasicAuth("reader", "password")
+		req.SetBasicAuth(DefaultUsername, DefaultPassword)
 		res, err := srv.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
