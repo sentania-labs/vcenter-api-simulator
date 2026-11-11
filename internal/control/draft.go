@@ -618,23 +618,20 @@ func iscsiChanges(old, next *scenario.Scenario) []Change {
 			if port == 0 {
 				port = 3260
 			}
-			targets = append(targets, fmt.Sprintf("%s: %s:%d, %s", t.Name, t.Address, port, t.IQN))
+			targets = append(targets, fmt.Sprintf("%s at %s:%d", t.Name, t.Address, port))
 		}
 		var stores []string
 		for _, l := range st.LUNs {
 			var paths []string
 			for _, p := range l.Paths {
-				host := p.Host
+				host := shortStorageHost(p.Host)
 				if host == "" {
 					host = "all hosts"
 				}
 				paths = append(paths, fmt.Sprintf("%s on %s: %s", p.Adapter, host, p.State))
 			}
-			policy := l.Policy
-			if policy == "" {
-				policy = "VMW_PSP_RR"
-			}
-			stores = append(stores, fmt.Sprintf("%s (target %s, LUN %d, %d B free of %d B, policy %s; %s)", l.Name, l.Target, l.Number, l.FreeSpace, l.Capacity, policy, strings.Join(paths, ", ")))
+			policy := map[string]string{"": "round robin", "VMW_PSP_RR": "round robin", "VMW_PSP_FIXED": "fixed", "VMW_PSP_MRU": "most recently used"}[l.Policy]
+			stores = append(stores, fmt.Sprintf("%s uses %s, LUN %d. %s free of %s, %s policy. Paths: %s", l.Name, l.Target, l.Number, humanStorageBytes(l.FreeSpace), humanStorageBytes(l.Capacity), policy, strings.Join(paths, ", ")))
 		}
 		return fmt.Sprintf("Adapters per host: %s. Targets: %s. Datastores: %s", strings.Join(adapters, ", "), strings.Join(targets, ", "), strings.Join(stores, ", "))
 	}
@@ -677,7 +674,23 @@ func nfsChanges(old, next *scenario.Scenario) []Change {
 	}
 	sort.Strings(keys)
 	describe := func(n scenario.NFSDatastore) string {
-		return fmt.Sprintf("%s:%s · capacity %d B · free %d B · clusters %v · inaccessible hosts %v", n.RemoteHost, n.RemotePath, n.Capacity, n.FreeSpace, n.Clusters, n.InaccessibleHosts)
+		scope := "Available to all clusters"
+		if len(n.Clusters) > 0 {
+			names := make([]string, 0, len(n.Clusters))
+			for _, k := range n.Clusters {
+				names = append(names, shortStorageHost(k))
+			}
+			scope = "Available to " + strings.Join(names, ", ")
+		}
+		var faults []string
+		for _, h := range n.InaccessibleHosts {
+			faults = append(faults, shortStorageHost(h))
+		}
+		state := "All hosts can reach it"
+		if len(faults) > 0 {
+			state = "Cannot be reached by " + strings.Join(faults, ", ")
+		}
+		return fmt.Sprintf("%s:%s. %s free of %s. %s. %s.", n.RemoteHost, n.RemotePath, humanStorageBytes(n.FreeSpace), humanStorageBytes(n.Capacity), scope, state)
 	}
 	var changes []Change
 	for _, key := range keys {
@@ -693,6 +706,26 @@ func nfsChanges(old, next *scenario.Scenario) []Change {
 		}
 	}
 	return changes
+}
+
+func shortStorageHost(key string) string {
+	if i := strings.LastIndexByte(key, '/'); i >= 0 {
+		return key[i+1:]
+	}
+	return key
+}
+func humanStorageBytes(n int64) string {
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	v := float64(n)
+	i := 0
+	for v >= 1024 && i < len(units)-1 {
+		v /= 1024
+		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%d B", n)
+	}
+	return fmt.Sprintf("%.1f %s", v, units[i])
 }
 
 func orDash(s string) string {

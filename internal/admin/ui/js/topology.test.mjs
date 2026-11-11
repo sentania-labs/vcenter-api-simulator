@@ -91,7 +91,7 @@ test('NFS editor validates inline and stages add, edit and removal in its datace
  await topology.actions['topo.nfsSave'](ctx, null, null, data);
  let markup = String(topology.render(ctx, data));
  assert.match(markup, /Use lower-case letters/); assert.match(markup, /Enter a server/);
- assert.match(markup, /absolute export path/); assert.match(markup, /positive whole number/);
+ assert.match(markup, /absolute export path/); assert.match(markup, /positive size/);
  for (const [f, value] of Object.entries({name:'shared-nfs', remoteHost:'nfs.sim.invalid', remotePath:'/exports/sim', capacity:'1000', freeSpace:'1001'})) topology.actions['topo.nfsInput'](ctx,{dataset:{f},value});
  await topology.actions['topo.nfsSave'](ctx, null, null, data);
  markup = String(topology.render(ctx, data)); assert.match(markup,/Free space cannot exceed capacity/);
@@ -153,4 +153,42 @@ test('storage table keeps the performance column beside state and shows each row
   assert.ok(row,name); assert.ok(row.includes(`<td>${state}</td>`),name+' state'); assert.ok(row.includes(`>${perf}</td>`),name+' perf');
  }
  assert.doesNotMatch(rendered,/other rows are inventory only/);
+});
+
+
+test('renaming adapters and targets preserves selected paths and offers field-specific errors', async () => {
+ const data=editorData(); topology.actions['topo.iscsiEdit'](ctx,null,null,data);
+ topology.actions['topo.iscsiInput'](ctx,{dataset:{group:'adapters',index:'0',f:'name'},value:'iscsi-hba-1'});
+ topology.actions['topo.iscsiInput'](ctx,{dataset:{group:'targets',index:'0',f:'name'},value:'array-1'});
+ topology.actions['topo.iscsiInput'](ctx,{dataset:{group:'targets',index:'0',f:'iqn'},value:'bad'});
+ await topology.actions['topo.iscsiSave'](ctx,null,null,data);
+ let markup=String(topology.render(ctx,data));
+ assert.match(markup,/Start the target name with iqn/); assert.match(markup,/aria-invalid="true"/);
+ for (const [group,f,value] of [['targets','address','array.example.test'],['targets','iqn','iqn.2026-01.test.example:array'],['luns','name','shared-vmfs'],['luns','capacity','1 TB'],['luns','freeSpace','200 GB']]) topology.actions['topo.iscsiInput'](ctx,{dataset:{group,index:'0',f},value});
+ await topology.actions['topo.iscsiSave'](ctx,null,null,data);
+ const st=saved.datacenters[0].iscsi[0]; assert.equal(st.luns[0].target,'array-1'); assert.equal(st.luns[0].paths[0].adapter,'iscsi-hba-1'); assert.equal(st.luns[0].capacity,1024**4); assert.equal(st.luns[0].freeSpace,200*1024**3);
+});
+
+test('undo cluster deletion restores applied storage without erasing another cluster', async () => {
+ const data=editorData(), key='dc-01/cluster-01';
+ const applied=clone(scn); applied.datacenters[0].clusters=2;
+ applied.datacenters[0].iscsi=[{cluster:key,adapters:[{name:'a',kind:'software'}],targets:[],luns:[]}];
+ applied.datacenters[0].nfs=[{name:'scoped',remoteHost:'nfs.example.test',remotePath:'/share',capacity:1024,freeSpace:512,clusters:[key],inaccessibleHosts:[key+'/esx01']},{name:'shared',remoteHost:'nfs.example.test',remotePath:'/shared',capacity:1024,freeSpace:512,clusters:[key,'dc-01/cluster-02'],inaccessibleHosts:[key+'/esx02','dc-01/cluster-02/esx01']}];
+ data.draft.applied=clone(applied); data.draft.scenario=clone(applied); data.draft.scenario.removed=[key]; data.draft.scenario.datacenters[0].iscsi=[]; data.draft.scenario.datacenters[0].nfs=[{...clone(applied.datacenters[0].nfs[1]),clusters:['dc-01/cluster-02'],inaccessibleHosts:['dc-01/cluster-02/esx01']}];
+ await topology.actions['topo.undelete'](ctx,null,null,data);
+ assert.deepEqual(saved.datacenters[0].iscsi,applied.datacenters[0].iscsi); assert.deepEqual(saved.datacenters[0].nfs.find(n=>n.name==='scoped'),applied.datacenters[0].nfs[0]); const shared=saved.datacenters[0].nfs.find(n=>n.name==='shared'); assert.deepEqual(new Set(shared.clusters),new Set(applied.datacenters[0].nfs[1].clusters)); assert.deepEqual(new Set(shared.inaccessibleHosts),new Set(applied.datacenters[0].nfs[1].inaccessibleHosts)); assert.deepEqual(saved.removed,[]);
+});
+
+test('reverting host count restores storage faults for the returned hosts', async () => {
+ const data=editorData(), key='dc-01/cluster-01', host=key+'/esx04';
+ data.cluster.spec.hosts=3; data.cluster.hostsApplied=4;
+ const applied=clone(scn);
+ applied.datacenters[0].nfs=[{name:'nfs',clusters:[key],inaccessibleHosts:[host]}];
+ applied.datacenters[0].iscsi=[{cluster:key,adapters:[{name:'a'}],luns:[{name:'lun',paths:[{adapter:'a',state:'active'},{adapter:'a',host,state:'dead'}]}]}];
+ data.draft.applied=clone(applied); data.draft.scenario=clone(applied);
+ data.draft.scenario.datacenters[0].nfs[0].inaccessibleHosts=[];
+ data.draft.scenario.datacenters[0].iscsi[0].luns[0].paths.pop();
+ await topology.actions['topo.revert'](ctx,{dataset:{arg:'hosts'}},null,data);
+ assert.deepEqual(saved.datacenters[0].nfs[0].inaccessibleHosts,[host]);
+ assert.deepEqual(saved.datacenters[0].iscsi[0].luns[0].paths[1],{adapter:'a',host,state:'dead'});
 });

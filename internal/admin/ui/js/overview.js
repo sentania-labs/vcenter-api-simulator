@@ -110,7 +110,7 @@ export default {
           <div class="row wrap anno"><span>Cycle ${Math.max(1, Math.round((new Date(cyc.end) - new Date(cyc.start)) / 1000))} s · client ${cyc.client}</span></div>`
           : html`<div class="empty">No collector traffic yet.</div>`}
         <h2 class="lat-card-title" style="margin-top:4px">Recent events</h2>
-        <table class="lat-table"><tbody>${st.events.length ? st.events.map((e) => html`<tr><td class="mono subtle">${hms(e.at)}</td><td class="wrap ink">${e.text}</td><td class="wrap subtle">${e.detail}</td></tr>`) : html`<tr><td class="subtle">Nothing yet.</td></tr>`}</tbody></table>
+        <table class="lat-table events-table"><colgroup><col style="width:90px"><col><col></colgroup><tbody>${st.events.length ? st.events.map((e) => html`<tr><td class="mono subtle">${hms(e.at)}</td><td class="wrap ink">${e.text}</td><td class="wrap subtle">${e.detail}</td></tr>`) : html`<tr><td class="subtle">Nothing yet.</td></tr>`}</tbody></table>
         ${st.lastError ? html`<div class="lat-banner lat-banner--bad">${st.lastError}</div>` : ''}
       </section>
     </div>`;

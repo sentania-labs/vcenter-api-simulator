@@ -1512,3 +1512,33 @@ func TestGeneratePrunesStorageReferencesToMissingHosts(t *testing.T) {
 		t.Fatalf("generate with a host that the generated topology no longer has: %v", err)
 	}
 }
+
+func TestStorageDraftMarksAffectedClusterAndStandby(t *testing.T) {
+	sc := scenario.Phase1("storage-pending")
+	sc.Datacenters[0].Clusters = 2
+	c := newCtl(t, sc, "", "pending")
+	draft := editable(t, c)
+	draft.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "scoped", RemoteHost: "nfs.example.test", RemotePath: "/shared", Capacity: 4096, FreeSpace: 2048, Clusters: []string{"dc-01/cluster-01"}}}
+	draft.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{Cluster: "dc-01/cluster-01", Adapters: []scenario.ISCSIAdapter{{Name: "a", Kind: "software"}}, Targets: []scenario.ISCSITarget{{Name: "t", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}}, LUNs: []scenario.ISCSILUN{{Name: "shared", Target: "t", Capacity: 1048576, FreeSpace: 1024, Paths: []scenario.ISCSIPath{{Adapter: "a", State: "standby"}}}}}}
+	put(t, c, draft)
+	tree := c.Tree()
+	if tree.PendingN != 1 || tree.Datacenters[0].Clusters[0].State != "pending" || tree.Datacenters[0].Clusters[1].State != "" {
+		t.Fatalf("tree pending: %+v", tree)
+	}
+	v, err := c.Cluster("dc-01/cluster-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State != "pending" {
+		t.Fatalf("cluster pending state %q", v.State)
+	}
+	found := false
+	for _, ds := range v.Datastores {
+		if ds.Name == "shared" && strings.Contains(ds.State, "standby") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("standby path missing from storage state")
+	}
+}

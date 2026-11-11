@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"slices"
 	"sort"
@@ -345,6 +346,37 @@ func (c *Controller) Tree() *Tree {
 	return t
 }
 
+func storageForCluster(cl *topology.Cluster) (nfs []scenario.NFSDatastore, iscsi []scenario.ISCSIStorage) {
+	if cl == nil {
+		return nil, nil
+	}
+	for _, n := range cl.Datacenter.NFS {
+		if len(n.Spec.Clusters) > 0 && !slices.Contains(n.Spec.Clusters, cl.Key) {
+			continue
+		}
+		x := n.Spec
+		x.Clusters = nil
+		x.InaccessibleHosts = nil
+		for _, h := range n.Spec.InaccessibleHosts {
+			if strings.HasPrefix(h, cl.Key+"/") {
+				x.InaccessibleHosts = append(x.InaccessibleHosts, h)
+			}
+		}
+		nfs = append(nfs, x)
+	}
+	for _, st := range cl.Datacenter.ISCSI {
+		if st.Spec.Cluster == cl.Key {
+			iscsi = append(iscsi, st.Spec)
+		}
+	}
+	return
+}
+func clusterStorageChanged(a, b *topology.Cluster) bool {
+	an, ai := storageForCluster(a)
+	bn, bi := storageForCluster(b)
+	return !reflect.DeepEqual(an, bn) || !reflect.DeepEqual(ai, bi)
+}
+
 func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) TreeCluster {
 	tc := TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name, Architecture: cl.Spec.Architecture, Hosts: len(cl.Hosts), HostsBefore: -1,
 		VMsPerHost: scenario.Int(cl.Spec.VMs.PerHost), Devices: cl.Spec.Host.ClaimedDevices, Regenerate: regen}
@@ -355,7 +387,7 @@ func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) T
 		tc.State = "new"
 	default:
 		tc.HostsBefore = len(old.Hosts)
-		if fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed {
+		if fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed || clusterStorageChanged(old, cl) {
 			tc.State = "pending"
 		}
 	}
@@ -478,7 +510,7 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		switch {
 		case old == nil:
 			v.State = "new"
-		case fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed:
+		case fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed || clusterStorageChanged(old, cl):
 			v.State = "pending"
 		}
 	}
@@ -606,10 +638,16 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 			continue
 		}
 		for _, lun := range st.LUNs {
-			bad := 0
+			bad, standby := 0, 0
 			for _, h := range cl.Hosts {
 				if !lun.Spec.Reachable(st.Spec.Adapters, h.Key) {
 					bad++
+				}
+				for _, a := range st.Spec.Adapters {
+					if state, _ := lun.Spec.PathState(a.Name, h.Key); state == "standby" {
+						standby++
+						break
+					}
 				}
 			}
 			state := "Accessible"
@@ -618,6 +656,12 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 					state = "1 host has no working path"
 				} else {
 					state = fmt.Sprintf("%d hosts have no working path", bad)
+				}
+			} else if standby > 0 {
+				if standby == 1 {
+					state = "1 host has a standby path"
+				} else {
+					state = fmt.Sprintf("%d hosts have a standby path", standby)
 				}
 			}
 			v.Datastores = append(v.Datastores, DatastoreRow{Name: lun.Spec.Name, Type: "VMFS · iSCSI", Backing: lun.Spec.Target, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
