@@ -100,3 +100,30 @@ func TestConsoleAndServedAPIAgreeOnHostSpecificPaths(t *testing.T) {
 		t.Errorf("served API reports inaccessible mounts on %v, console reports %q", down, console)
 	}
 }
+
+func TestStorageRowsSayWhichDatastoresAnswerPerformanceQueries(t *testing.T) {
+	sc := scenario.Phase1("storage-perf-rows")
+	cluster := "dc-01/cluster-01"
+	sc.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "shared-nfs", RemoteHost: "nfs.example.test", RemotePath: "/shared", Capacity: 1000, FreeSpace: 500}}
+	sc.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{
+		Cluster:  cluster,
+		Adapters: []scenario.ISCSIAdapter{{Name: "software", Kind: "software"}},
+		Targets:  []scenario.ISCSITarget{{Name: "array", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}},
+		LUNs:     []scenario.ISCSILUN{{Name: "shared-vmfs", Target: "array", Number: 1, Capacity: 1 << 30, FreeSpace: 1 << 20, Paths: []scenario.ISCSIPath{{Adapter: "software", State: "active"}}}},
+	}}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	view, err := newCtl(t, sc, "", "t").Cluster(cluster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	perf := map[string]string{}
+	for _, row := range view.Datastores {
+		perf[row.Type] = row.Perf
+	}
+	want := "queried: capacity and used space, I/O counters read zero"
+	if perf["NFS"] != want || perf["VMFS · iSCSI"] != want || perf["vSAN ESA"] != "queried" || perf["VMFS · local"] != "inventory only" {
+		t.Errorf("performance column by datastore type: %v", perf)
+	}
+}

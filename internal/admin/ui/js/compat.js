@@ -30,10 +30,10 @@ function storage() {
     <table class="lat-table"><thead><tr><th>Type</th><th>/sdk inventory</th><th>Perf kinds</th><th>MP reads</th></tr></thead><tbody>
     ${row('vSAN ESA', badge('impl', 'ok'), 'served', 'yes')}
     ${row('vSAN OSA', badge('impl', 'ok'), 'disk-group, cache/capacity disk', 'yes · 30 of 74 wildcard families returned samples in the capture')}
-    ${row('NFS v3', badge('implemented', 'ok'), 'none', 'Shared inventory and host mounts; no vSAN performance data')}
+    ${row('NFS v3', badge('implemented', 'ok'), 'datastore capacity and used space', 'Shared inventory and host mounts; capacity and used space are queried, I/O counters read zero; no vSAN performance data')}
     ${row('Local VMFS', badge('implemented', 'ok'), 'none', 'Per-host inventory; no vSAN performance data')}
     ${row('FC datastores', badge('not emulated', 'bad'), 'none', 'No populated capture available')}
-    ${row('iSCSI-backed VMFS', badge('implemented', 'ok'), 'none', 'Shared inventory, adapters and paths; lab iSCSI shape not yet verified')}
+    ${row('iSCSI-backed VMFS', badge('implemented', 'ok'), 'datastore capacity and used space', 'Shared inventory, adapters and paths; capacity and used space are queried, I/O counters read zero; lab iSCSI shape not yet verified')}
     ${row('vSAN iSCSI target service', badge('not emulated', 'bad'), 'none', 'Captured disabled-service faults are served')}
     ${row('vSAN file service', badge('not emulated', 'bad'), 'none', 'No populated capture available')}
     </tbody></table></section>`;

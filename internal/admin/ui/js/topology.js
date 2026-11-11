@@ -272,9 +272,9 @@ function editorCard(ctx, d) {
       ${v.spec.architecture === 'osa' ? '' : html`${input(v, 'dedup', locked)}${input(v, 'compression', locked)}`}
       <div><span class="lat-label">vDS</span><div class="mono ink" style="padding:5px 0">${v.vds}</div><div class="lat-hint">${v.portgroups} port groups · ${v.datacenter}</div></div>
     </div>
-    <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; other rows are inventory only; no vSAN performance data</span></h2>
-    <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>State</th></tr></thead><tbody>
-      ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td>${s.state || 'Accessible'}</td></tr>`)}</tbody></table>
+    <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; NFS and iSCSI datastores answer performance queries with capacity and used space (I/O counters read zero); local VMFS is inventory only</span></h2>
+    <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>State</th><th>MP Perf Service</th></tr></thead><tbody>
+      ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td>${s.state || 'Accessible'}</td><td class="${(s.perfService || '').startsWith('queried') ? 'ink' : 'muted'}">${s.perfService}</td></tr>`)}</tbody></table>
     <div class="anno">${v.spec.architecture === 'osa' ? 'OSA deduplication and compression are not modeled from the capture. ' : ''}Fibre Channel is not simulated.</div>
     ${iscsiEditor(d, locked)}
     ${nfsEditor(d, locked)}

@@ -137,3 +137,20 @@ test('storage edits stage host faults and preserve them on later edits', async (
  assert.deepEqual(saved.datacenters[0].nfs[0].inaccessibleHosts,['dc-01/cluster-01/esx02']);
  assert.equal(saved.datacenters[0].iscsi[0].luns[0].name,'shared-vmfs');
 });
+
+test('storage table keeps the performance column beside state and shows each row\'s own text', () => {
+ const data=editorData();
+ const q='queried: capacity and used space, I/O counters read zero';
+ data.cluster.datastores=[
+  {name:'vsan',type:'vSAN OSA',backing:'1 NVMe / host',mounted:3,perfService:'queried'},
+  {name:'local VMFS',type:'VMFS · local',backing:'1 / host',mounted:3,perfService:'inventory only'},
+  {name:'shared-nfs',type:'NFS',backing:'nfs.example.test:/shared',mounted:3,perfService:q,state:'1 host mount inaccessible'},
+  {name:'shared-vmfs',type:'VMFS · iSCSI',backing:'array',mounted:3,perfService:q,state:'1 host has no working path'}];
+ const rendered=String(topology.render(ctx,data));
+ assert.match(rendered,/<th>State<\/th><th>MP Perf Service<\/th>/);
+ for (const [name,state,perf] of [['vsan','Accessible','queried'],['local VMFS','Accessible','inventory only'],['shared-nfs','1 host mount inaccessible',q],['shared-vmfs','1 host has no working path',q]]) {
+  const row=rendered.split('<tr>').find((r)=>r.includes(`>${name}</td>`));
+  assert.ok(row,name); assert.ok(row.includes(`<td>${state}</td>`),name+' state'); assert.ok(row.includes(`>${perf}</td>`),name+' perf');
+ }
+ assert.doesNotMatch(rendered,/other rows are inventory only/);
+});

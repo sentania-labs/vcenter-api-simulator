@@ -389,6 +389,8 @@ type HostRow struct {
 }
 
 // DatastoreRow is one datastore of a cluster.
+const sharedStoragePerf = "queried: capacity and used space, I/O counters read zero"
+
 type DatastoreRow struct {
 	Name    string `json:"name"`
 	Type    string `json:"type"`
@@ -597,7 +599,7 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 				state = fmt.Sprintf("%d host mounts inaccessible", bad)
 			}
 		}
-		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: "inventory only", State: state})
+		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
 	}
 	for _, st := range cl.Datacenter.ISCSI {
 		if st.Spec.Cluster != cl.Key {
@@ -618,7 +620,7 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 					state = fmt.Sprintf("%d hosts have no working path", bad)
 				}
 			}
-			v.Datastores = append(v.Datastores, DatastoreRow{Name: lun.Spec.Name, Type: "VMFS · iSCSI", Backing: lun.Spec.Target, Mounted: len(cl.Hosts), Perf: "inventory only", State: state})
+			v.Datastores = append(v.Datastores, DatastoreRow{Name: lun.Spec.Name, Type: "VMFS · iSCSI", Backing: lun.Spec.Target, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
 		}
 	}
 	v.VDS, v.PortGroups = cl.VDS(), len(topology.Portgroups)
