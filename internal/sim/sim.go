@@ -124,6 +124,7 @@ func New(opts Options) (*Simulator, error) {
 		cat.About.Version, cat.About.Build, cat.About.ApiVersion, cat.About.FullName = v.Version, v.Build, v.APIVersion, v.FullName
 		cat.About.LicenseVer = v.LicenseVersion()
 		cat.VimServiceVersions = selectVimVersions(cat.VimServiceVersions, v.APIVersion)
+		cat.VsanServiceVersions = selectVsanVersions(cat.VsanServiceVersions, v.APIVersion)
 	}
 
 	content := vpx.ServiceContent

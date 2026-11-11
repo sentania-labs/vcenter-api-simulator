@@ -2018,3 +2018,30 @@ func TestLegacyTimelineUsesPlainDescriptions(t *testing.T) {
 		}
 	}
 }
+
+func TestScenarioUserRoleIsExplicit(t *testing.T) {
+	t.Setenv("VCSIM_READONLY_PASSWORD", "reader-secret")
+	sc := scenario.Phase1("roles")
+	sc.Auth.Users = []scenario.User{
+		{Name: "admin@vsphere.local", Password: "admin-secret"},
+		{Name: "reader@vsphere.local", PasswordEnv: "VCSIM_READONLY_PASSWORD", Role: "read-only"},
+		{Name: "named-like-readonly@vsphere.local", PasswordEnv: "VCSIM_READONLY_PASSWORD"},
+	}
+	ctl, err := New(Options{Scenario: sc, DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	roles := map[string]string{}
+	for _, u := range ctl.CredentialsView().Users {
+		roles[u.Name] = u.Role
+	}
+	if roles["admin@vsphere.local"] != "administrator" || roles["reader@vsphere.local"] != "read-only" || roles["named-like-readonly@vsphere.local"] != "administrator" {
+		t.Fatalf("roles: %v", roles)
+	}
+	bad := scenario.Phase1("roles")
+	bad.Auth.Users = []scenario.User{{Name: "x", Password: "y", Role: "superuser"}}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("unknown role accepted")
+	}
+}

@@ -45,8 +45,9 @@ admin:
   port: 9090
   exposeToPodNetwork: false
   allowedHosts: []
-  # Existing Secret containing the initial console password under key password.
-  # Used only until the console has been claimed.
+  # Existing Secret containing the console password under key password. The
+  # password it holds wins: a changed value replaces the stored console
+  # password at the next start and ends console sessions.
   existingSecret: ""
   service:
     enabled: false
@@ -73,9 +74,8 @@ credentials:
   password: change-me
 
 tls:
-  # Assert the chart owns the certificate. Requires existingSecret or certManager.
-  # A supplied chart certificate is always deployment-managed, even when false.
-  managed: false
+  # Supplying a certificate (existingSecret or certManager) makes it
+  # deployment-managed: the console shows it read-only.
   # Name of an existing kubernetes.io/tls Secret (tls.crt, tls.key) to serve.
   # Takes precedence over certManager and over the generated certificate.
   existingSecret: ""

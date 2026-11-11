@@ -10,7 +10,7 @@
 //     keys?(ctx, ev, data)                      (keydown on the page)
 //     pollMs?                                   (reload data on this interval)
 //   }
-import { api, ApiError, html, raw, join, esc, badge, banner, int, hms, hm, bytes, scheduledMessage } from './lib.js';
+import { api, polling, ApiError, html, raw, join, esc, badge, banner, int, hms, hm, bytes, scheduledMessage } from './lib.js';
 import overview from './overview.js';
 import topology from './topology.js';
 import telemetry from './telemetry.js';
@@ -418,13 +418,16 @@ let tick = 0;
 setInterval(async () => {
   tick++;
   if (document.hidden) return;
-  await loadState();
-  renderShell();
-  const every = screen.pollMs ? Math.max(1, Math.round(screen.pollMs / 2000)) : 0;
-  if (every && tick % every === 0 && !editing() && !document.getElementById('modal-root').firstChild) {
-    await loadScreen();
-    renderPage();
-  }
+  polling.active = true;
+  try {
+    await loadState();
+    renderShell();
+    const every = screen.pollMs ? Math.max(1, Math.round(screen.pollMs / 2000)) : 0;
+    if (every && tick % every === 0 && !editing() && !document.getElementById('modal-root').firstChild) {
+      await loadScreen();
+      renderPage();
+    }
+  } finally { polling.active = false; }
 }, 2000);
 
 navigate();

@@ -248,6 +248,8 @@ type User struct {
 	Name        string `yaml:"name" json:"name,omitempty"`
 	Password    string `yaml:"password" json:"password,omitempty"`
 	PasswordEnv string `yaml:"passwordEnv" json:"passwordEnv,omitempty"`
+	// Role is "administrator" (the default) or "read-only".
+	Role string `yaml:"role,omitempty" json:"role,omitempty"`
 }
 
 // TLS selects the certificate: a provided pair, or a self-signed one
@@ -591,6 +593,9 @@ func (s *Scenario) Validate() error {
 			return fmt.Errorf("scenario: auth.users[%d]: %q listed twice", i, u.Name)
 		}
 		users[u.Name] = true
+		if u.Role != "" && u.Role != "administrator" && u.Role != "read-only" {
+			return fmt.Errorf("scenario: auth.users[%d] (%s): role must be administrator or read-only", i, u.Name)
+		}
 		if (u.Password == "") == (u.PasswordEnv == "") {
 			return fmt.Errorf("scenario: auth.users[%d] (%s): exactly one of password and passwordEnv is required", i, u.Name)
 		}

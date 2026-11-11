@@ -1,6 +1,3 @@
-{{- if and .Values.tls.managed (not (include "vcsim.tlsSecretName" .)) }}
-{{- fail "tls.managed requires tls.existingSecret or tls.certManager.enabled" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

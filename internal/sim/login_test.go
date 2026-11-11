@@ -2,6 +2,7 @@ package sim
 
 import (
 	"context"
+	"encoding/xml"
 	"net/http/httptest"
 	"net/url"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
 
+	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
@@ -89,5 +91,34 @@ func TestReadOnlyUserSessionHousekeepingAndLicenseVersion(t *testing.T) {
 	folder := object.NewFolder(vc, vc.ServiceContent.RootFolder)
 	if _, err := folder.CreateFolder(context.Background(), "denied"); err == nil {
 		t.Error("read-only user created a folder")
+	}
+}
+
+// The vSAN service-version document follows the selected vCenter: the captured
+// 9.1.1 document is cut back to the newest namespace that release can speak.
+func TestVsanServiceVersionsFollowVCenterRelease(t *testing.T) {
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for apiVersion, want := range map[string]string{"9.1.1.0": "9.1.1.0", "9.0.0.0": "9.0.0.0", "8.0.3.0": "8.0.0.4"} {
+		doc := selectVsanVersions(cat.VsanServiceVersions, apiVersion)
+		var parsed struct {
+			Namespace struct {
+				Version string   `xml:"version"`
+				Prior   []string `xml:"priorVersions>version"`
+			} `xml:"namespace"`
+		}
+		if err := xml.Unmarshal([]byte(doc), &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Namespace.Version != want {
+			t.Errorf("vCenter %s advertises vSAN %s, want %s", apiVersion, parsed.Namespace.Version, want)
+		}
+		for _, newer := range parsed.Namespace.Prior {
+			if newer == "9.1.1.0" && want != "9.1.1.0" {
+				t.Errorf("vCenter %s still lists vSAN 9.1.1.0", apiVersion)
+			}
+		}
 	}
 }

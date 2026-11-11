@@ -230,4 +230,30 @@ if ! diff -u "$work/dump-1.txt" "$work/dump-2.txt" > "$work/dump.diff"; then
   fail "identities changed across the restart"
 fi
 pass "identities identical across restart ($(wc -l < "$work/dump-2.txt") lines)"
+echo "== mixed versions: 9.0 vCenter, one 8.0 U3 cluster with one 9.0 host"
+stop_sim
+scenario=$here/tools/smoke/versions.yaml
+rm -rf "$work/data"
+username=administrator@vsphere.local password='VMware123!VMware123!'
+export GOVC_USERNAME=$username GOVC_PASSWORD=$password
+start_sim versions
+govc about -json | python3 -c 'import json,sys; a=json.load(sys.stdin)["about"]; sys.exit(0 if (a["version"], a["build"], a["apiVersion"]) == ("9.0.0", "24755230", "9.0.0.0") else f"vCenter about: {a}")' || fail "govc about does not report the 9.0 vCenter"
+pass "govc about: vCenter 9.0.0 build 24755230"
+products=$(govc object.collect -s -type h / name config.product.version config.product.apiVersion | paste - - - | sort)
+want=$(printf '%s\n' \
+  "esx01.cluster-01.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+  "esx02.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
+  "esx03.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
+  "esx04.cluster-01.dc-01.sim.invalid	8.0.3	8.0.3.0" \
+  "esx01.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+  "esx02.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+  "esx03.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" \
+  "esx04.cluster-02.dc-01.sim.invalid	9.0.0	9.0.0.0" | sort)
+[ "$products" = "$want" ] || { diff <(echo "$want") <(echo "$products") >&2; fail "host product versions are not mixed as configured"; }
+pass "govc host products: 8.0 U3 cluster with one 9.0 host, 9.0 cluster"
+token=$(curl -sk -X POST -u "$username:$password" "https://127.0.0.1:$port/api/session" | tr -d '"')
+curl -sk -H "vmware-api-session-id: $token" "https://127.0.0.1:$port/api/appliance/system/version" | python3 -c 'import json,sys; v=json.load(sys.stdin); sys.exit(0 if v["version"] == "9.0.0.0" and v["build"] == "24755230" else f"REST version: {v}")' || fail "REST appliance version does not follow the 9.0 vCenter"
+pass "REST /api/appliance/system/version: 9.0.0.0"
+curl -sk "https://127.0.0.1:$port/sdk/vsanServiceVersions.xml" | grep -q '<version>9.0.0.0</version>' || fail "vSAN service versions do not follow the 9.0 vCenter"
+pass "vSAN service versions: 9.0.0.0"
 echo "smoke: all checks passed"

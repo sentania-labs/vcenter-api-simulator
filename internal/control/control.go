@@ -198,7 +198,7 @@ func New(opts Options) (*Controller, error) {
 	}
 	var readonly []string
 	for _, user := range sc.Auth.Users {
-		if user.PasswordEnv == "VCSIM_READONLY_PASSWORD" {
+		if user.Role == "read-only" {
 			readonly = append(readonly, user.Name)
 		}
 	}

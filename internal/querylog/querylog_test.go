@@ -259,3 +259,46 @@ func TestCaptureBoundsMemoryButRetainsFullFile(t *testing.T) {
 		t.Fatal("full file did not retain the entire redacted body")
 	}
 }
+
+// A SOAP fault is a 500 in vcsim. Only faults that mean "the simulator cannot
+// answer this" are unanswered; deliberate answers (injected faults, refused
+// logins, missing privileges) are not, and a bare 5xx without a fault is.
+func TestUnansweredClassification(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"unknown method", 500, `<Envelope><Body><Fault><detail><InvalidRequestFault/></detail></Fault></Body></Envelope>`, true},
+		{"method not found", 500, `<Envelope><Body><Fault><detail><MethodNotFoundFault/></detail></Fault></Body></Envelope>`, true},
+		{"not supported", 500, `<Envelope><Body><Fault><detail><NotSupportedFault/></detail></Fault></Body></Envelope>`, true},
+		{"invalid property", 500, `<Envelope><Body><Fault><detail><InvalidPropertyFault/></detail></Fault></Body></Envelope>`, true},
+		{"managed object not found", 500, `<Envelope><Body><Fault><detail><ManagedObjectNotFoundFault/></detail></Fault></Body></Envelope>`, true},
+		{"not authenticated", 500, `<Envelope><Body><Fault><detail><NotAuthenticatedFault/></detail></Fault></Body></Envelope>`, true},
+		{"missing path", 404, ``, true},
+		{"method not allowed", 405, ``, true},
+		{"bare server error", 500, `internal error`, true},
+		{"invalid login", 500, `<Envelope><Body><Fault><detail><InvalidLoginFault/></detail></Fault></Body></Envelope>`, false},
+		{"no permission", 500, `<Envelope><Body><Fault><detail><NoPermissionFault/></detail></Fault></Body></Envelope>`, false},
+		{"injected invalid argument", 500, `<Envelope><Body><Fault><detail><InvalidArgumentFault/></detail></Fault></Body></Envelope>`, false},
+		{"injected system error", 500, `<Envelope><Body><Fault><detail><SystemErrorFault/></detail></Fault></Body></Envelope>`, false},
+		{"success", 200, `<Envelope><Body/></Envelope>`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(`<Envelope><Body><Fetch/></Body></Envelope>`)))
+			if got := len(c.Records(true)) == 1; got != tc.want {
+				t.Fatalf("unanswered = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

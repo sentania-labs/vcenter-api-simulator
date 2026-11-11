@@ -87,7 +87,7 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, save func(
 		rec.Bytes = rw.bytes
 		rec.DurationMS = float64(time.Since(start)) / float64(time.Millisecond)
 		rec.Fault = fault(rw.head)
-		rec.Unanswered = rw.status == 404 || rw.status == 405 || rw.status >= 500 || isUnansweredFault(rec.Fault)
+		rec.Unanswered = rw.status == 404 || rw.status == 405 || isUnansweredFault(rec.Fault) || (rw.status >= 500 && rec.Fault == "")
 		save(rec)
 	}()
 	if r.Body != nil {
@@ -227,7 +227,7 @@ func Redact(data []byte) string { _, _, _, body := inspect(data); return body }
 
 func isUnansweredFault(f string) bool {
 	switch f {
-	case "NotAuthenticated", "MethodNotFound", "NotSupported", "InvalidProperty", "ManagedObjectNotFound":
+	case "NotAuthenticated", "MethodNotFound", "InvalidRequest", "NotSupported", "InvalidProperty", "ManagedObjectNotFound":
 		return true
 	}
 	return false

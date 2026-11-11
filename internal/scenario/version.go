@@ -23,8 +23,8 @@ var vcVersions = map[string]Version{
 	"9.1.1": {Preset: "9.1.1", Version: "9.1.1", Build: "25784172", APIVersion: "9.1.1.0", FullName: "VMware vCenter Server 9.1.1.0100.25784172"},
 }
 var esxVersions = map[string]Version{
-	"8.0u3": {Preset: "8.0u3", Version: "8.0.3", Build: "24022510", FullName: "VMware ESXi 8.0.3 build-24022510"},
-	"9.0":   {Preset: "9.0", Version: "9.0.0", Build: "24755229", FullName: "VMware ESX 9.0.0 build-24755229"},
+	"8.0u3": {Preset: "8.0u3", Version: "8.0.3", Build: "24022510", APIVersion: "8.0.3.0", FullName: "VMware ESXi 8.0.3 build-24022510"},
+	"9.0":   {Preset: "9.0", Version: "9.0.0", Build: "24755229", APIVersion: "9.0.0.0", FullName: "VMware ESX 9.0.0 build-24755229"},
 	"9.1.1": {Preset: "9.1.1", Version: "9.1.1", Build: "25782009", APIVersion: "9.1.1.0", FullName: "VMware ESXi 9.1.1.0100.25782009"},
 }
 
@@ -88,14 +88,7 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 	if h, ok := s.HostVersions[host]; ok {
 		spec = h
 	}
-	hv, err := resolveVersion(spec, esxVersions, fallback)
-	if err != nil {
-		return Version{}, err
-	}
-	if hv.APIVersion == "" {
-		hv.APIVersion = vc.APIVersion
-	}
-	return hv, nil
+	return resolveVersion(spec, esxVersions, fallback)
 }
 func versionNumbers(v string) ([]int, error) {
 	parts := strings.Split(v, ".")

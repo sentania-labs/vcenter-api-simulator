@@ -222,6 +222,7 @@ select[multiple].lat-select { background-image: none; }
 .chk input { accent-color: var(--accent); width: 13px; height: 13px; margin: 0; }
 .lat-table tr.is-pending td:first-child { border-left: 3px solid var(--warn); }
 .lat-btn[disabled], .lat-btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.lat-btn--primary[disabled], .lat-btn--primary[aria-disabled="true"] { opacity: 1; background: var(--line); border-color: var(--line); color: var(--ink-muted); }
 .lat-input[disabled] { opacity: .65; }
 
 /* narrow windows: keep the header usable down to 1024 px */

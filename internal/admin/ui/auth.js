@@ -16,6 +16,7 @@ if (claim) {
   confirm.required = true;
   submit.textContent = 'Claim console';
 }
+if (!claim && new URLSearchParams(location.search).get('expired')) { error.textContent = 'Your session ended. Sign in again.'; error.hidden = false; }
 form.addEventListener('submit', async (event) => {
   event.preventDefault(); error.hidden = true;
   if (claim && password.value !== confirm.value) { error.textContent = 'The passwords do not match. Try again.'; error.hidden = false; return; }

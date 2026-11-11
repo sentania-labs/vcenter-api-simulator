@@ -49,3 +49,36 @@ func selectVimVersions(raw, version string) string {
 	}
 	return xml.Header + string(b)
 }
+
+// selectVsanVersions advertises the newest captured vSAN namespace that the
+// selected vCenter API version can speak: the same version when the capture
+// lists it, otherwise the newest entry of the same major release.
+func selectVsanVersions(raw, apiVersion string) string {
+	var d struct {
+		Namespace struct {
+			Version string `xml:"version"`
+			Prior   struct {
+				Values []string `xml:"version"`
+			} `xml:"priorVersions"`
+		} `xml:"namespace"`
+	}
+	if xml.Unmarshal([]byte(raw), &d) != nil {
+		return raw
+	}
+	all := append([]string{d.Namespace.Version}, d.Namespace.Prior.Values...)
+	major, _, _ := strings.Cut(apiVersion, ".")
+	top := ""
+	for _, v := range all {
+		if v == apiVersion {
+			top = v
+			break
+		}
+		if top == "" && strings.HasPrefix(v, major+".") {
+			top = v
+		}
+	}
+	if top == "" {
+		return raw
+	}
+	return selectVimVersions(raw, top)
+}

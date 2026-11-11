@@ -66,8 +66,14 @@ continues growing until cleared.
 The console uses a separate password from vCenter. On first access, claim it
 with a password, or set `VCSIM_ADMIN_PASSWORD` (the chart's
 `admin.existingSecret` points to a Secret with key `password`). A claim persists
-as a bcrypt hash in `console-password` under the data directory; sessions expire
-after 30 minutes idle and do not survive restart. To reset the console, stop it,
+as a bcrypt hash in `console-password` under the data directory. A password
+supplied by the deployment wins: if it differs from the stored hash, the hash is
+replaced at start, existing sessions end, and one log line (never the value)
+says so; the console then shows that the password is managed by the deployment.
+Sessions expire after 30 minutes without a person using the console (the
+console's own background refresh does not count) and after 12 hours in any
+case; they do not survive restart. An ended session returns to the sign-in page
+with a notice. To reset the console, stop it,
 remove that file or run `-admin-reset` against its data directory, then restart
 and claim it again. Remove the pre-seed first if you want a new claim. The chart
 keeps the console on loopback unless `admin.service.enabled` is set; an optional
@@ -77,16 +83,14 @@ chart sets it automatically for its TLS ingress.
 
 | Where to set it | Settings |
 |---|---|
-| Console | vCenter users and roles, idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
+| Console | vCenter users and roles (administrator or read-only; in a scenario, `role: read-only` on an `auth.users` entry, for example one whose `passwordEnv` is `VCSIM_READONLY_PASSWORD`), idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
 | Start-up | API and console listen addresses and ports, data directory, and console allowed hosts. These are needed to locate and reach the console. |
 
 An uploaded or regenerated console certificate is kept in the data directory.
 Changing it ends sessions, and clients must trust the new certificate. A
 certificate supplied through `-tls-cert`/`-tls-key`, scenario `tls`, or the
 chart's existing Secret or cert-manager takes precedence and is read-only in
-the console. `tls.managed: true` explicitly asserts chart ownership and
-requires a chart-supplied Secret or cert-manager certificate. If that supply is
-removed, the previously configured console certificate is used again.
+the console. If the chart's supply is removed, the previously configured console certificate is used again.
 
 What the scenario controls, and what the simulator guarantees:
 

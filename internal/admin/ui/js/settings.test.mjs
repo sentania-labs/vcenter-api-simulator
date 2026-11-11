@@ -26,3 +26,25 @@ test('unmanaged certificate can be replaced and pending changes can be reviewed'
   assert.match(markup, /Clients must trust the new certificate/);
   assert.doesNotMatch(markup, /No pending changes/);
 });
+
+test('a deployment-managed console password is announced', () => {
+  const d = data(); d.auth = { managed: true };
+  assert.match(String(settings.render({ state: { pending: { exists: false } } }, d)), /console password is managed by the deployment/);
+  d.auth = { managed: false };
+  assert.doesNotMatch(String(settings.render({ state: { pending: { exists: false } } }, d)), /console password is managed by the deployment/);
+});
+
+test('only background reads carry the poll marker, and expiry returns to sign-in with a notice', async () => {
+  const { api, polling } = await import('./lib.js');
+  const seen = [];
+  let nextStatus = 200;
+  globalThis.location = { assign: (url) => seen.push(['assign', url]) };
+  globalThis.fetch = async (url, init) => { seen.push([init.method, init.headers['X-Console-Poll'] || '']); return { status: nextStatus, ok: nextStatus === 200, statusText: '', json: async () => ({}) }; };
+  await api('/state');
+  polling.active = true;
+  await api('/state'); await api('/pause', { method: 'POST' });
+  nextStatus = 401;
+  await assert.rejects(api('/state'));
+  polling.active = false;
+  assert.deepEqual(seen, [['GET', ''], ['GET', '1'], ['POST', ''], ['GET', '1'], ['assign', '/login?expired=1']]);
+});

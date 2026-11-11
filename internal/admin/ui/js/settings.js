@@ -92,16 +92,17 @@ async function perform(ctx, fn, message) { await ctx.run(fn, message); await ctx
 export default {
   id: 'settings', title: 'Simulator settings',
   async load() {
-    const [users, draft, tree, capture, certificate, settings] = await Promise.all([api('/credentials'), api('/draft'), api('/tree'), api('/capture'), api('/certificate'), api('/settings')]);
+    const [users, draft, tree, capture, certificate, settings, auth] = await Promise.all([api('/credentials'), api('/draft'), api('/tree'), api('/capture'), api('/certificate'), api('/settings'), api('/auth/status')]);
     const key = JSON.stringify(draft.scenario);
     if (UI.scenarioKey && UI.scenarioKey !== key) { UI.modes = {}; UI.custom = {}; UI.force = null; }
     UI.scenarioKey = key;
-    return { users, draft, tree, capture, certificate, settings };
+    return { users, draft, tree, capture, certificate, settings, auth };
   },
   render(ctx, d) {
     const pending = !!ctx.state?.pending?.exists, locked = !!ctx.state?.pending?.scheduled;
     return html`<div class="page-head"><span class="page-title">Simulator settings</span><span class="grow"></span><button type="button" class="lat-btn lat-btn--primary" data-act="settings.review" ${disabled(!pending || locked)}>Review &amp; Apply…</button>${pending && !locked ? '' : html`<span class="anno">${locked ? 'Changes are scheduled' : 'No pending changes'}</span>`}</div>
       ${locked ? html`<div class="lat-banner lat-banner--info">A change is scheduled. Cancel it to edit versions or users.</div>` : ''}
+      ${d.auth?.managed ? html`<div class="lat-banner lat-banner--info">The console password is managed by the deployment. Change it in the deployment settings.</div>` : ''}
       <div class="settings-grid">${usersPanel(d, locked)}${versionPanel(d, locked)}${capturePanel(d, locked)}${timeoutPanel(d, locked)}${certificatePanel(d, locked)}</div>`;
   },
   actions: {

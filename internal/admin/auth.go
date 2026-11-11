@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,24 +20,65 @@ var errClaimed = errors.New("console already claimed")
 var errCredentials = errors.New("incorrect password")
 var errRateLimited = errors.New("too many attempts")
 
+const (
+	idleTimeout     = 30 * time.Minute
+	sessionLifetime = 12 * time.Hour
+	pollHeader      = "X-Console-Poll"
+)
+
+type consoleSession struct{ started, active time.Time }
+
 // consoleAuth keeps sessions in memory so a restart invalidates them. The
 // password file is linked atomically to make even simultaneous claims safe.
 type consoleAuth struct {
 	mu       sync.Mutex
 	path     string
-	sessions map[string]time.Time
+	sessions map[string]consoleSession
+	managed  bool
 	failures []time.Time
 	now      func() time.Time
 }
 
 func newConsoleAuth(dir, seed string) (*consoleAuth, error) {
-	a := &consoleAuth{path: filepath.Join(dir, "console-password"), sessions: make(map[string]time.Time), now: time.Now}
+	a := &consoleAuth{path: filepath.Join(dir, "console-password"), sessions: make(map[string]consoleSession), now: time.Now, managed: seed != ""}
 	if seed != "" {
-		if err := a.claim(seed); err != nil && !errors.Is(err, errClaimed) {
+		err := a.claim(seed)
+		if errors.Is(err, errClaimed) {
+			stored, readErr := os.ReadFile(a.path)
+			if readErr != nil {
+				return nil, readErr
+			}
+			if bcrypt.CompareHashAndPassword(stored, []byte(seed)) != nil {
+				if err := a.replace(seed); err != nil {
+					return nil, err
+				}
+				log.Print("console password set from the deployment")
+			}
+		} else if err != nil {
 			return nil, err
 		}
 	}
 	return a, nil
+}
+
+func (a *consoleAuth) replace(password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(a.path), ".console-password-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err = f.Write(hash); err != nil {
+		f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), a.path)
 }
 
 func (a *consoleAuth) claimed() (bool, error) {
@@ -106,23 +148,26 @@ func (a *consoleAuth) login(password string) (string, error) {
 		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw[:])
-	a.sessions[token] = now
+	a.sessions[token] = consoleSession{started: now, active: now}
 	return token, nil
 }
 
-func (a *consoleAuth) valid(token string) bool {
+func (a *consoleAuth) valid(token string, activity bool) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	t, ok := a.sessions[token]
+	session, ok := a.sessions[token]
 	if !ok {
 		return false
 	}
 	now := a.now()
-	if now.Sub(t) >= 30*time.Minute {
+	if now.Sub(session.active) >= idleTimeout || now.Sub(session.started) >= sessionLifetime {
 		delete(a.sessions, token)
 		return false
 	}
-	a.sessions[token] = now
+	if activity {
+		session.active = now
+		a.sessions[token] = session
+	}
 	return true
 }
 
@@ -139,6 +184,7 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		path := r.URL.Path
+		activity := r.Method != http.MethodGet || r.Header.Get(pollHeader) == ""
 		if path == "/api/auth/status" && r.Method == http.MethodGet {
 			claimed, err := a.claimed()
 			if err != nil {
@@ -147,10 +193,10 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 			}
 			authenticated := false
 			if cookie, err := r.Cookie("vcsim_console"); err == nil {
-				authenticated = a.valid(cookie.Value)
+				authenticated = a.valid(cookie.Value, activity)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]bool{"claimed": claimed, "authenticated": authenticated})
+			json.NewEncoder(w).Encode(map[string]bool{"claimed": claimed, "authenticated": authenticated, "managed": a.managed})
 			return
 		}
 		if (path == "/api/auth/claim" || path == "/api/auth/login") && r.Method == http.MethodPost {
@@ -187,7 +233,7 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 			return
 		}
 		cookie, err := r.Cookie("vcsim_console")
-		authed := err == nil && a.valid(cookie.Value)
+		authed := err == nil && a.valid(cookie.Value, activity)
 		if r.Method == http.MethodGet && (path == "/auth.js" || path == "/auth.css" || path == "/lattice/tokens.css" || path == "/lattice/lattice.css") {
 			next.ServeHTTP(w, r)
 			return

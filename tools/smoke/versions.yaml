@@ -1,0 +1,13 @@
+# A 9.0 vCenter with one cluster of 8.0 U3 hosts, one of which is already 9.0
+# and one cluster that follows the vCenter: the mixed-version case the smoke
+# checks through govc, REST and PowerCLI.
+seed: smoke-versions
+datacenters:
+  - name: dc-01
+    clusters: 2
+vcenterVersion: {preset: "9.0"}
+clusters:
+  - key: dc-01/cluster-01
+    esxVersion: {preset: "8.0u3"}
+hostVersions:
+  dc-01/cluster-01/esx01: {preset: "9.0"}

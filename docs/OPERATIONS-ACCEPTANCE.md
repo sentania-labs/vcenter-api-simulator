@@ -144,3 +144,24 @@ should be retained before deleting it. Remove its dedicated simulator
 credential only after checking that no adapter references it. Stop and remove
 only the test container; retain its data volume unless identity/certificate
 reset is intended. This acceptance procedure performs none of those removals.
+
+## Version surfaces (mixed ESX releases)
+
+This check uses no Operations instance. `tools/smoke/versions.yaml` is a 9.0
+vCenter with one cluster of 8.0 U3 hosts, one of which is already 9.0, and one
+cluster that follows the vCenter. Run by `tools/smoke/smoke.sh` in CI (govc and
+REST) and by `tools/smoke/smoke.ps1` (PowerCLI):
+
+| Surface | Client | Expected |
+|---|---|---|
+| vCenter about | `govc about` | 9.0.0, build 24755230, API 9.0.0.0 |
+| Host product, version and API version | `govc object.collect config.product` | 9.0.0 / 9.0.0.0 for the 9.0 hosts, 8.0.3 / 8.0.3.0 for the 8.0 U3 hosts |
+| Host version | PowerCLI `Get-VMHost` | the same per host (`-ExpectedVCenterVersion`, `-ExpectedHostVersions`) |
+| vCenter version | REST `/api/appliance/system/version` | 9.0.0.0, build 24755230 |
+| vSAN service versions | `/sdk/vsanServiceVersions.xml` | newest namespace 9.0.0.0 |
+
+Limits: the vSphere Automation REST host list has no product-version field, so
+host versions are checked through `/sdk`. The 8.0 U3 vSAN namespace (8.0.0.4)
+is inferred from the ordering of the 9.1.1 capture. License states are not
+served, so the built-in vCenter adapter of a licensed Operations 9.1 still
+cannot collect; no Operations acceptance is recorded for the version presets.

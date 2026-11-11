@@ -1505,15 +1505,18 @@ func TestMixedProductVersionsAcrossAPIs(t *testing.T) {
 		if err := pc.RetrieveOne(context.Background(), ref, []string{"config.product", "summary.config.product"}, &host); err != nil {
 			t.Fatal(err)
 		}
-		wantVersion, wantBuild := "8.0.3", "24022510"
+		wantVersion, wantBuild, wantAPI, wantLicense := "8.0.3", "24022510", "8.0.3.0", "8.0"
 		if i == 0 {
-			wantVersion, wantBuild = "9.0.0", "24755229"
+			wantVersion, wantBuild, wantAPI, wantLicense = "9.0.0", "24755229", "9.0.0.0", "9.0"
+		}
+		if host.Config.Product.ApiVersion != wantAPI || host.Config.Product.LicenseProductVersion != wantLicense {
+			t.Fatalf("host %d api/license version: %+v", i, host.Config.Product)
 		}
 		if host.Config.Product.Version != wantVersion || host.Config.Product.Build != wantBuild || host.Summary.Config.Product.Version != wantVersion {
 			t.Fatalf("host %d product: %+v", i, host.Config.Product)
 		}
 	}
-	for _, path := range []string{"/sdk/vimServiceVersions.xml", "/api/appliance/system/version"} {
+	for _, path := range []string{"/sdk/vimServiceVersions.xml", "/sdk/vsanServiceVersions.xml", "/api/appliance/system/version"} {
 		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
 		if strings.HasPrefix(path, "/api/") {
 			login, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)

@@ -183,15 +183,22 @@ func TestVersionPresetsAndNewerHostValidation(t *testing.T) {
 	}
 }
 
-func TestHostVersionFallsBackToVCenterAPIVersionAndLicenseVersion(t *testing.T) {
+func TestEveryPresetCarriesItsOwnAPIVersionAndLicenseVersion(t *testing.T) {
+	vcenters, esxes := VersionPresets()
+	for i, esx := range esxes {
+		if esx.APIVersion == "" || vcenters[i].APIVersion == "" {
+			t.Errorf("preset %s lacks an apiVersion: vCenter %q ESX %q", esx.Preset, vcenters[i].APIVersion, esx.APIVersion)
+		}
+	}
 	s := Phase1("version-api")
-	s.VCenter = Version{Preset: "8.0u3"}
+	s.VCenter = Version{Preset: "9.1.1"}
+	s.ESX = Version{Preset: "8.0u3"}
 	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if host.APIVersion != "8.0.3.0" {
-		t.Errorf("host apiVersion %q, want the vCenter's 8.0.3.0", host.APIVersion)
+		t.Errorf("an 8.0 U3 host in a 9.1.1 inventory reports apiVersion %q, want 8.0.3.0", host.APIVersion)
 	}
 	for version, want := range map[string]string{"8.0.3": "8.0", "9.0.0": "9.0", "9.1.1": "9.1"} {
 		if got := (Version{Version: version}).LicenseVersion(); got != want {
