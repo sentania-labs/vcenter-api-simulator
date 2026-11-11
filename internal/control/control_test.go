@@ -17,6 +17,7 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
@@ -787,13 +788,13 @@ func TestFailedApplyIsReportedAndHarmless(t *testing.T) {
 		t.Fatal("the build should fail without a temp directory")
 	}
 	st := c.State()
-	if !strings.Contains(st.LastErr, "failed to apply") || !strings.Contains(st.LastErr, "v1 is still serving") {
+	if !strings.Contains(st.LastErr, "failed to apply") || !strings.Contains(st.LastErr, "previous settings are still serving") {
 		t.Errorf("last error: %q", st.LastErr)
 	}
 	if c.applied().version != 1 || !c.DraftState().Pending.Exists {
 		t.Error("a failed apply must keep the version and the draft")
 	}
-	if tl := c.Timeline(); tl[0].Text != "Apply failed: v1 still serving" {
+	if tl := c.Timeline(); tl[0].Text != "Apply failed; previous settings are still serving" {
 		t.Errorf("timeline: %+v", tl[0])
 	}
 	c.DismissError()
@@ -1887,5 +1888,93 @@ func TestChangingCertificateEndsSessionsAndRejectsInvalidUpload(t *testing.T) {
 	status, _ = api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
 	if status != 500 {
 		t.Fatal("certificate change did not end SOAP session")
+	}
+}
+
+func TestCaptureRealUnansweredSOAPAndMissingPath(t *testing.T) {
+	dir := t.TempDir()
+	ctl, err := New(Options{Scenario: scenario.Phase1("capture-faults"), DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Full: true, Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(capture.Wrap(ctl))
+	defer srv.Close()
+	jar, _ := cookiejar.New(nil)
+	api := &apiClient{t: t, srv: srv, hc: &http.Client{Jar: jar, Timeout: 20 * time.Second}}
+	fetch := `<Fetch xmlns="urn:vim25"><_this type="Folder">group-d1</_this><prop>name</prop></Fetch>`
+	if code, _ := api.post("/sdk", fetch); code != 500 {
+		t.Fatalf("unauthenticated Fetch: %d", code)
+	}
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("login failed")
+	}
+	cases := []struct{ body, fault, property string }{
+		{`<DefinitelyUnknown xmlns="urn:vim25"><_this type="ServiceInstance">ServiceInstance</_this></DefinitelyUnknown>`, "InvalidRequest", ""},
+		{`<Fetch xmlns="urn:vim25"><_this type="HostSystem">not-present</_this><prop>name</prop></Fetch>`, "ManagedObjectNotFound", "name"},
+		{`<Fetch xmlns="urn:vim25"><_this type="Folder">group-d1</_this><prop>notARealProperty</prop></Fetch>`, "InvalidProperty", "notARealProperty"},
+	}
+	for _, tc := range cases {
+		if code, _ := api.post("/sdk", tc.body); code != 500 {
+			t.Fatalf("%s: %d", tc.fault, code)
+		}
+	}
+	if code, _ := api.post("/ls/sdk", fetch); code != 404 {
+		t.Fatalf("missing path: %d", code)
+	}
+	records := capture.Records(true)
+	if len(records) != 5 {
+		t.Fatalf("got %d unanswered records", len(records))
+	}
+	if records[0].Fault != "NotAuthenticated" || len(records[0].Properties) != 1 || records[0].Properties[0] != "name" {
+		t.Fatalf("unauthenticated Fetch missing details: %+v", records[0])
+	}
+	for i, tc := range cases {
+		record := records[i+1]
+		if record.Fault != tc.fault || record.Request == "" {
+			t.Fatalf("fault %s not captured: %+v", tc.fault, record)
+		}
+		if tc.property != "" && (len(record.Properties) != 1 || record.Properties[0] != tc.property) {
+			t.Fatalf("property not captured for %s", tc.fault)
+		}
+	}
+	if records[4].Path != "/ls/sdk" || records[4].Status != 404 {
+		t.Fatalf("missing path: %+v", records[4])
+	}
+	u, _ := url.Parse(srv.URL)
+	cookies := jar.Cookies(u)
+	if len(cookies) == 0 {
+		t.Fatal("missing SOAP session")
+	}
+	logged, err := os.ReadFile(capture.State().Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(logged), DefaultPassword) || strings.Contains(string(logged), cookies[0].Value) {
+		t.Fatal("full query log leaked a credential or session")
+	}
+}
+
+func TestLegacyTimelineUsesPlainDescriptions(t *testing.T) {
+	ctl, err := New(Options{Scenario: scenario.Phase1("legacy-timeline"), DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	ctl.mu.Lock()
+	ctl.timeline = []TimelineEntry{{Text: "Topology v3 built: 1 cluster", Area: "Topology"}, {Text: "Apply failed: v3 still serving", Area: "Service"}}
+	ctl.mu.Unlock()
+	timeline := ctl.Timeline()
+	if timeline[0].Text != "Apply failed; previous settings are still serving" || timeline[1].Text != "Topology built: 1 cluster" {
+		t.Fatalf("legacy descriptions: %+v", timeline)
+	}
+	for _, event := range ctl.State().Events {
+		if strings.Contains(event.Text, "v3") {
+			t.Fatal("overview exposes a legacy revision")
+		}
 	}
 }

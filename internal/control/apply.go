@@ -71,10 +71,10 @@ func (c *Controller) applyLocked(d *Draft) (*ApplyResult, error) {
 		if strings.Contains(err.Error(), "FileFault") || strings.Contains(err.Error(), "no space") || strings.Contains(err.Error(), "quota") {
 			hint = " The new vCenter could not write its datastore files: check the free space under TMPDIR."
 		}
-		c.lastErr = fmt.Sprintf("The change failed to apply at %s and was not applied; v%d is still serving. %s%s", c.now().Format("15:04:05Z"), old.version, err.Error(), hint)
+		c.lastErr = fmt.Sprintf("The change failed to apply at %s; the previous settings are still serving. %s%s", c.now().Format("15:04:05Z"), err.Error(), hint)
 		c.lastErrAt = c.now()
 		c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: old.version, Area: "Service",
-			Text: "Apply failed: v" + fmt.Sprint(old.version) + " still serving", History: "preserved", Identities: "unchanged"})
+			Text: "Apply failed; previous settings are still serving", History: "preserved", Identities: "unchanged"})
 		_ = c.persist()
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 	if err := c.persist(); err != nil {
 		c.lastErr = "state not saved: " + err.Error()
 	}
-	return &ApplyResult{At: c.now(), Version: next, Message: fmt.Sprintf("Applied as v%d", next)}, nil
+	return &ApplyResult{At: c.now(), Version: next, Message: "Changes applied"}, nil
 }
 
 func (c *Controller) regPath() string { return c.opts.DataDir + "/registry.json" }

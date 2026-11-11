@@ -221,7 +221,7 @@ func New(opts Options) (*Controller, error) {
 	c.cur.Store(r)
 	if st == nil {
 		c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: version, Area: "Topology",
-			Text: fmt.Sprintf("Topology v%d built: %s", version, countsLine(r.topo)), History: "seeded", Identities: "new registry"})
+			Text: fmt.Sprintf("Topology built: %s", countsLine(r.topo)), History: "seeded", Identities: "new registry"})
 	}
 	_ = c.persist()
 	return c, nil

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -196,7 +197,7 @@ func (c *Controller) events(a activity.Summary) []Event {
 	var out []Event
 	for i := len(c.timeline) - 1; i >= 0 && len(out) < 4; i-- {
 		t := c.timeline[i]
-		out = append(out, Event{At: t.At, Text: t.Text, Detail: fmt.Sprintf("%s · history %s · identities %s", t.Area, t.History, t.Identities)})
+		out = append(out, Event{At: t.At, Text: plainTimelineText(t.Text), Detail: fmt.Sprintf("%s · history %s · identities %s", t.Area, t.History, t.Identities)})
 	}
 	for _, f := range a.Cycle.Findings {
 		if f.Severity == "warn" || f.Severity == "bad" || f.Severity == "info" {
@@ -207,12 +208,21 @@ func (c *Controller) events(a activity.Summary) []Event {
 	return out
 }
 
+var legacyBuiltVersion = regexp.MustCompile(`^Topology v[0-9]+ built:`)
+var legacyFailedVersion = regexp.MustCompile(`^Apply failed: v[0-9]+ still serving$`)
+
+func plainTimelineText(text string) string {
+	text = legacyBuiltVersion.ReplaceAllString(text, "Topology built:")
+	return legacyFailedVersion.ReplaceAllString(text, "Apply failed; previous settings are still serving")
+}
+
 // Timeline returns the applied changes, newest first.
 func (c *Controller) Timeline() []TimelineEntry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := make([]TimelineEntry, len(c.timeline))
 	for i, t := range c.timeline {
+		t.Text = plainTimelineText(t.Text)
 		out[len(c.timeline)-1-i] = t
 	}
 	return out
