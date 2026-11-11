@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -93,6 +94,20 @@ func TestReadOnlyUserSessionHousekeepingAndLicenseVersion(t *testing.T) {
 	folder := object.NewFolder(vc, vc.ServiceContent.RootFolder)
 	if _, err := folder.CreateFolder(context.Background(), "denied"); err == nil {
 		t.Error("read-only user created a folder")
+	}
+}
+
+func TestSOAPOperationUsesDecodedBody(t *testing.T) {
+	const envelope = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">%s</soapenv:Envelope>`
+	for _, tc := range []struct{ body, want string }{
+		{`<!-- <Body><Query/> --><soapenv:Body><Destroy_Task xmlns="urn:vim25"/></soapenv:Body>`, "Destroy_Task"},
+		{`<soapenv:Header><Query/></soapenv:Header><soapenv:Body><!-- <Fetch/> --><CurrentTime xmlns="urn:vim25"/></soapenv:Body>`, "CurrentTime"},
+		{`<soapenv:Body><Query`, ""},
+		{`<soapenv:Body><!-- <Query/> --></soapenv:Body>`, ""},
+	} {
+		if got := soapOperation([]byte(fmt.Sprintf(envelope, tc.body))); got != tc.want {
+			t.Errorf("operation = %q, want %q", got, tc.want)
+		}
 	}
 }
 

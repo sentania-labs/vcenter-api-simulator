@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
@@ -200,6 +201,30 @@ func TestTelemetryOnlyApplyKeepsTheVCenter(t *testing.T) {
 	}
 	if d := c.applied().sim.Env.Knobs.SDKDelay(); d != nil {
 		t.Errorf("sdk delay %+v", d)
+	}
+}
+
+func TestFailedCredentialApplyLeavesTelemetryUnchanged(t *testing.T) {
+	c := newCtl(t, scenario.Phase1("failed-credential-telemetry"), "", "t")
+	old := c.applied()
+	sc := editable(t, c)
+	sc.Latency.SDK = &scenario.Delay{FixedMs: 200}
+	sc.Faults = []scenario.Fault{{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError}}
+	put(t, c, sc)
+	if _, err := c.DeleteUser(DefaultUsername); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Apply("now"); err == nil {
+		t.Fatal("expected removal of the last user to fail")
+	}
+	if c.applied() != old || old.sim.Env.Knobs.SDKDelay() != nil {
+		t.Fatal("failed apply changed the running latency")
+	}
+	if old.sim.Env.Knobs.FamilyFault("vsan-pnic-net", old.topo.Clusters()[0].Key) != nil {
+		t.Fatal("failed apply changed the running fault rules")
+	}
+	if !newAPIClient(t, c).login(DefaultUsername, DefaultPassword) {
+		t.Fatal("failed apply changed credentials")
 	}
 }
 
@@ -1748,6 +1773,29 @@ func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
 	status, body = reader.post("/sdk", `<Destroy_Task xmlns="urn:vim25"><_this type="Folder">group-d1</_this></Destroy_Task>`)
 	if status != http.StatusInternalServerError || !strings.Contains(body, "NoPermission") {
 		t.Fatalf("read-only mutation not refused: %d %s", status, body)
+	}
+	// Use a real disposable folder so a regression cannot destroy the root.
+	status, created := admin.post("/sdk", `<CreateFolder xmlns="urn:vim25"><_this type="Folder">group-d1</_this><name>readonly-test-folder</name></CreateFolder>`)
+	var response struct {
+		Folder string `xml:"Body>CreateFolderResponse>returnval"`
+	}
+	if status != http.StatusOK || xml.Unmarshal([]byte(created), &response) != nil || response.Folder == "" {
+		t.Fatal("administrator could not create the test folder")
+	}
+	// A comment before the real SOAP Body must not determine authorization.
+	mutation := `<Destroy_Task xmlns="urn:vim25"><_this type="Folder">` + response.Folder + `</_this></Destroy_Task>`
+	disguised := strings.Replace(fmt.Sprintf(soapEnv, mutation), "<soapenv:Body>", "<!-- <Body><Query/> --><soapenv:Body>", 1)
+	res, err := reader.hc.Post(reader.srv.URL+"/sdk", "text/xml", strings.NewReader(disguised))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusInternalServerError || !strings.Contains(string(b), "NoPermission") {
+		t.Fatalf("disguised read-only mutation not refused: %d %s", res.StatusCode, b)
 	}
 	if _, err = ctl.DeleteUser("reader@vsphere.local"); err != nil {
 		t.Fatal(err)

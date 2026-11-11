@@ -117,8 +117,7 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 		}
 		c.reg = newReg
 	} else {
-		// telemetry only: swap the knobs in place, keep the vCenter
-		old.sim.Env.Knobs.Set(d.Scenario.Faults, d.Scenario.Latency)
+		// Keep the live knobs unchanged until credential persistence succeeds.
 		nr = &running{version: next, at: c.now(), sc: clone(d.Scenario), topo: old.topo, sim: old.sim}
 	}
 	if d.Credentials != nil {
@@ -132,6 +131,9 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 			}
 			return nil, fmt.Errorf("apply credentials: %w", err)
 		}
+	}
+	if !topoChanged {
+		old.sim.Env.Knobs.Set(d.Scenario.Faults, d.Scenario.Latency)
 	}
 	c.cur.Store(nr)
 	if topoChanged {

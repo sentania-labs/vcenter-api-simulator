@@ -37,8 +37,8 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
+	"github.com/vmware/govmomi/vim25/xml"
 
-	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -960,7 +960,7 @@ func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
 	if h.role(user) != "read-only" {
 		return false
 	}
-	op := activity.SDKMethod(body)
+	op := soapOperation(body)
 	for _, prefix := range []string{"Retrieve", "Query", "Fetch", "Find", "Has", "List", "Search", "Get", "VsanPerfQuery", "VsanPerfGet", "VsanQuery", "VsanClusterGet"} {
 		if strings.HasPrefix(op, prefix) {
 			return false
@@ -972,6 +972,41 @@ func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
 	}
 	return true
 }
+
+// soapOperation follows the same Envelope and deferred Body decoding as
+// simulator.UnmarshalBody. In particular, comments and header content cannot
+// select the operation that the simulator executes. Invalid XML fails closed.
+func soapOperation(data []byte) string {
+	var body soapBody
+	env := soap.Envelope{Header: &soap.Header{Security: new(simulator.Element)}, Body: &body}
+	if err := xml.Unmarshal(data, &env); err != nil {
+		return ""
+	}
+	decoder := xml.NewDecoder(strings.NewReader(body.inner))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return ""
+		}
+		if start, ok := token.(xml.StartElement); ok {
+			return start.Name.Local
+		}
+	}
+}
+
+type soapBody struct{ inner string }
+
+func (b *soapBody) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var inner struct {
+		Content string `xml:",innerxml"`
+	}
+	if err := d.DecodeElement(&inner, &start); err != nil {
+		return err
+	}
+	b.inner = inner.Content
+	return nil
+}
+
 func noPermission(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
 	w.WriteHeader(http.StatusInternalServerError)
