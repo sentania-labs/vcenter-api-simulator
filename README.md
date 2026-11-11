@@ -296,8 +296,8 @@ read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
 ServiceAccount with no token mounted, a PVC for the state directory (identity registry, certificate and console state), and
 optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
 and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
-outside the cluster until `ingress.enabled` or a LoadBalancer Service asks
-for it.
+outside the cluster until `ingress.enabled`, `admin.service.enabled` or a
+LoadBalancer Service asks for it.
 
 ```sh
 helm install vcsim-01 charts/vcenter-api-simulator \

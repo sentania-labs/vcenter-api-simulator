@@ -1,5 +1,6 @@
 # The Phase 1 shape as a scenario file: one datacenter, one four-host ESA
-# cluster, one VM per host. Any user name and password log in.
+# cluster, one VM per host. With no auth section the published default
+# administrator@vsphere.local login applies (docs/SCENARIO.md).
 seed: phase1
 datacenters:
   - name: dc-01
