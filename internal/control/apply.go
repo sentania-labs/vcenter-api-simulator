@@ -94,6 +94,7 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 	}
 	var nr *running
 	var newReg *registry.Registry
+	oldReg := c.reg
 	if topoChanged {
 		if d.Scenario.Seed != old.sc.Seed {
 			newReg, err = registry.Open(c.regPath(), d.Scenario.Seed, true)
@@ -119,6 +120,18 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 		// telemetry only: swap the knobs in place, keep the vCenter
 		old.sim.Env.Knobs.Set(d.Scenario.Faults, d.Scenario.Latency)
 		nr = &running{version: next, at: c.now(), sc: clone(d.Scenario), topo: old.topo, sim: old.sim}
+	}
+	if d.Credentials != nil {
+		if err := nr.sim.UpdateCredentials(func() ([]string, error) { return c.auth.Commit(*d.Credentials) }); err != nil {
+			if topoChanged {
+				nr.sim.Close()
+				c.reg = oldReg
+				if restoreErr := oldReg.Save(); restoreErr != nil {
+					return nil, fmt.Errorf("apply credentials: %v; restore registry: %w", err, restoreErr)
+				}
+			}
+			return nil, fmt.Errorf("apply credentials: %w", err)
+		}
 	}
 	c.cur.Store(nr)
 	if topoChanged {

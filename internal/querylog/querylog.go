@@ -127,6 +127,7 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 	var current string
 	isSOAP := false
 	sessionOp := false
+	sessionTarget := false
 	for {
 		before := d.InputOffset()
 		tok, err := d.Token()
@@ -159,6 +160,9 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 				for _, a := range t.Attr {
 					if a.Name.Local == "type" {
 						target = a.Value
+						if a.Value == "SessionManager" {
+							sessionTarget = true
+						}
 					}
 				}
 			}
@@ -183,7 +187,7 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 					target = v
 				}
 			}
-			if inBody && (current == "pathSet" || ((op == "QueryOptions" || op == "FindExtension") && (current == "name" || current == "extensionKey"))) {
+			if inBody && (current == "pathSet" || (op == "Fetch" && current == "prop") || ((op == "QueryOptions" || op == "FindExtension") && (current == "name" || current == "extensionKey"))) {
 				v := strings.TrimSpace(string(t))
 				if v != "" {
 					props = append(props, v)
@@ -200,7 +204,7 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 			current = ""
 		}
 	}
-	if !isSOAP || op == "" || target == "SessionManager" || sessionOp {
+	if !isSOAP || op == "" || sessionTarget || sessionOp {
 		return op, target, props, ""
 	}
 	var out bytes.Buffer

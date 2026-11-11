@@ -154,9 +154,10 @@ func (c *Controller) State() *State {
 	s.Scenario.FaultRules = len(r.sc.Faults)
 	s.Scenario.Latency = latencyLine(r.sc.Latency)
 	s.Auth.Users = []string{}
-	creds, _ := c.credentials(r.sc)
-	for n := range creds {
-		s.Auth.Users = append(s.Auth.Users, n)
+	if !c.auth.Snapshot().AnyLogin {
+		for _, user := range c.auth.Users() {
+			s.Auth.Users = append(s.Auth.Users, user.Name)
+		}
 	}
 	sort.Strings(s.Auth.Users)
 	s.Auth.Mode = "any user name and password are accepted"
@@ -841,11 +842,12 @@ func (c *Controller) Banner(took time.Duration) []string {
 
 // LoginUsers lists the accepted user names (empty: anyone).
 func (c *Controller) LoginUsers() []string {
-	creds, _ := c.credentials(c.applied().sc)
-	out := make([]string, 0, len(creds))
-	for n := range creds {
-		out = append(out, n)
+	if c.auth.Snapshot().AnyLogin {
+		return nil
 	}
-	sort.Strings(out)
+	var out []string
+	for _, user := range c.auth.Users() {
+		out = append(out, user.Name)
+	}
 	return out
 }

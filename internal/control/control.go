@@ -37,6 +37,7 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/sentania/vcenter-api-simulator/internal/credentials"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -83,13 +84,14 @@ type running struct {
 
 // Draft is the operator's pending change.
 type Draft struct {
-	Scenario   *scenario.Scenario
-	Regenerate []string // cluster keys whose identities are replaced
-	Scope      string
-	BasedOn    int
-	Origin     string // edit | generator | preset:<name>
-	Discarded  string // what a generated draft replaced
-	Created    time.Time
+	Scenario    *scenario.Scenario
+	Regenerate  []string // cluster keys whose identities are replaced
+	Credentials *credentials.Snapshot
+	Scope       string
+	BasedOn     int
+	Origin      string // edit | generator | preset:<name>
+	Discarded   string // what a generated draft replaced
+	Created     time.Time
 }
 
 // Scheduled is a draft waiting for its bucket boundary.
@@ -119,6 +121,7 @@ type Controller struct {
 	cur    atomic.Pointer[running]
 	paused atomic.Bool
 	Log    *activity.Log
+	auth   *credentials.Store
 
 	mu        sync.Mutex // guards everything below
 	reg       *registry.Registry
@@ -184,6 +187,20 @@ func New(opts Options) (*Controller, error) {
 				Text: "Scenario file changed; started from the file", History: "preserved", Identities: "per registry"})
 		}
 	}
+	baseCredentials, err := c.credentials(sc)
+	if err != nil {
+		return nil, err
+	}
+	var readonly []string
+	for _, user := range sc.Auth.Users {
+		if user.PasswordEnv == "VCSIM_READONLY_PASSWORD" {
+			readonly = append(readonly, user.Name)
+		}
+	}
+	c.auth, err = credentials.New(opts.DataDir, opts.SourceHash, baseCredentials, opts.AnyLogin || sc.Auth.AnyLogin, readonly)
+	if err != nil {
+		return nil, err
+	}
 	c.reg, err = registry.Open(filepath.Join(opts.DataDir, "registry.json"), sc.Seed, opts.Regenerate)
 	if err != nil {
 		return nil, err
@@ -219,12 +236,8 @@ func bucket(t time.Time) time.Time { return t.UTC().Truncate(perf.Interval) }
 func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, version int) (*running, error) {
 	start := time.Now()
 	topo := topology.Generate(sc, reg)
-	creds, err := c.credentials(sc)
-	if err != nil {
-		return nil, err
-	}
 	s, err := sim.New(sim.Options{
-		Topology: topo, Registry: reg, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
+		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Now: c.now,
 	})
 	if err != nil {

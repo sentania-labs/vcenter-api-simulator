@@ -271,9 +271,12 @@ The console (`-admin`, default `http://127.0.0.1:9090/`) edits the same
 model without touching the file. Edits collect in one pending draft and
 apply at the next five-minute bucket boundary (or at once). The applied
 scenario is saved in `<data>/console.json` without the `auth` and `tls`
-sections (those always come from the file, so no password is ever written
-there). On the next start the saved state resumes unless the scenario file
-changed since, in which case the file wins.
+sections. Console user changes are stored separately as password hashes in
+`<data>/vcenter-users.json`; they take precedence over scenario and environment
+credentials until the scenario file changes. Changing or removing a user ends
+that user's SOAP and REST sessions. Read-only users can query inventory and
+telemetry, but mutation calls are refused. On the next start the saved state
+resumes unless the scenario file changed since, in which case the file wins.
 
 | Console action | Scenario effect | Identities |
 |---|---|---|

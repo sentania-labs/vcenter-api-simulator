@@ -17,8 +17,9 @@ import (
 // credential policy with SOAP but never stores a password in a session.
 type restSessions struct {
 	mu          sync.Mutex
-	tokens      map[string]bool
+	tokens      map[string]string
 	credentials map[string]string
+	check       func(string, string) bool
 	registry    *simulator.Registry
 	catalog     *catalog.Catalog
 }
@@ -26,6 +27,9 @@ type restSessions struct {
 func (s *restSessions) authorized(user, password string) bool {
 	if user == "" || password == "" {
 		return false
+	}
+	if s.check != nil {
+		return s.check(user, password)
 	}
 	if len(s.credentials) == 0 {
 		return true
@@ -54,7 +58,7 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		}
 		token := hex.EncodeToString(b[:])
 		s.mu.Lock()
-		s.tokens[token] = true
+		s.tokens[token] = user
 		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -63,7 +67,7 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	}
 	token := r.Header.Get("vmware-api-session-id")
 	s.mu.Lock()
-	valid := s.tokens[token]
+	_, valid := s.tokens[token]
 	if valid && r.URL.Path == "/api/session" && r.Method == http.MethodDelete {
 		delete(s.tokens, token)
 	}

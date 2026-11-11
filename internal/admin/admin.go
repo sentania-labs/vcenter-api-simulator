@@ -33,6 +33,36 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 	send := func(m, p string, h func(*http.Request) (any, error)) { mux.HandleFunc(m+" "+p, a.wrap(h)) }
 
 	get("/api/state", func(r *http.Request) (any, error) { return c.State(), nil })
+	get("/api/credentials", func(r *http.Request) (any, error) { return c.CredentialsView(), nil })
+	send("PUT", "/api/credentials/user", func(r *http.Request) (any, error) {
+		var req struct {
+			Name     string `json:"name"`
+			Password string `json:"password"`
+			Role     string `json:"role"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.PutUser(req.Name, req.Password, req.Role)
+	})
+	send("DELETE", "/api/credentials/user", func(r *http.Request) (any, error) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.DeleteUser(req.Name)
+	})
+	send("PUT", "/api/credentials/mode", func(r *http.Request) (any, error) {
+		var req struct {
+			AnyLogin bool `json:"anyLogin"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.SetAnyLogin(req.AnyLogin)
+	})
 	get("/api/tree", func(r *http.Request) (any, error) { return c.Tree(), nil })
 	get("/api/clusters/{dc}/{name}", func(r *http.Request) (any, error) {
 		return c.Cluster(r.PathValue("dc") + "/" + r.PathValue("name"))

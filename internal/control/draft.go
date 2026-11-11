@@ -50,7 +50,7 @@ func (c *Controller) settle() {
 	if d == nil {
 		return
 	}
-	if normal(d.Scenario) == normal(c.applied().sc) && len(d.Regenerate) == 0 && d.Scope == c.scope && d.Origin == "edit" {
+	if normal(d.Scenario) == normal(c.applied().sc) && len(d.Regenerate) == 0 && d.Scope == c.scope && d.Origin == "edit" && d.Credentials == nil {
 		c.draft = nil
 	}
 }
@@ -413,6 +413,10 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	if d.Scope != c.scope {
 		rv.Changes = append(rv.Changes, Change{Object: "Collector", Field: "Metric scope", Before: scopeName(c.scope), After: scopeName(d.Scope),
 			Effect: "projections only", Area: "Telemetry"})
+	}
+	if d.Credentials != nil {
+		rv.Changes = append(rv.Changes, Change{Object: "vCenter users", Field: "Credentials", Before: "current users", After: "updated users", Effect: "changed users are signed out", Area: "Credentials"})
+		rv.SessionsDropped = true
 	}
 	for _, ch := range rv.Changes {
 		if ch.Area == "Topology" {

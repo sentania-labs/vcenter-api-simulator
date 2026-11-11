@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -37,6 +38,7 @@ import (
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 
+	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -58,7 +60,9 @@ type Options struct {
 	Username, Password string
 	// Credentials are the accepted logins (name -> password). Empty means
 	// any non-empty user name and password log in, as vcsim does.
-	Credentials map[string]string
+	Credentials  map[string]string
+	Authenticate func(string, string) bool
+	UserRole     func(string) string
 	// SessionTimeout is the idle timeout of a session; zero means never.
 	SessionTimeout time.Duration
 	// Faults and Latency are the scenario's failure and latency knobs.
@@ -143,16 +147,16 @@ func New(opts Options) (*Simulator, error) {
 			creds[n] = p
 		}
 	}
-	installAuth(m, creds, opts.SessionTimeout)
+	installAuth(m, creds, opts.Authenticate, opts.SessionTimeout)
 	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
-	m.Service.Context.Map.Put(&authorization{AuthorizationManager: am})
+	m.Service.Context.Map.Put(&authorization{AuthorizationManager: am, role: opts.UserRole})
 	if err := s.build(); err != nil {
 		s.Close()
 		return nil, err
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0, rest: restSessions{tokens: map[string]bool{}, credentials: creds, registry: m.Service.Context.Map, catalog: cat}}
+	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]string{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}}
 	return s, nil
 }
 
@@ -776,7 +780,47 @@ type handler struct {
 	cat         *catalog.Catalog
 	env         *vsanhealth.Env
 	strictLogin bool
+	accessMu    sync.RWMutex
+	role        func(string) string
+	registry    *simulator.Registry
 	rest        restSessions
+}
+
+// UpdateCredentials serializes a policy change with requests and revokes
+// affected SOAP and REST sessions without rebuilding the simulator.
+func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
+	h := s.Handler.(*handler)
+	h.accessMu.Lock()
+	defer h.accessMu.Unlock()
+	changed, err := update()
+	if err != nil {
+		return err
+	}
+	affected := map[string]bool{}
+	for _, name := range changed {
+		affected[name] = true
+	}
+	reg := s.model.Service.Context.Map
+	probe := &simulator.Session{Map: reg, Registry: simulator.NewRegistry()}
+	sm := reg.SessionManager()
+	view := probe.Get(sm.Reference()).(*simulator.SessionManager)
+	var ids []string
+	for _, session := range view.SessionList {
+		if affected["*"] || affected[session.UserName] {
+			ids = append(ids, session.Key)
+		}
+	}
+	if len(ids) > 0 {
+		sm.TerminateSession(&simulator.Context{Session: &simulator.Session{}, Map: reg}, &types.TerminateSession{SessionId: ids})
+	}
+	h.rest.mu.Lock()
+	for token, user := range h.rest.tokens {
+		if affected["*"] || affected[user] {
+			delete(h.rest.tokens, token)
+		}
+	}
+	h.rest.mu.Unlock()
+	return nil
 }
 
 // otherLogins are vcsim's alternative login methods: LoginByToken takes
@@ -786,6 +830,8 @@ type handler struct {
 var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)\b`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.accessMu.RLock()
+	defer h.accessMu.RUnlock()
 	if h.rest.serve(w, r) {
 		return
 	}
@@ -818,6 +864,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
+			if h.readOnlyRequest(r, body) {
+				noPermission(w)
+				return
+			}
 			switch {
 			case strings.HasPrefix(r.URL.Path, "/sdk"):
 				if h.strictLogin && otherLogins.Match(body) {
@@ -839,6 +889,46 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		h.mux.ServeHTTP(w, r)
 	}
+}
+
+// A read-only user may query inventory, create ephemeral views and log out;
+// unrecognized operations are refused until classified as safe.
+func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
+	if h.role == nil {
+		return false
+	}
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	if err != nil {
+		return false
+	}
+	probe := &simulator.Session{Map: h.registry, Registry: simulator.NewRegistry()}
+	view := probe.Get(h.registry.SessionManager().Reference()).(*simulator.SessionManager)
+	user := ""
+	for _, session := range view.SessionList {
+		if session.Key == cookie.Value {
+			user = session.UserName
+			break
+		}
+	}
+	if h.role(user) != "read-only" {
+		return false
+	}
+	op := activity.SDKMethod(body)
+	for _, prefix := range []string{"Retrieve", "Query", "Fetch", "Find", "Has", "List", "Search", "Get", "VsanPerfQuery", "VsanPerfGet", "VsanQuery", "VsanClusterGet"} {
+		if strings.HasPrefix(op, prefix) {
+			return false
+		}
+	}
+	switch op {
+	case "Logout", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates":
+		return false
+	}
+	return true
+}
+func noPermission(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	fmt.Fprint(w, `<?xml version="1.0"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><soapenv:Fault><faultcode>ServerFaultCode</faultcode><faultstring>Permission denied</faultstring><detail><NoPermissionFault xmlns="urn:vim25"/></detail></soapenv:Fault></soapenv:Body></soapenv:Envelope>`)
 }
 
 // invalidLogin answers a refused login the way vcsim's Login does.

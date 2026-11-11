@@ -148,17 +148,12 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
   `<data>/console.json`; the next start resumes it unless the scenario file
   changed, in which case the file wins and the console says so in its
   timeline.
-- **No login.** The console binds to loopback by default; the container
-  image listens on 9090 inside the container and `docker-compose.yml`
-  publishes it on `127.0.0.1` only; the Helm chart exposes no Service for it
-  (use `kubectl port-forward`). Put your own authentication in front of it
-  before reaching it from anywhere else. It never serves the simulator's API
-  and the API never serves it; state-changing requests must be same-origin
-  JSON.
-- **The request log is redacted.** It keeps method, family, cluster, client
-  address, duration, size and result, plus the request body of a
-  `/vsanHealth` call; never a header, cookie or `/sdk` body (a login carries
-  a password). It holds the last 20,000 calls in memory.
+- **Console login.** The console binds to loopback by default and uses its own
+  password. The chart's console Service and Ingress are opt-in. Use TLS when
+  reaching it beyond loopback. State-changing requests must be same-origin JSON.
+- **The request log is redacted.** The activity log holds the last 20,000 calls
+  in memory. Unanswered requests can retain redacted SOAP bodies, including
+  inventory identifiers; session operations and credentials are omitted.
 
 Projections (entities, series, calls and bytes per cycle) are computed from
 the topology and the catalog, labelled as projections, and never presented
@@ -236,11 +231,12 @@ credentials (what the compose file and the chart's defaults assume), set it to
 public once under the package's settings on GitHub. To keep it private, give
 the chart an `imagePullSecrets` entry naming a registry pull secret.
 
-Login accepts any user name and password unless credentials are
-configured: the scenario's `auth.users`, or `VCSIM_USERNAME` and
-`VCSIM_PASSWORD` (`-username`/`-password`), which add one more user. Then only
-the configured users log in. Use placeholders: this is a simulator, never point real
-credentials at it.
+The published vCenter login is `administrator@vsphere.local` /
+`VMware123!VMware123!`. The scenario's `auth.users`, or `VCSIM_USERNAME` and
+`VCSIM_PASSWORD` (`-username`/`-password`), replace that default. Console
+credential changes take precedence until the scenario file changes. Explicitly
+opt into arbitrary credentials with `auth.anyLogin: true` or `-any-login`.
+Use simulator-only credentials and never point real credentials at it.
 
 ### docker run
 
