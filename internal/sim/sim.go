@@ -207,6 +207,7 @@ func (s *Simulator) build() error {
 	// its host step, even when its device serial was allocated much later.
 	legacyOrder := s.registry == nil || s.registry.MorefHigh() == 0
 	nfsRefs := map[string]*simulator.Datastore{}
+	iscsiRefs := map[string]*simulator.Datastore{}
 	for _, dc := range s.Topology.Datacenters {
 		dc := dc
 		steps = append(steps, step{dc.Serial, dc.Serial, func() error { return s.createDatacenter(ctx, dc) }})
@@ -219,6 +220,18 @@ func (s *Simulator) build() error {
 				}
 				return err
 			}})
+		}
+		for _, st := range dc.ISCSI {
+			for _, lun := range st.LUNs {
+				lun := lun
+				steps = append(steps, step{lun.Serial, lun.Serial, func() error {
+					ds, err := s.createISCSIDatastore(ctx, dc, lun)
+					if err == nil {
+						iscsiRefs[lun.UUID] = ds
+					}
+					return err
+				}})
+			}
 		}
 		for _, cl := range dc.Clusters {
 			cl := cl
@@ -310,7 +323,14 @@ func (s *Simulator) build() error {
 		for _, nfs := range dc.NFS {
 			s.mountNFS(ctx, dc, nfs, nfsRefs[nfs.UUID])
 		}
+		for _, st := range dc.ISCSI {
+			s.mountISCSI(ctx, st, iscsiRefs)
+		}
 	}
+	for key, ds := range nfsRefs {
+		iscsiRefs[key] = ds
+	}
+	s.installStoragePerformance(iscsiRefs)
 	return nil
 }
 

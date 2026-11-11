@@ -108,6 +108,9 @@ func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 	for _, dc := range t.Datacenters {
 		p.NFS += len(dc.NFS)
 		p.Datastores += len(dc.NFS)
+		for _, st := range dc.ISCSI {
+			p.Datastores += len(st.LUNs)
+		}
 	}
 	namesSet := map[string]bool{}
 	for _, cl := range t.Clusters() {

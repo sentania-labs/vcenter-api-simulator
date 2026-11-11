@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/vmware/govmomi/simulator"
@@ -29,15 +30,27 @@ func (s *Simulator) mountNFS(ctx *simulator.Context, dc *topology.Datacenter, n 
 	volume := ds.Info.(*types.NasDatastoreInfo).Nas
 	path := "/vmfs/volumes/" + n.UUID
 	for _, refs := range s.Clusters {
-		if refs.Cluster.Datacenter != dc {
+		if refs.Cluster.Datacenter != dc || (len(n.Spec.Clusters) > 0 && !slices.Contains(n.Spec.Clusters, refs.Cluster.Key)) {
 			continue
 		}
 		ccr := ctx.Map.Get(refs.Ref).(*simulator.ClusterComputeResource)
 		ctx.Map.AddReference(ctx, ccr, &ccr.Datastore, ds.Self)
-		for _, ref := range refs.Hosts {
+		for i, ref := range refs.Hosts {
 			host := ctx.Map.Get(ref).(*simulator.HostSystem)
 			mount(ctx, host, ds, path)
-			host.Config.FileSystemVolume.MountInfo = append(host.Config.FileSystemVolume.MountInfo, types.HostFileSystemMountInfo{MountInfo: types.HostMountInfo{Path: path, AccessMode: "readWrite", Mounted: types.NewBool(true), Accessible: types.NewBool(true)}, Volume: volume, VStorageSupport: "vStorageUnsupported"})
+			accessible := !slices.Contains(n.Spec.InaccessibleHosts, refs.Cluster.Hosts[i].Key)
+			ds.Host[len(ds.Host)-1].MountInfo.Accessible = types.NewBool(accessible)
+			host.Config.FileSystemVolume.MountInfo = append(host.Config.FileSystemVolume.MountInfo, types.HostFileSystemMountInfo{MountInfo: types.HostMountInfo{Path: path, AccessMode: "readWrite", Mounted: types.NewBool(true), Accessible: types.NewBool(accessible)}, Volume: volume, VStorageSupport: "vStorageUnsupported"})
+			if ss, ok := ctx.Map.Get(*host.ConfigManager.StorageSystem).(*simulator.HostStorageSystem); ok {
+				ss.FileSystemVolumeInfo = *host.Config.FileSystemVolume
+			}
+		}
+	}
+	ds.Summary.Accessible = false
+	for _, m := range ds.Host {
+		if m.MountInfo.Accessible != nil && *m.MountInfo.Accessible {
+			ds.Summary.Accessible = true
+			break
 		}
 	}
 }

@@ -1423,3 +1423,73 @@ defaults: {hosts: 3, vms: {perHost: 1}}
 		}
 	}
 }
+
+func TestISCSIDraftReviewAndStableIdentity(t *testing.T) {
+	sc := scenario.Phase1("iscsi-review")
+	sc.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{Cluster: "dc-01/cluster-01", Adapters: []scenario.ISCSIAdapter{{Name: "adapter-1", Kind: "software"}}, Targets: []scenario.ISCSITarget{{Name: "array", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}}, LUNs: []scenario.ISCSILUN{{Name: "shared-vmfs", Target: "array", Number: 1, Capacity: 1048576, FreeSpace: 1024, Paths: []scenario.ISCSIPath{{Adapter: "adapter-1", State: "active"}}}}}}
+	c := newCtl(t, sc, "", "test")
+	read := func() (string, string, string) {
+		t.Helper()
+		r := c.applied()
+		lun := r.topo.Datacenters[0].ISCSI[0].LUNs[0]
+		srv := httptest.NewServer(r.sim.Handler)
+		defer srv.Close()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
+		req.SetBasicAuth("reader", "password")
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var token string
+		if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/vcenter/datastore", nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err = srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var rows []struct {
+			Name string `json:"name"`
+			ID   string `json:"datastore"`
+		}
+		if err = json.NewDecoder(res.Body).Decode(&rows); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			if row.Name == "shared-vmfs" {
+				return row.ID, lun.UUID, lun.CanonicalName
+			}
+		}
+		t.Fatal("datastore missing")
+		return "", "", ""
+	}
+	id, uuid, canonical := read()
+	draft := editable(t, c)
+	draft.Datacenters[0].ISCSI[0].LUNs[0].FreeSpace = 2048
+	draft.Datacenters[0].ISCSI[0].LUNs[0].Paths[0].State = "dead"
+	put(t, c, draft)
+	review, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, change := range review.Changes {
+		if change.Field == "iSCSI storage" && strings.Contains(change.After, "dead") {
+			found = true
+		}
+	}
+	if !found || !review.RebuildsVCenter {
+		t.Fatal("storage change missing from review")
+	}
+	if _, err = c.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	nextID, nextUUID, nextCanonical := read()
+	if id != nextID || uuid != nextUUID || canonical != nextCanonical {
+		t.Fatalf("identity changed after path edit")
+	}
+}

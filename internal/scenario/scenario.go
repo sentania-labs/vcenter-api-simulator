@@ -13,15 +13,19 @@ package scenario
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
+	"math/rand/v2"
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/sentania/vcenter-api-simulator/internal/registry"
 )
 
 // Scenario is the parsed, validated file.
@@ -57,6 +61,43 @@ type Datacenter struct {
 	Name     string         `yaml:"name" json:"name,omitempty"`
 	Clusters int            `yaml:"clusters" json:"clusters,omitempty"`
 	NFS      []NFSDatastore `yaml:"nfs" json:"nfs,omitempty"`
+	ISCSI    []ISCSIStorage `yaml:"iscsi,omitempty" json:"iscsi,omitempty"`
+}
+
+// ISCSIStorage describes one cluster's adapters and shared block storage.
+type ISCSIStorage struct {
+	Cluster  string         `yaml:"cluster" json:"cluster"`
+	Adapters []ISCSIAdapter `yaml:"adapters" json:"adapters"`
+	Targets  []ISCSITarget  `yaml:"targets" json:"targets"`
+	LUNs     []ISCSILUN     `yaml:"luns" json:"luns"`
+}
+
+type ISCSIAdapter struct {
+	Name string `yaml:"name" json:"name"`
+	Kind string `yaml:"kind" json:"kind"` // software or hardware
+}
+
+type ISCSITarget struct {
+	Name    string `yaml:"name" json:"name"`
+	Address string `yaml:"address" json:"address"`
+	IQN     string `yaml:"iqn" json:"iqn"`
+	Port    int32  `yaml:"port,omitempty" json:"port,omitempty"`
+}
+
+type ISCSILUN struct {
+	Name      string      `yaml:"name" json:"name"`
+	Target    string      `yaml:"target" json:"target"`
+	Number    int32       `yaml:"number" json:"number"`
+	Capacity  int64       `yaml:"capacity" json:"capacity"`
+	FreeSpace int64       `yaml:"freeSpace" json:"freeSpace"`
+	Policy    string      `yaml:"policy,omitempty" json:"policy,omitempty"`
+	Paths     []ISCSIPath `yaml:"paths" json:"paths"`
+}
+
+type ISCSIPath struct {
+	Adapter string `yaml:"adapter" json:"adapter"`
+	Host    string `yaml:"host,omitempty" json:"host,omitempty"`
+	State   string `yaml:"state" json:"state"`
 }
 
 // NFSDatastore describes a shared NFS v3 mount in a datacenter.
@@ -66,6 +107,12 @@ type NFSDatastore struct {
 	RemotePath string `yaml:"remotePath" json:"remotePath"`
 	Capacity   int64  `yaml:"capacity" json:"capacity"`
 	FreeSpace  int64  `yaml:"freeSpace" json:"freeSpace"`
+	// Clusters limits the mount to cluster keys in this datacenter. Empty
+	// retains the original behavior of mounting on every cluster.
+	Clusters []string `yaml:"clusters,omitempty" json:"clusters,omitempty"`
+	// InaccessibleHosts identifies mounts by cluster key and host ordinal,
+	// for example dc-01/cluster-01/esx02.
+	InaccessibleHosts []string `yaml:"inaccessibleHosts,omitempty" json:"inaccessibleHosts,omitempty"`
 }
 
 // ClusterSpec is the per-cluster cardinality. An unset value means "use
@@ -265,7 +312,23 @@ func Phase1(seed string) *Scenario {
 var (
 	nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 	keyRe  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?/[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+	hostRe = regexp.MustCompile(`^esx[0-9]{2,}$`)
 )
+
+func validStorageHost(name string) bool {
+	if !hostRe.MatchString(name) {
+		return false
+	}
+	n, err := strconv.Atoi(name[3:])
+	return err == nil && n > 0 && fmt.Sprintf("esx%02d", n) == name
+}
+
+// StorageNumber gives an adapter or target a stable synthetic numeric identity.
+func StorageNumber(name string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(name))
+	return h.Sum32()
+}
 
 // Validate checks the file and fills Defaults from the built-in defaults.
 func (s *Scenario) Validate() error {
@@ -319,6 +382,75 @@ func (s *Scenario) Validate() error {
 	for _, k := range s.ClusterKeys() {
 		generated[k] = true
 	}
+	for _, dc := range s.Datacenters {
+		for _, n := range dc.NFS {
+			selected := map[string]bool{}
+			for _, key := range n.Clusters {
+				if !generated[key] || !strings.HasPrefix(key, dc.Name+"/") || selected[key] {
+					return fmt.Errorf("scenario: datacenter %q: NFS datastore %q has invalid cluster %q", dc.Name, n.Name, key)
+				}
+				selected[key] = true
+			}
+			hosts := map[string]bool{}
+			for _, key := range n.InaccessibleHosts {
+				i := strings.LastIndexByte(key, '/')
+				if i < 0 || !generated[key[:i]] || !strings.HasPrefix(key, dc.Name+"/") || (len(selected) > 0 && !selected[key[:i]]) || !validStorageHost(key[i+1:]) || hosts[key] {
+					return fmt.Errorf("scenario: datacenter %q: NFS datastore %q has invalid host %q", dc.Name, n.Name, key)
+				}
+				hosts[key] = true
+			}
+		}
+		clusterStorage := map[string]bool{}
+		storeNames := map[string]bool{}
+		for _, n := range dc.NFS {
+			storeNames[n.Name] = true
+		}
+		for _, st := range dc.ISCSI {
+			if !generated[st.Cluster] || !strings.HasPrefix(st.Cluster, dc.Name+"/") || clusterStorage[st.Cluster] {
+				return fmt.Errorf("scenario: datacenter %q: invalid or duplicate iSCSI cluster %q", dc.Name, st.Cluster)
+			}
+			clusterStorage[st.Cluster] = true
+			adapters := map[string]bool{}
+			adapterIDs := map[uint32]bool{}
+			for _, a := range st.Adapters {
+				id := StorageNumber(a.Name) % 1000000
+				if !nameRe.MatchString(a.Name) || adapters[a.Name] || adapterIDs[id] || (a.Kind != "software" && a.Kind != "hardware") {
+					return fmt.Errorf("scenario: invalid iSCSI adapter %q", a.Name)
+				}
+				adapters[a.Name] = true
+				adapterIDs[id] = true
+			}
+			targets := map[string]bool{}
+			targetIDs := map[uint32]bool{}
+			for _, t := range st.Targets {
+				id := StorageNumber(t.Name) & 0x7fffffff
+				if !nameRe.MatchString(t.Name) || targets[t.Name] || targetIDs[id] || t.Address == "" || !strings.HasPrefix(t.IQN, "iqn.") || t.Port < 0 || t.Port > 65535 {
+					return fmt.Errorf("scenario: invalid iSCSI target %q", t.Name)
+				}
+				targets[t.Name] = true
+				targetIDs[id] = true
+			}
+			lunNumbers := map[string]bool{}
+			for _, lun := range st.LUNs {
+				id := fmt.Sprintf("%s/%d", lun.Target, lun.Number)
+				if !nameRe.MatchString(lun.Name) || storeNames[lun.Name] || !targets[lun.Target] || lun.Number < 0 || lunNumbers[id] || lun.Capacity <= 0 || lun.Capacity%512 != 0 || lun.FreeSpace < 0 || lun.FreeSpace > lun.Capacity || (lun.Policy != "" && lun.Policy != "VMW_PSP_RR" && lun.Policy != "VMW_PSP_FIXED" && lun.Policy != "VMW_PSP_MRU") {
+					return fmt.Errorf("scenario: invalid iSCSI LUN %q", lun.Name)
+				}
+				storeNames[lun.Name], lunNumbers[id] = true, true
+				paths := map[string]bool{}
+				for _, p := range lun.Paths {
+					key := p.Adapter + "/" + p.Host
+					if !adapters[p.Adapter] || paths[key] || (p.Host != "" && (!strings.HasPrefix(p.Host, st.Cluster+"/") || !validStorageHost(strings.TrimPrefix(p.Host, st.Cluster+"/")))) || (p.State != "active" && p.State != "standby" && p.State != "dead" && p.State != "disabled") {
+						return fmt.Errorf("scenario: invalid path for iSCSI LUN %q", lun.Name)
+					}
+					paths[key] = true
+				}
+				if len(lun.Paths) == 0 {
+					return fmt.Errorf("scenario: iSCSI LUN %q needs a path", lun.Name)
+				}
+			}
+		}
+	}
 	keys := map[string]bool{}
 	for i, c := range s.Clusters {
 		if !keyRe.MatchString(c.Key) {
@@ -356,6 +488,45 @@ func (s *Scenario) Validate() error {
 	for name, r := range map[string]*Range{"vmsPerHost": s.Vary.VMsPerHost, "domWorlds": s.Vary.DomWorlds} {
 		if r != nil && (r.Min < 0 || r.Max < r.Min) {
 			return fmt.Errorf("scenario: vary.%s: need 0 <= min <= max", name)
+		}
+	}
+	// Host faults must refer to a host the resolved topology will actually
+	// create. The first draw is the host count, using the same seed as topology.
+	r := registry.InMemory(s.Seed)
+	hostExists := func(key string) bool {
+		i := strings.LastIndexByte(key, '/')
+		if i < 0 || !validStorageHost(key[i+1:]) {
+			return false
+		}
+		ordinal, err := strconv.Atoi(key[i+4:])
+		if err != nil {
+			return false
+		}
+		cluster := key[:i]
+		drawn := ClusterSpec{}
+		if len(s.Vary.Hosts) > 0 {
+			seed := r.Sub(cluster)
+			rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
+			drawn.Hosts = s.Vary.Hosts[rng.Uint64()%uint64(len(s.Vary.Hosts))]
+		}
+		return ordinal <= s.Resolve(cluster, drawn).Hosts
+	}
+	for _, dc := range s.Datacenters {
+		for _, n := range dc.NFS {
+			for _, host := range n.InaccessibleHosts {
+				if !hostExists(host) {
+					return fmt.Errorf("scenario: NFS datastore %q references a host that does not exist: %q", n.Name, host)
+				}
+			}
+		}
+		for _, st := range dc.ISCSI {
+			for _, lun := range st.LUNs {
+				for _, path := range lun.Paths {
+					if path.Host != "" && !hostExists(path.Host) {
+						return fmt.Errorf("scenario: iSCSI LUN %q references a host that does not exist: %q", lun.Name, path.Host)
+					}
+				}
+			}
 		}
 	}
 	users := map[string]bool{}

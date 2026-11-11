@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -394,6 +395,7 @@ type DatastoreRow struct {
 	Backing string `json:"backing"`
 	Mounted int    `json:"mounted"`
 	Perf    string `json:"perfService"`
+	State   string `json:"state,omitempty"`
 }
 
 // FieldSource says where a cluster's value comes from.
@@ -578,7 +580,63 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 			Mounted: local, Perf: "inventory only"})
 	}
 	for _, nfs := range cl.Datacenter.NFS {
-		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: "inventory only"})
+		if len(nfs.Spec.Clusters) > 0 && !slices.Contains(nfs.Spec.Clusters, cl.Key) {
+			continue
+		}
+		bad := 0
+		for _, h := range cl.Hosts {
+			if slices.Contains(nfs.Spec.InaccessibleHosts, h.Key) {
+				bad++
+			}
+		}
+		state := "Accessible"
+		if bad > 0 {
+			if bad == 1 {
+				state = "1 host mount inaccessible"
+			} else {
+				state = fmt.Sprintf("%d host mounts inaccessible", bad)
+			}
+		}
+		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: "inventory only", State: state})
+	}
+	for _, st := range cl.Datacenter.ISCSI {
+		if st.Spec.Cluster != cl.Key {
+			continue
+		}
+		for _, lun := range st.LUNs {
+			bad := 0
+			for _, h := range cl.Hosts {
+				working := false
+				for _, a := range st.Spec.Adapters {
+					state := ""
+					for _, p := range lun.Spec.Paths {
+						if p.Adapter == a.Name && p.Host == "" {
+							state = p.State
+						}
+					}
+					for _, p := range lun.Spec.Paths {
+						if p.Adapter == a.Name && p.Host == h.Key {
+							state = p.State
+						}
+					}
+					if state == "active" || state == "standby" {
+						working = true
+					}
+				}
+				if !working {
+					bad++
+				}
+			}
+			state := "Accessible"
+			if bad > 0 {
+				if bad == 1 {
+					state = "1 host has no working path"
+				} else {
+					state = fmt.Sprintf("%d hosts have no working path", bad)
+				}
+			}
+			v.Datastores = append(v.Datastores, DatastoreRow{Name: lun.Spec.Name, Type: "VMFS · iSCSI", Backing: lun.Spec.Target, Mounted: len(cl.Hosts), Perf: "inventory only", State: state})
+		}
 	}
 	v.VDS, v.PortGroups = cl.VDS(), len(topology.Portgroups)
 	v.Checks = append(v.Checks,
@@ -707,7 +765,7 @@ func (c *Controller) Compatibility() *Compat {
 			"Behaviour on a real vCenter 9.1.1 other than the captured one",
 			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
 			"vSAN OSA beyond a single-disk-group, three-host cluster: per-VM and virtual-disk performance, multiple disk groups per host, stretched clusters and OSA deduplication",
-			"FC and iSCSI datastores, populated iSCSI target and file service are not emulated: no populated sanitized captures are available",
+			"iSCSI inventory and path faults are plausible but not verified against a lab iSCSI host; Fibre Channel and file service are not emulated",
 			"/sdk/vim.wsdl is not served: a complete sanitized capture is unavailable",
 			"The VCF Operations ingestion path (Phase 3)",
 		}}

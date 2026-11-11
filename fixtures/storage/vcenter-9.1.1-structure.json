@@ -1,0 +1,11 @@
+{
+  "note": "Structural observations from a read-only vCenter 9.1.1 build 25784172 inventory. Names, addresses, capacities and identities below are synthetic; no iSCSI host was observed outside the excluded vSAN datastore host set.",
+  "eligibleHostHealth": {"systemHealthInfo": {}},
+  "availableDatastoreCounters": ["datastore.numberReadAveraged.average", "datastore.numberWriteAveraged.average", "disk.provisioned.latest", "disk.used.latest", "disk.capacity.latest", "disk.unshared.latest", "disk.numberReadAveraged.average", "disk.numberWriteAveraged.average"],
+  "datastore": {
+    "name": "shared-nfs",
+    "summary": {"type": "NFS", "capacity": 1099511627776, "freeSpace": 549755813888, "accessible": true, "multipleHostAccess": true},
+    "info": {"nas": {"type": "NFS", "name": "shared-nfs", "capacity": 1099511627776, "remoteHost": "nfs.example.test", "remoteHostNames": ["nfs.example.test"], "remotePath": "/exports/shared", "protocolEndpoint": false}},
+    "host": [{"mountInfo": {"accessMode": "readWrite", "mounted": true, "accessible": true}}]
+  }
+}

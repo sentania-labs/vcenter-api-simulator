@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -481,6 +482,7 @@ func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Proj
 	var out []Change
 	osc, nsc := old.sc, d.Scenario
 	out = append(out, nfsChanges(osc, nsc)...)
+	out = append(out, iscsiChanges(osc, nsc)...)
 	if osc.Seed != nsc.Seed {
 		out = append(out, Change{Object: "Identity", Field: "Global seed", Before: osc.Seed, After: nsc.Seed,
 			Effect: "replaces every identity", Area: "Topology"})
@@ -558,6 +560,74 @@ func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Proj
 	return out
 }
 
+func iscsiChanges(old, next *scenario.Scenario) []Change {
+	collect := func(sc *scenario.Scenario) map[string]scenario.ISCSIStorage {
+		out := map[string]scenario.ISCSIStorage{}
+		for _, dc := range sc.Datacenters {
+			for _, st := range dc.ISCSI {
+				out[st.Cluster] = st
+			}
+		}
+		return out
+	}
+	a, b := collect(old), collect(next)
+	keys := map[string]bool{}
+	for k := range a {
+		keys[k] = true
+	}
+	for k := range b {
+		keys[k] = true
+	}
+	ordered := make([]string, 0, len(keys))
+	for k := range keys {
+		ordered = append(ordered, k)
+	}
+	sort.Strings(ordered)
+	var changes []Change
+	describe := func(st scenario.ISCSIStorage, ok bool) string {
+		if !ok {
+			return "—"
+		}
+		var adapters, targets []string
+		for _, a := range st.Adapters {
+			adapters = append(adapters, fmt.Sprintf("%s (%s)", a.Name, a.Kind))
+		}
+		for _, t := range st.Targets {
+			port := t.Port
+			if port == 0 {
+				port = 3260
+			}
+			targets = append(targets, fmt.Sprintf("%s: %s:%d, %s", t.Name, t.Address, port, t.IQN))
+		}
+		var stores []string
+		for _, l := range st.LUNs {
+			var paths []string
+			for _, p := range l.Paths {
+				host := p.Host
+				if host == "" {
+					host = "all hosts"
+				}
+				paths = append(paths, fmt.Sprintf("%s on %s: %s", p.Adapter, host, p.State))
+			}
+			policy := l.Policy
+			if policy == "" {
+				policy = "VMW_PSP_RR"
+			}
+			stores = append(stores, fmt.Sprintf("%s (target %s, LUN %d, %d B free of %d B, policy %s; %s)", l.Name, l.Target, l.Number, l.FreeSpace, l.Capacity, policy, strings.Join(paths, ", ")))
+		}
+		return fmt.Sprintf("Adapters per host: %s. Targets: %s. Datastores: %s", strings.Join(adapters, ", "), strings.Join(targets, ", "), strings.Join(stores, ", "))
+	}
+	for _, k := range ordered {
+		before, had := a[k]
+		after, has := b[k]
+		if had && has && reflect.DeepEqual(before, after) {
+			continue
+		}
+		changes = append(changes, Change{Object: k, Field: "iSCSI storage", Before: describe(before, had), After: describe(after, has), Effect: "updates shared datastores, adapters and paths", Area: "Topology"})
+	}
+	return changes
+}
+
 // nfsChanges compares every datacenter regardless of whether the draft came
 // from the editor, a generator, or a replacement preset.
 func nfsChanges(old, next *scenario.Scenario) []Change {
@@ -586,7 +656,7 @@ func nfsChanges(old, next *scenario.Scenario) []Change {
 	}
 	sort.Strings(keys)
 	describe := func(n scenario.NFSDatastore) string {
-		return fmt.Sprintf("%s:%s · capacity %d B · free %d B", n.RemoteHost, n.RemotePath, n.Capacity, n.FreeSpace)
+		return fmt.Sprintf("%s:%s · capacity %d B · free %d B · clusters %v · inaccessible hosts %v", n.RemoteHost, n.RemotePath, n.Capacity, n.FreeSpace, n.Clusters, n.InaccessibleHosts)
 	}
 	var changes []Change
 	for _, key := range keys {
@@ -597,7 +667,7 @@ func nfsChanges(old, next *scenario.Scenario) []Change {
 			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: "—", After: describe(b.spec), Effect: "adds datastore and mounts on datacenter hosts", Area: "Topology"})
 		case !has:
 			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: describe(a.spec), After: "—", Effect: "removes datastore and host mounts", Area: "Topology"})
-		case a.spec != b.spec:
+		case !reflect.DeepEqual(a.spec, b.spec):
 			changes = append(changes, Change{Object: key, Field: "NFS datastore", Before: describe(a.spec), After: describe(b.spec), Effect: "updates datastore and host mounts", Area: "Topology"})
 		}
 	}
@@ -753,8 +823,38 @@ func identityRows(o, n *topology.Topology, cat *catalog.Catalog, previous *regis
 			}
 		}
 	}
+	iscsiIDs := func(t *topology.Topology) map[id]bool {
+		out := map[id]bool{}
+		for _, dc := range t.Datacenters {
+			for _, st := range dc.ISCSI {
+				for _, lun := range st.LUNs {
+					out[id{"iscsi/" + st.Spec.Cluster + "/" + lun.Spec.Name, lun.Serial}] = true
+				}
+			}
+		}
+		return out
+	}
+	iscsiBefore, iscsiAfter := iscsiIDs(o), iscsiIDs(n)
+	iscsiRow := IdentityRow{Label: "iSCSI datastore and LUN identities"}
+	for id := range iscsiBefore {
+		if iscsiAfter[id] {
+			iscsiRow.Kept++
+		} else {
+			iscsiRow.Removed++
+		}
+	}
+	for id := range iscsiAfter {
+		if !iscsiBefore[id] {
+			if previous != nil && previous.Has(id.key) && previous.Serial(id.key) == id.serial {
+				iscsiRow.Restored++
+			} else {
+				iscsiRow.Added++
+			}
+		}
+	}
 	rows := []IdentityRow{
 		nfsRow,
+		iscsiRow,
 		row("Host UUIDs · vSAN node UUIDs", "host/", func(c *topology.Cluster) (out []id) {
 			for _, h := range c.Hosts {
 				out = append(out, id{h.Key, h.Serial})
@@ -865,9 +965,12 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		for _, change := range nfsChanges(old.sc, d.Scenario) {
 			affectedDC[strings.SplitN(change.Object, "/", 2)[0]] = true
 		}
+		for _, change := range iscsiChanges(old.sc, d.Scenario) {
+			touched[change.Object] = true
+		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] && !touched[c.Key] {
 				kept++
 			} else {
 				touched[c.Key] = true
