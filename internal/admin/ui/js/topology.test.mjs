@@ -112,3 +112,28 @@ test('NFS editor validates inline and stages add, edit and removal in its datace
  await topology.actions['topo.nfsRemove'](ctx,{dataset:{arg:'0'}},null,data);
  assert.deepEqual(saved.datacenters[0].nfs, []);
 });
+
+test('storage edits stage host faults and preserve them on later edits', async () => {
+ const data=editorData();
+ data.cluster.hosts=[{name:'esx01.cluster-01.dc-01.sim.invalid',identity:'unchanged'},{name:'esx02.cluster-01.dc-01.sim.invalid',identity:'unchanged'}];
+ topology.actions['topo.iscsiEdit'](ctx,null,null,data);
+ for (const [group,index,f,value] of [['targets',0,'address','array.example.test'],['targets',0,'iqn','iqn.2026-01.test.example:array'],['luns',0,'name','shared-vmfs'],['luns',0,'capacity','1073741824'],['luns',0,'freeSpace','1024']]) topology.actions['topo.iscsiInput'](ctx,{dataset:{group,index:String(index),f},value});
+ topology.actions['topo.iscsiPath'](ctx,{dataset:{index:'0',path:'0',f:'state'},value:'dead'});
+ await topology.actions['topo.iscsiSave'](ctx,null,null,data);
+ assert.equal(saved.datacenters[0].iscsi[0].luns[0].paths[0].state,'dead');
+ data.draft.scenario=clone(saved);
+ topology.actions['topo.iscsiEdit'](ctx,null,null,data);
+ topology.actions['topo.iscsiInput'](ctx,{dataset:{group:'luns',index:'0',f:'freeSpace'},value:'2048'});
+ await topology.actions['topo.iscsiSave'](ctx,null,null,data);
+ assert.equal(saved.datacenters[0].iscsi[0].luns[0].freeSpace,2048);
+ assert.equal(saved.datacenters[0].iscsi[0].luns[0].paths[0].state,'dead');
+ data.draft.scenario=clone(saved);
+ topology.actions['topo.nfsAdd'](ctx,null,null,data);
+ for (const [f,value] of Object.entries({name:'shared-nfs',remoteHost:'nfs.example.test',remotePath:'/shared',capacity:'1000',freeSpace:'100'})) topology.actions['topo.nfsInput'](ctx,{dataset:{f},value});
+ topology.actions['topo.nfsScope'](ctx,{value:'current'},null,data);
+ topology.actions['topo.nfsHost'](ctx,{dataset:{arg:'dc-01/cluster-01/esx02'},value:'inaccessible'});
+ await topology.actions['topo.nfsSave'](ctx,null,null,data);
+ assert.deepEqual(saved.datacenters[0].nfs[0].clusters,['dc-01/cluster-01']);
+ assert.deepEqual(saved.datacenters[0].nfs[0].inaccessibleHosts,['dc-01/cluster-01/esx02']);
+ assert.equal(saved.datacenters[0].iscsi[0].luns[0].name,'shared-vmfs');
+});

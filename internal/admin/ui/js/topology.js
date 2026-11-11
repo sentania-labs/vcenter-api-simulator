@@ -6,7 +6,7 @@ import { api, html, raw, join, badge, banner, int, bytes, hm, clone, plural } fr
 import flow from './topology-flow.js';
 
 // ---- view state that survives re-renders ------------------------------------
-const ui = { filter: '', pill: 'all', closed: {}, expanded: {}, allHosts: false, nfsForm: null, nfsDC: null };
+const ui = { filter: '', pill: 'all', closed: {}, expanded: {}, allHosts: false, nfsForm: null, nfsDC: null, iscsiForm: null };
 
 const mode = (ctx) => (['generator', 'review'].includes(ctx.route.parts[0]) ? ctx.route.parts[0] : 'editor');
 const pad = (n) => String(n).padStart(2, '0');
@@ -200,13 +200,16 @@ function nfsEditor(d, locked) {
   if (!dc) return '';
   const entries = dc.nfs || [], form = ui.nfsForm?.dc === dc.name ? ui.nfsForm : null;
   const fields = [['name', 'Name'], ['remoteHost', 'Server'], ['remotePath', 'Export path'], ['capacity', 'Capacity (bytes)'], ['freeSpace', 'Free space (bytes)']];
-  const controls = form ? html`<div class="fields c6">${fields.map(([key, label]) => html`<div><label class="lat-label" for="nfs-${key}">${label}</label><input class="lat-input${form.errors[key] ? ' is-bad' : ''}" id="nfs-${key}" data-inp="topo.nfsInput" data-f="${key}" value="${form.values[key]}" ${raw(form.errors[key] ? `aria-invalid="true" aria-describedby="nfs-error-${key}"` : '')}><div class="lat-hint" id="nfs-error-${key}" role="status">${form.errors[key] || ''}</div></div>`)}</div>
+  const cluster = d.cluster, selected = form?.values.clusters || [], hostFaults = form?.values.inaccessibleHosts || [];
+  const controls = form ? html`<div class="anno">Version: NFS 3</div><div class="fields c6">${fields.map(([key, label]) => html`<div><label class="lat-label" for="nfs-${key}">${label}</label><input class="lat-input${form.errors[key] ? ' is-bad' : ''}" id="nfs-${key}" data-inp="topo.nfsInput" data-f="${key}" value="${form.values[key]}" ${raw(form.errors[key] ? `aria-invalid="true" aria-describedby="nfs-error-${key}"` : '')}><div class="lat-hint" id="nfs-error-${key}" role="status">${form.errors[key] || ''}</div></div>`)}</div>
+    ${cluster && cluster.datacenter === dc.name ? html`<label class="lat-label" for="nfs-scope">Available to</label><select id="nfs-scope" class="lat-input" data-chg="topo.nfsScope"><option value="all" ${raw(!selected.length ? 'selected' : '')}>All clusters in ${dc.name}</option><option value="current" ${raw(selected.length === 1 && selected[0] === cluster.key ? 'selected' : '')}>${cluster.name}</option>${selected.length && !(selected.length === 1 && selected[0] === cluster.key) ? html`<option value="existing" selected>Existing selection</option>` : ''}</select>
+    ${!selected.length || selected.includes(cluster.key) ? html`<h3>Host mounts in ${cluster.name}</h3>${cluster.hosts.filter(h => h.identity !== 'removed').map(h => { const key = cluster.key + '/' + h.name.split('.')[0]; return html`<div class="row"><span>${h.name}</span><select class="lat-input" aria-label="Mount state for ${h.name}" data-chg="topo.nfsHost" data-arg="${key}"><option value="accessible" ${raw(!hostFaults.includes(key) ? 'selected' : '')}>Accessible</option><option value="inaccessible" ${raw(hostFaults.includes(key) ? 'selected' : '')}>Inaccessible</option></select></div>`; })}` : ''}` : ''}
     <div class="row"><button type="button" class="lat-btn lat-btn--primary" data-act="topo.nfsSave">Save to draft</button><button type="button" class="lat-btn" data-act="topo.nfsCancel">Cancel</button></div>` : '';
   return html`<h2 class="lat-card-title">NFS datastores <span class="aside">${dc.name} · shared by all hosts in this datacenter</span></h2>
     <div class="anno">Changes join the draft and take effect only after review and apply. NFS is simulated; no server connection is made.</div>
     <label class="lat-label" for="nfs-datacenter">Datacenter</label><select id="nfs-datacenter" class="lat-input" data-chg="topo.nfsSelect" ${raw(locked ? 'disabled' : '')}>${d.draft.scenario.datacenters.map((item) => html`<option value="${item.name}" ${raw(item.name === dc.name ? 'selected' : '')}>${item.name}</option>`)}</select>
     ${entries.length ? html`<table class="lat-table"><thead><tr><th>Name</th><th>Server and export</th><th>Capacity / free</th><th>Actions</th></tr></thead><tbody>${entries.map((n,i) => html`<tr><td>${n.name}</td><td>${n.remoteHost}:${n.remotePath}</td><td>${n.capacity} / ${n.freeSpace} B</td><td><button type="button" class="lat-btn lat-btn--sm" data-act="topo.nfsEdit" data-arg="${i}" ${raw(locked ? 'disabled' : '')} aria-label="Edit ${n.name}">Edit</button> <button type="button" class="lat-btn lat-btn--sm" data-act="topo.nfsRemove" data-arg="${i}" ${raw(locked ? 'disabled' : '')} aria-label="Remove ${n.name}">Remove</button></td></tr>`)}</tbody></table>` : html`<div class="anno">No NFS datastores configured for this datacenter.</div>`}
-    ${controls}${form ? '' : html`<button type="button" class="lat-btn lat-btn--sm" data-act="topo.nfsAdd" ${raw(locked ? 'disabled' : '')}>Add NFS datastore</button>`}`;
+    ${controls}${form ? '' : html`<div class="row"><button type="button" class="lat-btn lat-btn--primary lat-btn--sm" data-act="topo.nfsAdd" ${raw(locked ? 'disabled' : '')}>Add NFS datastore</button></div>`}`;
 }
 
 function validateNFS(values, entries, index) {
@@ -220,6 +223,27 @@ function validateNFS(values, entries, index) {
   }
   if (!errors.capacity && !errors.freeSpace && Number(values.freeSpace) > Number(values.capacity)) errors.freeSpace = 'Free space cannot exceed capacity.';
   return errors;
+}
+
+function iscsiEditor(d, locked) {
+  const cluster = d.cluster, dc = d.draft.scenario.datacenters.find(x => x.name === cluster.datacenter);
+  if (!dc) return '';
+  const existing = (dc.iscsi || []).find(x => x.cluster === cluster.key);
+  const form = ui.iscsiForm?.cluster === cluster.key ? ui.iscsiForm : null;
+  const field = (group, index, key, label, value) => html`<label>${label}<input class="lat-input" data-inp="topo.iscsiInput" data-group="${group}" data-index="${index}" data-f="${key}" value="${value ?? ''}"></label>`;
+  return html`<h2 class="lat-card-title">iSCSI storage</h2>
+    ${existing && !form ? html`<p>${existing.luns.length} shared datastore${existing.luns.length === 1 ? '' : 's'} on ${existing.adapters.length} adapter${existing.adapters.length === 1 ? '' : 's'} per host.</p>` : ''}
+    ${!form ? html`<button type="button" class="lat-btn lat-btn--primary" data-act="topo.iscsiEdit" ${raw(locked ? 'disabled' : '')}>${existing ? 'Edit iSCSI storage' : 'Add iSCSI storage'}</button>${existing ? html` <button type="button" class="lat-btn" data-act="topo.iscsiDelete" ${raw(locked ? 'disabled' : '')}>Remove iSCSI storage</button>` : ''}` : html`
+      <div class="anno">These settings apply to every host in ${cluster.name}. Changes wait in the draft until you review and apply them.</div>
+      <h3>Adapters per host</h3>${form.value.adapters.map((a,i) => html`<div class="row">${field('adapters',i,'name','Name',a.name)}<label>Type<select class="lat-input" data-chg="topo.iscsiInput" data-group="adapters" data-index="${i}" data-f="kind"><option value="software" ${raw(a.kind === 'software' ? 'selected' : '')}>Software</option><option value="hardware" ${raw(a.kind === 'hardware' ? 'selected' : '')}>Hardware</option></select></label><button type="button" class="lat-btn" data-act="topo.iscsiRemove" data-group="adapters" data-index="${i}">Remove</button></div>`)}
+      <button type="button" class="lat-btn" data-act="topo.iscsiAdd" data-group="adapters">Add adapter</button>
+      <h3>Targets</h3>${form.value.targets.map((t,i) => html`<div class="row">${field('targets',i,'name','Name',t.name)}${field('targets',i,'address','Server',t.address)}${field('targets',i,'iqn','Target name',t.iqn)}${field('targets',i,'port','Port',t.port || 3260)}<button type="button" class="lat-btn" data-act="topo.iscsiRemove" data-group="targets" data-index="${i}">Remove</button></div>`)}
+      <button type="button" class="lat-btn" data-act="topo.iscsiAdd" data-group="targets">Add target</button>
+      <h3>Datastores and paths</h3>${form.value.luns.map((l,i) => html`<div class="lat-card"><div class="row">${field('luns',i,'name','Datastore name',l.name)}${field('luns',i,'target','Target',l.target)}${field('luns',i,'number','LUN number',l.number)}${field('luns',i,'capacity','Capacity (bytes)',l.capacity)}${field('luns',i,'freeSpace','Free space (bytes)',l.freeSpace)}<label>Path policy<select class="lat-input" data-chg="topo.iscsiInput" data-group="luns" data-index="${i}" data-f="policy"><option value="VMW_PSP_RR" ${raw(!l.policy || l.policy === 'VMW_PSP_RR' ? 'selected' : '')}>Round robin</option><option value="VMW_PSP_FIXED" ${raw(l.policy === 'VMW_PSP_FIXED' ? 'selected' : '')}>Fixed</option><option value="VMW_PSP_MRU" ${raw(l.policy === 'VMW_PSP_MRU' ? 'selected' : '')}>Most recently used</option></select></label></div>
+        ${l.paths.map((p,j) => html`<div class="row"><label>Adapter<select class="lat-input" data-chg="topo.iscsiPath" data-index="${i}" data-path="${j}" data-f="adapter">${form.value.adapters.map(a => html`<option value="${a.name}" ${raw(p.adapter === a.name ? 'selected' : '')}>${a.name}</option>`)}</select></label><label>Host<select class="lat-input" data-chg="topo.iscsiPath" data-index="${i}" data-path="${j}" data-f="host"><option value="" ${raw(!p.host ? 'selected' : '')}>All hosts</option>${cluster.hosts.filter(h => h.identity !== 'removed').map(h => { const key = cluster.key + '/' + h.name.split('.')[0]; return html`<option value="${key}" ${raw(p.host === key ? 'selected' : '')}>${h.name}</option>`; })}</select></label><label>State<select class="lat-input" data-chg="topo.iscsiPath" data-index="${i}" data-path="${j}" data-f="state">${['active','standby','dead','disabled'].map(state => html`<option value="${state}" ${raw(p.state === state ? 'selected' : '')}>${state}</option>`)}</select></label><button type="button" class="lat-btn" data-act="topo.iscsiRemovePath" data-index="${i}" data-path="${j}">Remove path</button></div>`)}
+        <button type="button" class="lat-btn" data-act="topo.iscsiAddPath" data-index="${i}">Add path</button><button type="button" class="lat-btn" data-act="topo.iscsiRemove" data-group="luns" data-index="${i}">Remove datastore</button></div>`)}
+      <div class="row"><button type="button" class="lat-btn" data-act="topo.iscsiAdd" data-group="luns">Add datastore</button></div>
+      ${form.error ? html`<div role="alert" class="lat-hint is-bad">${form.error}</div>` : ''}<div class="row"><button type="button" class="lat-btn lat-btn--primary" data-act="topo.iscsiSave">Save to draft</button><button type="button" class="lat-btn" data-act="topo.iscsiCancel">Cancel</button></div>`}`;
 }
 
 function editorCard(ctx, d) {
@@ -249,9 +273,10 @@ function editorCard(ctx, d) {
       <div><span class="lat-label">vDS</span><div class="mono ink" style="padding:5px 0">${v.vds}</div><div class="lat-hint">${v.portgroups} port groups · ${v.datacenter}</div></div>
     </div>
     <h2 class="lat-card-title">Storage <span class="aside">vSAN is what the MP collects; other rows are inventory only; no vSAN performance data</span></h2>
-    <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>MP Perf Service</th></tr></thead><tbody>
-      ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td class="${s.perfService === 'queried' ? 'ink' : 'muted'}">${s.perfService}</td></tr>`)}</tbody></table>
-    <div class="anno">${v.spec.architecture === 'osa' ? 'OSA deduplication and compression are not modeled from the capture. ' : ''}FC and iSCSI datastores are not emulated.</div>
+    <table class="lat-table"><thead><tr><th>Datastore</th><th>Type</th><th>Backing</th><th class="lat-num">Mounted</th><th>State</th></tr></thead><tbody>
+      ${v.datastores.map((s) => html`<tr><td class="ink mono">${s.name}</td><td>${badge(s.type)}</td><td class="mono">${s.backing}</td><td class="lat-num">${s === vsan && v.applied && v.hostsApplied !== v.spec.hosts && !removed ? `${v.hostsApplied} → ${v.spec.hosts}` : s.mounted}</td><td>${s.state || 'Accessible'}</td></tr>`)}</tbody></table>
+    <div class="anno">${v.spec.architecture === 'osa' ? 'OSA deduplication and compression are not modeled from the capture. ' : ''}Fibre Channel is not simulated.</div>
+    ${iscsiEditor(d, locked)}
     ${nfsEditor(d, locked)}
     <h2 class="lat-card-title">Per-host defaults <span class="aside">applies to every host in ${v.name}</span></h2>
     <div class="fields c6">${['threads', 'domWorlds', 'claimedDevices', 'localDevices', 'vsanPnics'].map((id) => input(v, id, locked))}</div>
@@ -335,13 +360,38 @@ const actions = {
   nfsAdd(ctx, el, ev, data) { ui.nfsForm = { dc:activeNfsDC(data).name, index:-1, values:{name:'', remoteHost:'', remotePath:'', capacity:'', freeSpace:''}, errors:{} }; ctx.rerender(); },
   nfsEdit(ctx, el, ev, data) { const dc = activeNfsDC(data); const index = Number(el.dataset.arg); ui.nfsForm = { dc:dc.name, index, values:{...dc.nfs[index]}, errors:{} }; ctx.rerender(); },
   nfsInput(ctx, el) { if (ui.nfsForm) ui.nfsForm.values[el.dataset.f] = el.value; },
+  nfsScope(ctx, el, ev, data) { const v = ui.nfsForm?.values; if (!v || el.value === 'existing') return; v.clusters = el.value === 'all' ? [] : [data.cluster.key]; if (v.clusters.length) v.inaccessibleHosts = (v.inaccessibleHosts || []).filter(k => k.startsWith(data.cluster.key + '/')); ctx.rerender(); },
+  nfsHost(ctx, el) { const v = ui.nfsForm?.values; if (!v) return; v.inaccessibleHosts = (v.inaccessibleHosts || []).filter(k => k !== el.dataset.arg); if (el.value === 'inaccessible') v.inaccessibleHosts.push(el.dataset.arg); },
+  iscsiEdit(ctx, el, ev, data) {
+    const c = data.cluster, dc = data.draft.scenario.datacenters.find(x => x.name === c.datacenter);
+    const current = (dc.iscsi || []).find(x => x.cluster === c.key);
+    ui.iscsiForm = {cluster:c.key, value:clone(current || {cluster:c.key, adapters:[{name:'adapter-1',kind:'software'}], targets:[{name:'target-1',address:'',iqn:'',port:3260}], luns:[{name:'',target:'target-1',number:0,capacity:'',freeSpace:'',policy:'VMW_PSP_RR',paths:[{adapter:'adapter-1',state:'active'}]}]}), error:''}; ctx.rerender();
+  },
+  iscsiInput(ctx, el) { const f=ui.iscsiForm; if (f) f.value[el.dataset.group][Number(el.dataset.index)][el.dataset.f]=el.value; },
+  iscsiPath(ctx, el) { const f=ui.iscsiForm; if (f) f.value.luns[Number(el.dataset.index)].paths[Number(el.dataset.path)][el.dataset.f]=el.value; },
+  iscsiAdd(ctx, el) { const f=ui.iscsiForm; if (!f) return; const g=el.dataset.group; if (g==='adapters') f.value.adapters.push({name:`adapter-${f.value.adapters.length+1}`,kind:'software'}); if (g==='targets') f.value.targets.push({name:`target-${f.value.targets.length+1}`,address:'',iqn:'',port:3260}); if (g==='luns') f.value.luns.push({name:'',target:f.value.targets[0]?.name || '',number:0,capacity:'',freeSpace:'',policy:'VMW_PSP_RR',paths:[{adapter:f.value.adapters[0]?.name || '',state:'active'}]}); ctx.rerender(); },
+  iscsiRemove(ctx, el) { ui.iscsiForm?.value[el.dataset.group].splice(Number(el.dataset.index),1); ctx.rerender(); },
+  iscsiAddPath(ctx, el) { const f=ui.iscsiForm; if (f) f.value.luns[Number(el.dataset.index)].paths.push({adapter:f.value.adapters[0]?.name || '',state:'active'}); ctx.rerender(); },
+  iscsiRemovePath(ctx, el) { ui.iscsiForm?.value.luns[Number(el.dataset.index)].paths.splice(Number(el.dataset.path),1); ctx.rerender(); },
+  iscsiCancel(ctx) { ui.iscsiForm=null; ctx.rerender(); },
+  async iscsiDelete(ctx, el, ev, data) { const scn=clone(data.draft.scenario), dc=scn.datacenters.find(x=>x.name===data.cluster.datacenter); dc.iscsi=(dc.iscsi||[]).filter(x=>x.cluster!==data.cluster.key); await save(ctx,scn); },
+  async iscsiSave(ctx, el, ev, data) {
+    const f=ui.iscsiForm; if (!f || f.cluster!==data.cluster.key) return;
+    const v=clone(f.value), names=/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+    for (const t of v.targets) t.port=Number(t.port || 3260);
+    for (const l of v.luns) { l.number=Number(l.number); l.capacity=Number(l.capacity); l.freeSpace=Number(l.freeSpace); for (const p of l.paths) if (!p.host) delete p.host; }
+    const unique = xs => new Set(xs).size===xs.length;
+    if (!v.adapters.length || !v.targets.length || !v.luns.length || !unique(v.adapters.map(a=>a.name)) || !unique(v.targets.map(t=>t.name)) || !unique(v.luns.map(l=>l.name)) || v.adapters.some(a=>!names.test(a.name)) || v.targets.some(t=>!names.test(t.name)||!t.address||!t.iqn.startsWith('iqn.')||!Number.isInteger(t.port)||t.port<1||t.port>65535) || v.luns.some(l=>!names.test(l.name)||!v.targets.some(t=>t.name===l.target)||!Number.isSafeInteger(l.number)||l.number<0||!Number.isSafeInteger(l.capacity)||l.capacity<=0||l.capacity%512!==0||!Number.isSafeInteger(l.freeSpace)||l.freeSpace<0||l.freeSpace>l.capacity||!l.paths.length||l.paths.some(p=>!v.adapters.some(a=>a.name===p.adapter))||!unique(l.paths.map(p=>p.adapter+'/'+(p.host||''))))) { f.error='Check the names, target, sizes and paths. Capacity must be a multiple of 512 bytes. Each name and each path for a host must be unique.'; ctx.rerender(); return; }
+    const scn=clone(data.draft.scenario), dc=scn.datacenters.find(x=>x.name===data.cluster.datacenter); dc.iscsi=(dc.iscsi||[]).filter(x=>x.cluster!==v.cluster); dc.iscsi.push(v);
+    if (await save(ctx,scn)) {ui.iscsiForm=null; ctx.rerender();}
+  },
   nfsCancel(ctx) { ui.nfsForm = null; ctx.rerender(); },
   async nfsSave(ctx, el, ev, data) {
     const form = ui.nfsForm; if (!form || form.dc !== activeNfsDC(data).name) return;
     const scn = clone(data.draft.scenario), dc = scn.datacenters.find((x) => x.name === form.dc);
     dc.nfs = dc.nfs || []; form.errors = validateNFS(form.values, dc.nfs, form.index);
     if (Object.keys(form.errors).length) { ctx.rerender(); return; }
-    const n = {name:form.values.name.trim(), remoteHost:form.values.remoteHost.trim(), remotePath:form.values.remotePath.trim(), capacity:Number(form.values.capacity), freeSpace:Number(form.values.freeSpace)};
+    const n = {name:form.values.name.trim(), remoteHost:form.values.remoteHost.trim(), remotePath:form.values.remotePath.trim(), capacity:Number(form.values.capacity), freeSpace:Number(form.values.freeSpace), ...(form.values.clusters?.length ? {clusters:form.values.clusters} : {}), ...(form.values.inaccessibleHosts?.length ? {inaccessibleHosts:form.values.inaccessibleHosts} : {})};
     if (form.index < 0) dc.nfs.push(n); else dc.nfs[form.index] = n;
     if (await save(ctx, scn)) { ui.nfsForm = null; ctx.rerender(); }
   },

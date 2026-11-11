@@ -33,7 +33,8 @@ function storage() {
     ${row('NFS v3', badge('implemented', 'ok'), 'none', 'Shared inventory and host mounts; no vSAN performance data')}
     ${row('Local VMFS', badge('implemented', 'ok'), 'none', 'Per-host inventory; no vSAN performance data')}
     ${row('FC datastores', badge('not emulated', 'bad'), 'none', 'No populated capture available')}
-    ${row('iSCSI datastores and target service', badge('not emulated', 'bad'), 'none', 'No populated capture available; captured disabled-service faults are served')}
+    ${row('iSCSI-backed VMFS', badge('implemented', 'ok'), 'none', 'Shared inventory, adapters and paths; lab iSCSI shape not yet verified')}
+    ${row('vSAN iSCSI target service', badge('not emulated', 'bad'), 'none', 'Captured disabled-service faults are served')}
     ${row('vSAN file service', badge('not emulated', 'bad'), 'none', 'No populated capture available')}
     </tbody></table></section>`;
 }
