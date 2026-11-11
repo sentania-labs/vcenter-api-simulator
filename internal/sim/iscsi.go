@@ -14,7 +14,8 @@ func iscsiVolume(l topology.ISCSILUN) *types.HostVmfsVolume {
 }
 
 func (s *Simulator) createISCSIDatastore(ctx *simulator.Context, dc *topology.Datacenter, lun topology.ISCSILUN) (*simulator.Datastore, error) {
-	info := &types.VmfsDatastoreInfo{DatastoreInfo: types.DatastoreInfo{FreeSpace: lun.Spec.FreeSpace}, Vmfs: iscsiVolume(lun)}
+	info := vmfsInfo(iscsiVolume(lun))
+	info.FreeSpace = lun.Spec.FreeSpace
 	ds, err := s.createDatastore(ctx, s.dcs[dc], lun.Spec.Name, info, "VMFS")
 	if err != nil {
 		return nil, err

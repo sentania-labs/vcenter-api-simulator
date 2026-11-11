@@ -91,6 +91,9 @@ func TestISCSISharedLUNAndHostFailure(t *testing.T) {
 			if len(info.Vmfs.Extent) != 1 || info.Vmfs.Extent[0].DiskName != canonical || ds.Summary.FreeSpace != 1024 || len(ds.Host) != len(refs.Hosts) {
 				t.Fatal("datastore does not match LUN")
 			}
+			if info.FreeSpace != 1024 || info.MaxFileSize != 70368744177664 || info.MaxVirtualDiskCapacity != 68169720922112 || info.MaxMemoryFileSize != 70368744177664 || info.MaxPhysicalRDMFileSize != 70368744177664 || info.MaxVirtualRDMFileSize != 68169720922112 {
+				t.Fatalf("iSCSI VMFS limits differ from a VMFS6 volume: %+v", info)
+			}
 			for _, mount := range ds.Host {
 				if mount.Key == href && (mount.MountInfo.Accessible == nil || *mount.MountInfo.Accessible != (i != 1)) {
 					t.Fatal("host accessibility does not match paths")
