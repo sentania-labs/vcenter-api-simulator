@@ -45,7 +45,16 @@ func populatePlugStore(sd *types.HostStorageDeviceInfo) {
 		sd.PlugStoreTopology = p
 		return
 	}
+	deviceNames := map[string]string{}
+	for _, hba := range sd.HostBusAdapter {
+		b := hba.GetHostHostBusAdapter()
+		deviceNames[b.Key] = b.Device
+	}
 	for _, adapter := range sd.ScsiTopology.Adapter {
+		devName, ok := deviceNames[adapter.Adapter]
+		if !ok {
+			devName = adapter.Adapter
+		}
 		a := types.HostPlugStoreTopologyAdapter{Key: "plug-" + adapter.Adapter, Adapter: adapter.Adapter}
 		for _, target := range adapter.Target {
 			for _, lun := range target.Lun {
@@ -55,7 +64,7 @@ func populatePlugStore(sd *types.HostStorageDeviceInfo) {
 					devices[lun.ScsiLun] = idx
 					p.Device = append(p.Device, types.HostPlugStoreTopologyDevice{Key: "plug-" + lun.ScsiLun, Lun: lun.ScsiLun})
 				}
-				name := fmt.Sprintf("%s:C0:T%d:L%d", adapter.Adapter, target.Target, lun.Lun)
+				name := fmt.Sprintf("%s:C0:T%d:L%d", devName, target.Target, lun.Lun)
 				if sd.MultipathInfo != nil {
 					for _, m := range sd.MultipathInfo.Lun {
 						if m.Lun == lun.ScsiLun {
