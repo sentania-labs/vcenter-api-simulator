@@ -234,3 +234,28 @@ func TestCaptureReportsWriteFailure(t *testing.T) {
 		t.Fatal("full log write failure was not reported")
 	}
 }
+
+func TestCaptureBoundsMemoryButRetainsFullFile(t *testing.T) {
+	c, err := NewCapture(t.TempDir(), "", Settings{Full: true, Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large := strings.Repeat("x", maxRecordedBody+1000)
+	body := `<Envelope><Body><Fetch><_this type="HostSystem">host</_this><prop>` + large + `</prop></Fetch></Body></Envelope>`
+	c.Wrap(http.NotFoundHandler()).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(body)))
+	records := c.Records(true)
+	if len(records) != 1 || !records[0].RequestTruncated || len(records[0].Request) != maxRecordedBody {
+		t.Fatal("unanswered memory record was not bounded")
+	}
+	var output bytes.Buffer
+	if err = c.WriteJSONL(&output, false); err != nil {
+		t.Fatal(err)
+	}
+	var saved record
+	if err = json.Unmarshal(output.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Request != body || saved.RequestTruncated {
+		t.Fatal("full file did not retain the entire redacted body")
+	}
+}

@@ -16,18 +16,21 @@ const maxBody = 32 << 20
 const maxRecordedBody = 64 << 10
 
 type record struct {
-	Time       time.Time `json:"time"`
-	Path       string    `json:"path"`
-	Method     string    `json:"method"`
-	Operation  string    `json:"operation,omitempty"`
-	ObjectType string    `json:"objectType,omitempty"`
-	Properties []string  `json:"properties,omitempty"`
-	Request    string    `json:"request,omitempty"`
-	Fault      string    `json:"fault,omitempty"`
-	Unanswered bool      `json:"unanswered,omitempty"`
-	Status     int       `json:"status"`
-	Bytes      int       `json:"bytes"`
-	DurationMS float64   `json:"durationMs"`
+	Time                time.Time `json:"time"`
+	Path                string    `json:"path"`
+	Method              string    `json:"method"`
+	Operation           string    `json:"operation,omitempty"`
+	ObjectType          string    `json:"objectType,omitempty"`
+	Properties          []string  `json:"properties,omitempty"`
+	Request             string    `json:"request,omitempty"`
+	RequestTruncated    bool      `json:"requestTruncated,omitempty"`
+	PropertiesTruncated bool      `json:"propertiesTruncated,omitempty"`
+	PathTruncated       bool      `json:"pathTruncated,omitempty"`
+	Fault               string    `json:"fault,omitempty"`
+	Unanswered          bool      `json:"unanswered,omitempty"`
+	Status              int       `json:"status"`
+	Bytes               int       `json:"bytes"`
+	DurationMS          float64   `json:"durationMs"`
 }
 
 type response struct {
@@ -215,9 +218,6 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 		at = s[1]
 	}
 	out.Write(data[at:])
-	if out.Len() > maxRecordedBody {
-		return op, target, props, ""
-	}
 	return op, target, props, out.String()
 }
 

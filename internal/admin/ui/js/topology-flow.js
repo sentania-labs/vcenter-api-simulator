@@ -1,7 +1,7 @@
 // Topology flow pages: the Quick generator (#/topology/generator) and the
 // Review-before-apply page (#/topology/review). Imported by topology.js, which
 // routes to `generator` and `review`. Actions are prefixed gen. and rev.
-import { api, ApiError, html, raw, join, badge, banner, tile, int, signed, bytes, hms, hm, clone } from './lib.js';
+import { api, ApiError, html, raw, join, badge, banner, tile, int, signed, bytes, hms, hm, localTime, clone } from './lib.js';
 
 const num = (v) => { const n = parseInt(String(v ?? '').replace(/[^0-9-]/g, ''), 10); return Number.isFinite(n) ? n : 0; };
 const optNum = (v) => (String(v ?? '').trim() === '' ? null : num(v));
@@ -112,7 +112,7 @@ function famRows(p, scope) {
 
 function genRender(ctx, data) {
   const st = ctx.state;
-  const next = (st?.topology.version ?? 0) + 1;
+
   const p = pv?.projection;
   const sel = pv?.selected;
   const pending = draftInfo?.pending;
@@ -124,11 +124,11 @@ function genRender(ctx, data) {
   const canCreate = !pvErr && !pvBusy && !!pv && !genBusy;
   return html`
   <div class="page-head"><span class="page-title">Quick generator</span>${badge('new topology draft')}
-    <span class="anno">Creates a topology draft. The API keeps serving v${st?.topology.version} until you review and apply it.</span><span class="grow"></span>
+    <span class="anno">Creates a topology draft. The current settings remain active until you review and apply it.</span><span class="grow"></span>
     <button type="button" class="lat-btn" data-act="gen.cancel">Cancel</button>
-    <button type="button" class="lat-btn lat-btn--primary" data-act="gen.create" ${canCreate ? '' : 'disabled'}>Create draft v${next} &amp; review…</button></div>
+    <button type="button" class="lat-btn lat-btn--primary" data-act="gen.create" ${canCreate ? '' : 'disabled'}>Create draft &amp; review…</button></div>
 
-  ${pending?.exists ? banner('warn', html`<b>A pending draft already targets v${pending.target}</b> (${join([pending.topologyChanges ? `${int(pending.topologyChanges)} topology change${pending.topologyChanges === 1 ? '' : 's'}` : '', pending.telemetryChanges ? `${int(pending.telemetryChanges)} telemetry change${pending.telemetryChanges === 1 ? '' : 's'}` : ''].filter(Boolean), ', ')}). Creating a generated draft discards it, and the review step will list it as discarded. Apply or discard it first to keep it.`,
+  ${pending?.exists ? banner('warn', html`<b>A change is already pending</b> (${join([pending.topologyChanges ? `${int(pending.topologyChanges)} topology change${pending.topologyChanges === 1 ? '' : 's'}` : '', pending.telemetryChanges ? `${int(pending.telemetryChanges)} telemetry change${pending.telemetryChanges === 1 ? '' : 's'}` : '', pending.settingsChanges ? `${int(pending.settingsChanges)} settings change${pending.settingsChanges === 1 ? '' : 's'}` : ''].filter(Boolean), ', ')}). Creating a generated draft discards it, and the review step will list it as discarded. Apply or discard it first to keep it.`,
     html`<button type="button" class="lat-btn lat-btn--sm act" data-act="gen.openDraft">Open pending draft</button>`) : ''}
 
   <section class="lat-card" aria-labelledby="gen-presets"><h2 class="lat-card-title" id="gen-presets">Start from a preset <span class="aside">creates a draft straight away and opens the review · replaces the pending draft</span></h2>
@@ -165,7 +165,7 @@ function genRender(ctx, data) {
         <div class="lat-hint">Changing the seed replaces identities.</div></div></div>
       ${sameSeed
         ? banner('info', html`<b>Same seed: existing objects keep their IDs when their shape changes.</b> A removed object gets its previous IDs back if it returns with the same name and seed, and its registry entry has not been retired. Regenerate retires a cluster’s IDs. The review separates additions, restorations and removals.`)
-        : banner('info', html`<b>Applying a generated draft with a new seed replaces every identity.</b> VCF Operations will see every cluster as new and stop receiving data for the v${st?.topology.version} objects. To grow an existing topology without churn, edit clusters instead.`)}
+        : banner('info', html`<b>Applying a generated draft with a new seed replaces every identity.</b> VCF Operations will see every cluster as new and stop receiving data for the previous objects. To grow an existing topology without churn, edit clusters instead.`)}
     </section>
 
     <section class="lat-card" aria-labelledby="gen-proj">
@@ -260,7 +260,7 @@ function reviewRender(ctx, data) {
   }
   const rv = data.rv;
   const topoOnly = rv.rebuildsVcenter;
-  const boundary = hms(rv.boundary);
+  const boundary = localTime(rv.boundary);
   const ids = rv.identities || [];
   const hasChurnCard = (rv.warnings || []).some((w) => w.title === 'No identity churn');
   const newDraft = rv.origin && rv.origin !== 'edit';
@@ -273,12 +273,12 @@ function reviewRender(ctx, data) {
   const originText = rv.origin === 'generator' ? 'generated draft' : String(rv.origin).startsWith('preset:') ? 'preset ' + rv.origin.slice(7) : '';
   return html`
   <section class="lat-card" aria-labelledby="rev-title">
-    <div class="row"><span class="page-title" id="rev-title">Review before apply</span>${badge(rv.to === rv.from ? `telemetry only · topology v${rv.from} stays` : `topology v${rv.from} → v${rv.to}`, 'warn')}${originText ? badge(originText) : ''}<span class="grow"></span><span class="anno">Step 2 of 2 · nothing has changed yet</span></div>
+    <div class="row"><span class="page-title" id="rev-title">Review before apply</span>${badge(rv.rebuildsVcenter ? 'Topology changes' : rv.settingsChanges ? 'Settings changes' : 'Telemetry changes', 'warn')}${originText ? badge(originText) : ''}<span class="grow"></span><span class="anno">Step 2 of 2 · nothing has changed yet</span></div>
     ${rv.discarded ? banner('warn', html`<b>Replaces a pending draft.</b> ${rv.discarded}`) : ''}
     ${newDraft && cl && (cl.removed > 0 || cl.added > 0 || cl.restored > 0) ? banner('info', html`<b>Cluster changes.</b> ${int(cl.removed)} removed, ${int(cl.added)} added and ${int(cl.restored)} restored. Restored objects regain their previous IDs; removed objects are no longer present.`) : ''}
     <div class="g" style="grid-template-columns: 1.25fr 1fr;">
       <div class="stack" style="gap:10px">
-        <h2 class="lat-card-title">Changes <span class="aside">${int(rv.topologyChanges)} topology · ${int(rv.telemetryChanges)} telemetry</span></h2>
+        <h2 class="lat-card-title">Changes <span class="aside">${int(rv.topologyChanges)} topology · ${int(rv.telemetryChanges)} telemetry · ${int(rv.settingsChanges)} settings</span></h2>
         <div class="lat-table-scroll"><table class="lat-table review-changes"><thead><tr><th>Object</th><th>Field</th><th>Before</th><th>After</th><th>Effect</th></tr></thead>
           <tbody>${shownChanges.map((c) => html`<tr><td class="wrap ink">${c.object}</td><td class="wrap">${c.field}</td><td class="wrap">${c.before}</td><td class="wrap">${c.after}</td><td class="wrap">${badge(c.effect, effectKind(c.effect))}</td></tr>`)}
             ${!showAll && hiddenChanges > 0 ? html`<tr><td colspan="5"><button type="button" class="link" data-act="rev.showAll">Show all ${int(rv.changes.length + rv.moreChanges)} changes</button> <span class="subtle">· ${int(hiddenChanges + rv.moreChanges)} more</span></td></tr>` : ''}
@@ -290,7 +290,7 @@ function reviewRender(ctx, data) {
             <tbody>${ids.map((r, i) => html`<tr class="${i === ids.length - 1 ? '' : ''}">${i === ids.length - 1 ? html`<td class="ink"><b>${r.label === 'Performance entities' ? 'All perf entities' : r.label}</b></td>` : html`<td>${r.label}</td>`}<td class="num r">${int(r.kept)}</td><td class="num r">${int(r.added)}</td><td class="num r">${int(r.restored)}</td><td class="num r">${int(r.removed)}</td></tr>`)}</tbody></table><p class="anno">Restored counts cover registry-tracked clusters, hosts, VMs and NVMe disks. Added virtual disk and performance identities may include previously seen identities.</p>` : ''}
         ${(rv.warnings || []).filter((w) => w.title !== 'Replaces a pending draft').map((w) => banner(w.severity === 'ok' ? 'ok' : w.severity === 'warn' ? 'warn' : 'info', html`<b>${w.title}.</b> ${w.text}`))}
         ${topoOnly && !rv.identityChurn && !hasChurnCard && ids.length ? banner('ok', html`<b>No identity churn.</b> Nothing is removed or renamed.`) : ''}
-        ${!topoOnly && !(rv.warnings || []).some((w) => w.title === 'Telemetry only') ? banner('ok', html`<b>Telemetry only.</b> The running vCenter is not rebuilt. Sessions, history and identities are untouched.`) : ''}
+        ${!topoOnly && !rv.settingsChanges && !(rv.warnings || []).some((w) => w.title === 'Telemetry only') ? banner('ok', html`<b>Telemetry only.</b> The running vCenter is not rebuilt. Sessions, history and identities are untouched.`) : ''}
         <h2 class="lat-card-title">Not affected</h2>
         <div class="pill-row">${(rv.notAffected || []).map((x) => html`<span class="lat-pill">${x}</span>`)}</div>
       </div>
@@ -298,8 +298,8 @@ function reviewRender(ctx, data) {
       <div class="stack" style="gap:10px">
         <h2 class="lat-card-title" id="rev-when">When it takes effect</h2>
         <div class="opts" role="radiogroup" aria-labelledby="rev-when">
-          <label class="opt${when === 'boundary' ? ' is-on' : ''}"><input type="radio" class="sr-only" name="rev-when" value="boundary" data-chg="rev.when" data-k="rev-when-boundary" ${when === 'boundary' ? 'checked' : ''}><span class="dot"></span><span class="t">At next bucket boundary</span><span class="num">${boundary}</span>
-            <span class="s">${topoOnly ? html`Responses in flight finish on v${rv.from}; the ${hm(rv.boundary)} bucket is the first served from v${rv.to}.` : html`The change is read from the ${hm(rv.boundary)} bucket on.`}</span></label>
+          <label class="opt${when === 'boundary' ? ' is-on' : ''}"><input type="radio" class="sr-only" name="rev-when" value="boundary" data-chg="rev.when" data-k="rev-when-boundary" ${when === 'boundary' ? 'checked' : ''}><span class="dot"></span><span class="t">At the next update</span><span class="num" title="${rv.boundary}">${boundary}</span>
+            <span class="s">${topoOnly ? html`Responses in flight finish using the current settings; the new topology starts at ${boundary}.` : html`The changes take effect at ${boundary}.`}</span></label>
           <label class="opt${when === 'now' ? ' is-on' : ''}"><input type="radio" class="sr-only" name="rev-when" value="now" data-chg="rev.when" data-k="rev-when-now" ${when === 'now' ? 'checked' : ''}><span class="dot"></span><span class="t">Immediately</span><span></span>
             <span class="s">A collection cycle in progress may see both ${topoOnly ? 'topologies' : 'settings'}.</span></label>
         </div>

@@ -50,6 +50,9 @@ func (c *Controller) settle() {
 	if d == nil {
 		return
 	}
+	if d.Credentials != nil && len(c.auth.Diff(*d.Credentials)) == 0 {
+		d.Credentials = nil
+	}
 	if normal(d.Scenario) == normal(c.applied().sc) && len(d.Regenerate) == 0 && d.Scope == c.scope && d.Origin == "edit" && d.Credentials == nil {
 		c.draft = nil
 	}
@@ -61,6 +64,7 @@ type Pending struct {
 	Scheduled bool   `json:"scheduled"`
 	Topology  int    `json:"topologyChanges"`
 	Telemetry int    `json:"telemetryChanges"`
+	Settings  int    `json:"settingsChanges"`
 	Origin    string `json:"origin,omitempty"`
 	BasedOn   int    `json:"basedOn,omitempty"`
 	Target    int    `json:"target,omitempty"`
@@ -84,6 +88,7 @@ func (c *Controller) pending() Pending {
 	if err == nil {
 		p.Topology = rev.TopologyCount
 		p.Telemetry = rev.TelemetryCount
+		p.Settings = rev.SettingsCount
 		p.Target = rev.To
 	}
 	return p
@@ -329,6 +334,7 @@ type Review struct {
 	More             int           `json:"moreChanges"`
 	TopologyCount    int           `json:"topologyChanges"`
 	TelemetryCount   int           `json:"telemetryChanges"`
+	SettingsCount    int           `json:"settingsChanges"`
 	RebuildsVCenter  bool          `json:"rebuildsVcenter"`
 	Identities       []IdentityRow `json:"identities"`
 	Churn            bool          `json:"identityChurn"`
@@ -418,13 +424,20 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 			Effect: "projections only", Area: "Telemetry"})
 	}
 	if d.Credentials != nil {
-		rv.Changes = append(rv.Changes, Change{Object: "vCenter users", Field: "Credentials", Before: "current users", After: "updated users", Effect: "changed users are signed out", Area: "Credentials"})
-		rv.SessionsDropped = true
+		for _, change := range c.auth.Diff(*d.Credentials) {
+			rv.Changes = append(rv.Changes, Change{Object: change.Name, Field: "vCenter login", Before: change.Before, After: change.After, Effect: change.Effect, Area: "Credentials"})
+			if change.EndsSessions {
+				rv.SessionsDropped = true
+			}
+		}
 	}
 	for _, ch := range rv.Changes {
-		if ch.Area == "Topology" {
+		switch ch.Area {
+		case "Topology":
 			rv.TopologyCount++
-		} else {
+		case "Credentials":
+			rv.SettingsCount++
+		default:
 			rv.TelemetryCount++
 		}
 	}
@@ -1067,7 +1080,10 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 			out = append(out, "seed "+d.Scenario.Seed)
 		}
 	} else {
-		out = append(out, "every cluster, host, VM and identity", "sessions and the running vCenter")
+		out = append(out, "every cluster, host, VM and identity", "the running vCenter")
+		if d.Credentials == nil {
+			out = append(out, "sessions")
+		}
 	}
 	if !teleChanged {
 		out = append(out, "latency and fault rules")
@@ -1087,13 +1103,16 @@ func warnings(old *running, nt *topology.Topology, d *Draft, rv *Review, np *Pro
 			fmt.Sprintf("%s entities per cycle (projected, not measured). Past about 20,000 the collection cycle approaches the five-minute window on the reference pack.", num(rv.After.Entities))})
 	}
 	if rv.SessionsDropped {
-		w = append(w, Warning{"info", "Sessions end at the swap",
-			"The new vCenter starts with an empty session store. A client mid-cycle at the boundary logs in again, as it would after a vCenter restart."})
+		if rv.RebuildsVCenter {
+			w = append(w, Warning{"info", "Sessions end at the swap", "The new vCenter starts with an empty session store. A client mid-cycle at the boundary logs in again, as it would after a vCenter restart."})
+		} else {
+			w = append(w, Warning{"info", "Changed users are signed out", "Sessions for changed or removed users end when the change is applied."})
+		}
 	}
 	for _, k := range d.Regenerate {
 		w = append(w, Warning{"warn", "Regenerate " + k, "Every host, disk and VM UUID in this cluster is replaced. VCF Operations treats them as new objects."})
 	}
-	if !rv.RebuildsVCenter && rv.TelemetryCount > 0 {
+	if !rv.RebuildsVCenter && rv.TelemetryCount > 0 && rv.SettingsCount == 0 {
 		w = append(w, Warning{"ok", "Telemetry only", "The running vCenter is not rebuilt. History and identities are untouched."})
 	}
 	if rv.Discarded != "" {

@@ -866,8 +866,12 @@ func (h *handler) expireSOAPSession(r *http.Request) {
 var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)\b`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.accessMu.RLock()
-	defer h.accessMu.RUnlock()
+	// Serialize session creation with credential changes, without making a
+	// slow inventory or performance query delay an administrative update.
+	if r.URL.Path == "/api/session" && r.Method == http.MethodPost {
+		h.accessMu.RLock()
+		defer h.accessMu.RUnlock()
+	}
 	h.expireSOAPSession(r)
 	if h.rest.serve(w, r) {
 		return
@@ -901,6 +905,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
+			if strings.HasPrefix(r.URL.Path, "/sdk") && bytes.Contains(body, []byte("SessionManager")) {
+				h.accessMu.RLock()
+				defer h.accessMu.RUnlock()
+			}
 			if h.readOnlyRequest(r, body) {
 				noPermission(w)
 				return

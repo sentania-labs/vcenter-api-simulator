@@ -44,7 +44,7 @@ func (c *Controller) Apply(when string) (*ApplyResult, error) {
 		s.timer = time.AfterFunc(at.Sub(c.now()), func() { c.fire(s) })
 		c.scheduled, c.draft = s, nil
 		return &ApplyResult{Scheduled: true, At: at, Version: c.applied().version + 1,
-			Message: "Scheduled for the " + at.Format("15:04") + " bucket"}, nil
+			Message: "Change scheduled"}, nil
 	}
 	return nil, invalid("when must be %q or %q", "boundary", "now")
 }
@@ -156,6 +156,9 @@ func (c *Controller) timelineEntry(rv *Review, d *Draft, version int) TimelineEn
 	area := "Topology"
 	if !rv.RebuildsVCenter {
 		area = "Telemetry"
+		if rv.SettingsCount > 0 {
+			area = "Settings"
+		}
 	}
 	var parts []string
 	for i, ch := range rv.Changes {

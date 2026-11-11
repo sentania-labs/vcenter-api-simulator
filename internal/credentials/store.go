@@ -186,3 +186,47 @@ func (s *Store) Commit(snapshot Snapshot) ([]string, error) {
 	s.current = next
 	return changed, nil
 }
+
+// Change describes a draft without exposing password material.
+type Change struct {
+	Name, Before, After, Effect string
+	EndsSessions                bool
+}
+
+func (s *Store) Diff(next Snapshot) []Change {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []Change
+	if s.current.AnyLogin != next.AnyLogin {
+		before, after := "Specific users", "Any non-empty login"
+		if !next.AnyLogin {
+			before, after = after, before
+		}
+		out = append(out, Change{Name: "Login policy", Before: before, After: after, Effect: "existing sessions end", EndsSessions: true})
+	}
+	names := map[string]bool{}
+	for name := range s.current.users {
+		names[name] = true
+	}
+	for name := range next.users {
+		names[name] = true
+	}
+	ordered := make([]string, 0, len(names))
+	for name := range names {
+		ordered = append(ordered, name)
+	}
+	sort.Strings(ordered)
+	for _, name := range ordered {
+		old, was := s.current.users[name]
+		updated, exists := next.users[name]
+		switch {
+		case !was:
+			out = append(out, Change{Name: name, Before: "—", After: updated.Role, Effect: "user added"})
+		case !exists:
+			out = append(out, Change{Name: name, Before: old.Role, After: "removed", Effect: "user is signed out", EndsSessions: true})
+		case old != updated:
+			out = append(out, Change{Name: name, Before: old.Role, After: updated.Role, Effect: "credentials updated; user is signed out", EndsSessions: true})
+		}
+	}
+	return out
+}

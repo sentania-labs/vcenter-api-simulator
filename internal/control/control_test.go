@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -1547,6 +1548,7 @@ func TestStorageDraftMarksAffectedClusterAndStandby(t *testing.T) {
 }
 
 func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
+	testPassword, wrongPassword := uuid.NewString(), uuid.NewString()
 	cases := []struct {
 		name       string
 		sc         *scenario.Scenario
@@ -1555,8 +1557,8 @@ func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
 		user, pass string
 	}{
 		{name: "default", sc: scenario.Phase1("default-auth"), user: DefaultUsername, pass: DefaultPassword},
-		{name: "environment override", sc: scenario.Phase1("env-auth"), extra: map[string]string{"operator": "example-test-credential"}, user: "operator", pass: "example-test-credential"},
-		{name: "any login", sc: scenario.Phase1("open-auth"), any: true, user: "arbitrary", pass: "example-test-credential"},
+		{name: "environment override", sc: scenario.Phase1("env-auth"), extra: map[string]string{"operator": testPassword}, user: "operator", pass: testPassword},
+		{name: "any login", sc: scenario.Phase1("open-auth"), any: true, user: "arbitrary", pass: testPassword},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1568,7 +1570,7 @@ func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
 			api := newAPIClient(t, ctl)
 			if !tc.any {
 				bad := newAPIClient(t, ctl)
-				code, body := bad.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+tc.user+`</userName><password>wrong-credential</password></Login>`)
+				code, body := bad.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+tc.user+`</userName><password>`+wrongPassword+`</password></Login>`)
 				if code != http.StatusInternalServerError || !strings.Contains(body, "InvalidLogin") {
 					t.Fatalf("wrong SOAP credential: %d %s", code, body)
 				}
@@ -1584,7 +1586,7 @@ func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
 				req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
 				pass := tc.pass
 				if bad {
-					pass = "wrong-credential"
+					pass = wrongPassword
 				}
 				req.SetBasicAuth(tc.user, pass)
 				res, err := http.DefaultClient.Do(req)
@@ -1605,6 +1607,7 @@ func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
 }
 
 func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
+	updatedPassword := uuid.NewString()
 	dir := t.TempDir()
 	sc := scenario.Phase1("credential-draft")
 	ctl, err := New(Options{Scenario: sc, SourceHash: "source-a", DataDir: dir})
@@ -1627,15 +1630,24 @@ func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
 	}
 	res.Body.Close()
 	oldSim := ctl.applied().sim
-	if _, err = ctl.PutUser(DefaultUsername, "updated-test-credential", "administrator"); err != nil {
+	if _, err = ctl.PutUser(DefaultUsername, updatedPassword, "administrator"); err != nil {
 		t.Fatal(err)
 	}
 	viewBytes, _ := json.Marshal(ctl.CredentialsView())
-	if strings.Contains(string(viewBytes), "updated-test-credential") || strings.Contains(string(viewBytes), "$2") {
+	if strings.Contains(string(viewBytes), updatedPassword) || strings.Contains(string(viewBytes), "$2") {
 		t.Fatal("credential draft exposed a secret")
 	}
-	if _, err = ctl.Review(); err != nil {
+	review, err := ctl.Review()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if review.SettingsCount != 1 || !review.SessionsDropped || review.RebuildsVCenter {
+		t.Fatal("credential review did not explain the session change")
+	}
+	for _, text := range review.NotAffected {
+		if strings.Contains(text, "sessions") {
+			t.Fatal("review incorrectly says sessions are unaffected")
+		}
 	}
 	if _, err = ctl.Apply("now"); err != nil {
 		t.Fatal(err)
@@ -1647,7 +1659,7 @@ func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(persisted), "updated-test-credential") || strings.Contains(string(persisted), DefaultPassword) {
+	if strings.Contains(string(persisted), updatedPassword) || strings.Contains(string(persisted), DefaultPassword) {
 		t.Fatal("credential file contains a plaintext password")
 	}
 	info, err := os.Stat(filepath.Join(dir, "vcenter-users.json"))
@@ -1671,7 +1683,7 @@ func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
 	if newAPIClient(t, ctl).login(DefaultUsername, DefaultPassword) {
 		t.Fatal("old password accepted")
 	}
-	if !newAPIClient(t, ctl).login(DefaultUsername, "updated-test-credential") {
+	if !newAPIClient(t, ctl).login(DefaultUsername, updatedPassword) {
 		t.Fatal("new password rejected")
 	}
 	ctl.Close()
@@ -1680,7 +1692,7 @@ func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ctl.Close()
-	if !newAPIClient(t, ctl).login(DefaultUsername, "updated-test-credential") {
+	if !newAPIClient(t, ctl).login(DefaultUsername, updatedPassword) {
 		t.Fatal("password change did not persist")
 	}
 	ctl.Close()
@@ -1695,6 +1707,7 @@ func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
 }
 
 func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
+	readerPassword := uuid.NewString()
 	ctl, err := New(Options{Scenario: scenario.Phase1("readonly"), DataDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -1704,7 +1717,7 @@ func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
 	if !admin.login(DefaultUsername, DefaultPassword) {
 		t.Fatal("admin login failed")
 	}
-	if _, err = ctl.PutUser("reader@vsphere.local", "readonly-test-credential", "read-only"); err != nil {
+	if _, err = ctl.PutUser("reader@vsphere.local", readerPassword, "read-only"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = ctl.Apply("now"); err != nil {
@@ -1716,7 +1729,7 @@ func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
 		t.Fatalf("unrelated session revoked: %d", status)
 	}
 	reader := newAPIClient(t, ctl)
-	if !reader.login("reader@vsphere.local", "readonly-test-credential") {
+	if !reader.login("reader@vsphere.local", readerPassword) {
 		t.Fatal("reader login failed")
 	}
 	status, body := reader.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
@@ -1888,6 +1901,33 @@ func TestChangingCertificateEndsSessionsAndRejectsInvalidUpload(t *testing.T) {
 	status, _ = api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
 	if status != 500 {
 		t.Fatal("certificate change did not end SOAP session")
+	}
+	newClient := newAPIClient(t, ctl)
+	if !newClient.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("login after rotation failed")
+	}
+	uploadDir := filepath.Join(dir, "upload-source")
+	if _, err := serve.LoadOrCreateCertificate(uploadDir, []string{"uploaded.example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	certPEM, err := os.ReadFile(filepath.Join(uploadDir, "cert.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM, err := os.ReadFile(filepath.Join(uploadDir, "key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploaded, err := ctl.UploadCertificate(string(certPEM), string(keyPEM))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploaded.Fingerprint == info.Fingerprint || len(uploaded.Names) != 1 || uploaded.Names[0] != "uploaded.example.test" {
+		t.Fatal("uploaded certificate not selected")
+	}
+	status, _ = newClient.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != 500 {
+		t.Fatal("certificate upload did not end SOAP session")
 	}
 }
 

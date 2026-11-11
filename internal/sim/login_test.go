@@ -45,7 +45,7 @@ func TestLoginCredentials(t *testing.T) {
 			}
 			err = session.NewManager(vc).Login(context.Background(), url.UserPassword(tc.tryUser, tc.try))
 			if (err == nil) != tc.ok {
-				t.Fatalf("login as %s/%s: err=%v, want ok=%v", tc.tryUser, tc.try, err, tc.ok)
+				t.Fatalf("login as %s: err=%v, want ok=%v", tc.tryUser, err, tc.ok)
 			}
 		})
 	}

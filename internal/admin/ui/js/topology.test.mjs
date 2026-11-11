@@ -192,3 +192,11 @@ test('reverting host count restores storage faults for the returned hosts', asyn
  assert.deepEqual(saved.datacenters[0].nfs[0].inaccessibleHosts,[host]);
  assert.deepEqual(saved.datacenters[0].iscsi[0].luns[0].paths[1],{adapter:'a',host,state:'dead'});
 });
+
+test('review is clearly disabled without changes and opens review when enabled', () => {
+ const data = editorData(); const empty = String(topology.render(ctx, data));
+ assert.match(empty, /data-act="topo.review" disabled/); assert.match(empty, /No pending changes/);
+ const withChanges = { ...ctx, state: { ...ctx.state, pending: { exists: true, topologyChanges: 1 } } };
+ const active = String(topology.render(withChanges, data)); assert.match(active, /class="lat-btn lat-btn--primary" data-act="topo.review"/); assert.doesNotMatch(active, /No pending changes/);
+ let route = ''; topology.actions['topo.review']({ go(value) { route = value; } }); assert.equal(route, '#/topology/review');
+});

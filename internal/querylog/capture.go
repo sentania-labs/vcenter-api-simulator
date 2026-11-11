@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -118,8 +119,36 @@ func appendBounded(v []record, r record) []record {
 func (c *Capture) save(r record) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	stored := r
+	if len(stored.Path) > 2048 {
+		stored.Path = strings.Clone(stored.Path[:2048])
+		stored.PathTruncated = true
+	}
+	if len(stored.Operation) > 256 {
+		stored.Operation = strings.Clone(stored.Operation[:256])
+	}
+	if len(stored.ObjectType) > 256 {
+		stored.ObjectType = strings.Clone(stored.ObjectType[:256])
+	}
+	if len(stored.Request) > maxRecordedBody {
+		stored.Request = strings.Clone(stored.Request[:maxRecordedBody])
+		stored.RequestTruncated = true
+	}
+	if len(stored.Properties) > 128 {
+		stored.Properties = stored.Properties[:128]
+		stored.PropertiesTruncated = true
+	}
+	if len(stored.Properties) > 0 {
+		stored.Properties = append([]string(nil), stored.Properties...)
+		for i, value := range stored.Properties {
+			if len(value) > 256 {
+				stored.Properties[i] = strings.Clone(value[:256])
+				stored.PropertiesTruncated = true
+			}
+		}
+	}
 	if c.settings.Full {
-		c.full = appendBounded(c.full, r)
+		c.full = appendBounded(c.full, stored)
 		f, err := os.OpenFile(c.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 		if err == nil {
 			err = json.NewEncoder(f).Encode(r)
@@ -134,7 +163,7 @@ func (c *Capture) save(r record) {
 		}
 	}
 	if c.settings.Unanswered && r.Unanswered {
-		c.unanswered = appendBounded(c.unanswered, r)
+		c.unanswered = appendBounded(c.unanswered, stored)
 		if c.settings.Stdout && c.stdout != nil {
 			if err := json.NewEncoder(c.stdout).Encode(r); err != nil {
 				c.lastError = "Unanswered requests could not be written to stdout."

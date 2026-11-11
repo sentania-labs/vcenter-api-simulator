@@ -10,15 +10,16 @@
 //     keys?(ctx, ev, data)                      (keydown on the page)
 //     pollMs?                                   (reload data on this interval)
 //   }
-import { api, ApiError, html, raw, join, esc, badge, banner, int, hms, hm, bytes } from './lib.js';
+import { api, ApiError, html, raw, join, esc, badge, banner, int, hms, hm, bytes, scheduledMessage } from './lib.js';
 import overview from './overview.js';
 import topology from './topology.js';
 import telemetry from './telemetry.js';
 import activity from './activity.js';
 import compat from './compat.js';
+import settings from './settings.js';
 
-const screens = { overview, topology, telemetry, activity, compat };
-const TABS = [['overview', 'Overview'], ['topology', 'Topology'], ['telemetry', 'Telemetry'], ['activity', 'API Activity'], ['compat', 'Compatibility']];
+const screens = { overview, topology, telemetry, activity, compat, settings };
+const TABS = [['overview', 'Overview'], ['topology', 'Topology'], ['telemetry', 'Telemetry'], ['activity', 'API Activity'], ['compat', 'Compatibility'], ['settings', 'Simulator settings']];
 
 export const ctx = {
   state: null, route: { name: 'overview', parts: [], query: new URLSearchParams() }, data: null, loadError: null,
@@ -101,16 +102,16 @@ function pendingOnly() {
   // the review, generator and telemetry screens carry their own apply controls
   const onReview = (ctx.route.name === 'topology' && ['review', 'generator'].includes(ctx.route.parts[0])) || ctx.route.name === 'telemetry';
   if (p.scheduled) {
-    const what = p.topologyChanges ? html`Topology v${p.target} is scheduled` : html`A telemetry change is scheduled`;
-    return banner('info', html`<b>${what}</b> for ${hms(p.at)}. The API keeps serving ${p.topologyChanges ? html`v${st.topology.version}` : 'the current settings'} until then.`,
+    return banner('info', scheduledMessage(p),
       html`<button type="button" class="lat-btn act" data-act="app.cancelScheduled">Cancel schedule</button>`);
   }
   if (!p.exists || onReview) return '';
   const bits = [];
   if (p.topologyChanges) bits.push(`${int(p.topologyChanges)} unapplied topology change${p.topologyChanges === 1 ? '' : 's'}`);
   if (p.telemetryChanges) bits.push(`${int(p.telemetryChanges)} unapplied telemetry change${p.telemetryChanges === 1 ? '' : 's'}`);
+  if (p.settingsChanges) bits.push(`${int(p.settingsChanges)} unapplied settings change${p.settingsChanges === 1 ? '' : 's'}`);
   const text = bits.join(' and ') || 'An unapplied change';
-  return banner('warn', html`<b>${text}</b> · The API keeps serving topology v${st.topology.version} until you apply. Edits wait for Apply and land at a bucket boundary; history is never reset by a latency or fault edit.`,
+  return banner('warn', html`<b>${text}</b> · The current settings remain active until you apply the changes.`,
     html`<button type="button" class="lat-btn act" data-act="app.review">Review change</button>`);
 }
 
@@ -128,12 +129,12 @@ function hdr() {
     <span class="app-name">vCenter API Simulator</span><span class="lat-ver" style="white-space:nowrap">${st.version}</span>
     <span class="hdr-sep"></span>
     <span class="hdr-kv"><span class="k">API endpoint</span><span class="v">${host}:${port}</span></span>
-    <span class="hdr-kv"><span class="k">Version profile</span><span class="v">vCenter ${st.profile.version} · build ${st.profile.build} (captured)</span></span>
+    <span class="hdr-kv"><span class="k">Version profile</span><span class="v">vCenter ${st.profile.version} · build ${st.profile.build}</span></span>
     <span class="hdr-kv"><span class="k">Admin UI</span><span class="v">${loop ? 'private' : 'network'} · ${st.admin}</span></span>
     <span class="hdr-kv"><span class="k">Sim clock (UTC)</span><span class="v" id="hdr-clock">${CLOCK}</span></span>
     <span class="hdr-spacer"></span>
     <span class="hdr-kv" style="align-items:flex-end"><span class="k">API service</span><span>${badge(paused ? 'paused' : 'running', paused ? 'warn' : 'ok')} <span class="subtle" style="font-size:11.5px">since ${hms(st.since)}</span></span></span>
-    <span class="hdr-actions"><button type="button" class="lat-btn" data-act="app.pause">${paused ? 'Resume serving…' : 'Pause serving…'}</button></span>
+    <span class="hdr-actions"><button type="button" class="lat-btn" data-act="app.pause">${paused ? 'Resume serving…' : 'Pause serving…'}</button><button type="button" class="lat-btn" data-act="app.logout">Sign out</button></span>
   </header>`;
 }
 
@@ -145,13 +146,14 @@ function tabs() {
     const word = p.scheduled ? 'scheduled' : 'pending';
     if (p.exists && p.topologyChanges) badges.topology = badge(`${p.topologyChanges} ${word}`, 'warn');
     if (p.exists && p.telemetryChanges) badges.telemetry = badge(`${p.telemetryChanges} ${word}`, 'warn');
+    if (p.exists && p.settingsChanges) badges.settings = badge(`${p.settingsChanges} ${word}`, 'warn');
     const f = st.activity.faults;
     if (f.unexpected) badges.activity = badge(`${int(f.unexpected)} unexpected`, 'bad');
     else if (f.denied) badges.activity = badge(`${int(f.denied)} denied`, 'bad');
     else if (f.injected) badges.activity = badge(`${int(f.injected)} injected`, 'warn');
     else if (st.activity.lastCycle.calls && st.activity.lastCycle.entitiesWithData === 0 && st.activity.lastCycle.steps.some((s) => s.name === 'VsanPerfQueryPerf')) badges.activity = badge('0 series', 'bad');
   }
-  const t = st ? html`topology <span class="mono">v${st.topology.version}</span> · seed <span class="mono">${st.topology.seed}</span> · cfg <span class="mono">${st.topology.config}</span> · <kbd>?</kbd> shortcuts` : '';
+  const t = st ? html`<kbd>?</kbd> shortcuts` : '';
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   return html`<div class="lat-tabs" role="tablist">${TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected="${ctx.route.name === id}" class="lat-tab${ctx.route.name === id ? ' is-on' : ''}" data-act="app.tab" data-arg="${id}">${label}${badges[id] || ''}</button>`)}</div>
     <span class="tab-meta">${t}<button type="button" class="lat-btn lat-btn--ghost lat-btn--sm theme-btn" data-act="app.theme" aria-label="Switch to ${dark ? 'light' : 'dark'} theme">${dark ? 'Light' : 'Dark'} theme</button></span>`;
@@ -249,6 +251,7 @@ function renderPage(force) {
 // ---- events -----------------------------------------------------------------
 const appActions = {
   tab(c, el) { c.go('#/' + el.dataset.arg); },
+  async logout() { try { await api('/auth/logout', { method: 'POST' }); } finally { location.assign('/login'); } },
   review() { ctx.go('#/topology/review'); },
   async cancelScheduled() { await ctx.run(() => api('/apply/cancel', { method: 'POST' }), 'Schedule cancelled; the change is a draft again.'); await ctx.refresh(); },
   async dismissError() { await ctx.run(() => api('/error/dismiss', { method: 'POST' })); await ctx.refreshState(); },

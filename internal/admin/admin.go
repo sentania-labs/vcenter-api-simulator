@@ -227,6 +227,14 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 		}
 	}
 
+	for _, path := range []string{"/claim", "/login"} {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			content, _ := uiFiles.ReadFile("ui/auth.html")
+			_, _ = w.Write(content)
+		})
+	}
 	sub, _ := fs.Sub(uiFiles, "ui")
 	mux.Handle("GET /", noCache(http.FileServerFS(sub)))
 	return guard(mux, allowedHosts)

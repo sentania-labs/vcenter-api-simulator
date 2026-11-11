@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +13,10 @@ import (
 	"time"
 )
 
+func testPassword() string { return uuid.NewString() }
+
 func TestConsoleAuthClaimAndSessions(t *testing.T) {
+	password := testPassword()
 	dir := t.TempDir()
 	a, err := newConsoleAuth(dir, "")
 	if err != nil {
@@ -24,7 +29,7 @@ func TestConsoleAuthClaimAndSessions(t *testing.T) {
 	results := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); results <- a.claim("test-password") }()
+		go func() { defer wg.Done(); results <- a.claim(password) }()
 	}
 	wg.Wait()
 	close(results)
@@ -48,18 +53,18 @@ func TestConsoleAuthClaimAndSessions(t *testing.T) {
 	if _, err := a.login("incorrect"); !errors.Is(err, errCredentials) {
 		t.Fatalf("wrong password: %v", err)
 	}
-	token, err := a.login("test-password")
+	token, err := a.login(password)
 	if err != nil || !a.valid(token) {
 		t.Fatalf("login: %v", err)
 	}
-	restarted, err := newConsoleAuth(dir, "other-password")
+	restarted, err := newConsoleAuth(dir, testPassword())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if restarted.valid(token) {
 		t.Fatal("session survived restart")
 	}
-	if _, err := restarted.login("test-password"); err != nil {
+	if _, err := restarted.login(password); err != nil {
 		t.Fatalf("claim did not persist: %v", err)
 	}
 	now := time.Now()
@@ -70,7 +75,8 @@ func TestConsoleAuthClaimAndSessions(t *testing.T) {
 }
 
 func TestConsoleAuthSeedAndRateLimit(t *testing.T) {
-	a, err := newConsoleAuth(t.TempDir(), "seed-password")
+	password := testPassword()
+	a, err := newConsoleAuth(t.TempDir(), password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +88,12 @@ func TestConsoleAuthSeedAndRateLimit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := a.login("seed-password"); !errors.Is(err, errRateLimited) {
+	if _, err := a.login(password); !errors.Is(err, errRateLimited) {
 		t.Fatalf("rate limit: %v", err)
 	}
 	now := time.Now()
 	a.now = func() time.Time { return now.Add(time.Minute) }
-	token, err := a.login("seed-password")
+	token, err := a.login(password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +104,8 @@ func TestConsoleAuthSeedAndRateLimit(t *testing.T) {
 }
 
 func TestConsoleAuthHTTP(t *testing.T) {
+	password := testPassword()
+	data, _ := json.Marshal(map[string]string{"password": password})
 	a, err := newConsoleAuth(t.TempDir(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -115,15 +123,15 @@ func TestConsoleAuthHTTP(t *testing.T) {
 	if w := request("GET", "/api/state", "", nil); w.Code != http.StatusUnauthorized {
 		t.Fatalf("unclaimed API: %d", w.Code)
 	}
-	w := request("POST", "/api/auth/claim", `{"password":"test-password"}`, nil)
+	w := request("POST", "/api/auth/claim", string(data), nil)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("claim: %d", w.Code)
 	}
 	cookie := w.Result().Cookies()[0]
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteStrictMode {
-		t.Fatalf("cookie flags: %+v", cookie)
+		t.Fatal("incorrect cookie security flags")
 	}
-	if w := request("POST", "/api/auth/claim", `{"password":"test-password"}`, nil); w.Code != http.StatusConflict {
+	if w := request("POST", "/api/auth/claim", string(data), nil); w.Code != http.StatusConflict {
 		t.Fatalf("second claim: %d", w.Code)
 	}
 	if w := request("GET", "/api/state", "", cookie); w.Code != http.StatusNoContent {

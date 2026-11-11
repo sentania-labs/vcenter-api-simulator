@@ -171,7 +171,7 @@ export default {
           <a class="lat-btn" href="/api/capture/unanswered.jsonl" download>Download unanswered requests</a></div>
         ${records.length ? records.map((r) => html`<details class="well"><summary>${hmsms(r.time)} · ${r.method} ${r.path} · ${r.operation || 'request'} · HTTP ${r.status}${r.fault ? ` · ${r.fault}` : ''}</summary>
           <p>Object: ${r.objectType || '—'} · Properties: ${(r.properties || []).join(', ') || '—'}</p>
-          ${r.request ? html`<pre class="code-well">${r.request}</pre>` : html`<p>No request body was kept.</p>`}</details>`)
+          ${r.request ? html`<pre class="code-well">${r.request}</pre>${r.requestTruncated ? html`<p class="anno">This in-memory record is shortened. The full log, if enabled, has the complete redacted request.</p>` : ''}` : html`<p>No request body was kept.</p>`}</details>`)
           : html`<div class="empty">No unanswered requests have been captured.</div>`}</section>`;
     }
 

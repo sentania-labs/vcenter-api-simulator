@@ -72,5 +72,6 @@ func (c *Controller) SetAnyLogin(enabled bool) (CredentialsView, error) {
 		return CredentialsView{}, err
 	}
 	d.AnyLogin = enabled
+	c.settle()
 	return c.credentialsView(), nil
 }

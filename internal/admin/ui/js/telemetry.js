@@ -153,9 +153,9 @@ function timelineCard(ctx, d) {
   const rev = d.review; const st = ctx.state;
   const pend = rev ? rev.changes.map(chgText).join(' · ') : '';
   return html`<section class="lat-card" aria-labelledby="tl-time"><h2 class="lat-card-title" id="tl-time">Scenario timeline <span class="aside">every change lands on a 5-minute bucket boundary</span></h2>
-    <table class="lat-table"><thead><tr><th>Bucket (UTC)</th><th>Change</th><th>Area</th><th>History</th><th>Identities</th><th class="r">Version</th></tr></thead><tbody>
-    ${rev && st.pending.exists ? html`<tr class="is-pending"><td class="mono ink">${hm(rev.boundary)}</td><td class="ink wrap">${pend || 'pending change'} ${badge('pending', 'warn')}</td><td>${rev.rebuildsVcenter ? 'Topology' : 'Telemetry'}</td><td>preserved</td><td>${rev.identityChurn ? 'changes' : 'unchanged'}</td><td class="num r">v${rev.to}</td></tr>` : ''}
-    ${d.timeline.slice(0, 12).map((t) => html`<tr><td class="mono ink">${hm(t.bucket)}</td><td class="ink wrap">${t.text}</td><td>${t.area}</td><td>${t.history}</td><td>${t.identities}</td><td class="num r">v${t.version}</td></tr>`)}</tbody></table></section>`;
+    <table class="lat-table"><thead><tr><th>Bucket (UTC)</th><th>Change</th><th>Area</th><th>History</th><th>Identities</th></tr></thead><tbody>
+    ${rev && st.pending.exists ? html`<tr class="is-pending"><td class="mono ink">${hm(rev.boundary)}</td><td class="ink wrap">${pend || 'pending change'} ${badge('pending', 'warn')}</td><td>${rev.rebuildsVcenter ? 'Topology' : 'Telemetry'}</td><td>preserved</td><td>${rev.identityChurn ? 'changes' : 'unchanged'}</td></tr>` : ''}
+    ${d.timeline.slice(0, 12).map((t) => html`<tr><td class="mono ink">${hm(t.bucket)}</td><td class="ink wrap">${t.text}</td><td>${t.area}</td><td>${t.history}</td><td>${t.identities}</td></tr>`)}</tbody></table></section>`;
 }
 
 function actionBar(ctx, d) {
@@ -165,11 +165,12 @@ function actionBar(ctx, d) {
   const tele = rev.changes.filter((c) => c.area === 'Telemetry');
   const topo = rev.topologyChanges;
   const text = tele.map(chgText).join(' · ');
-  const n = rev.topologyChanges + rev.telemetryChanges;
+  const n = (rev.topologyChanges || 0) + (rev.telemetryChanges || 0) + (rev.settingsChanges || 0);
+  const needsReview = topo || rev.settingsChanges;
   return html`<div class="well row" role="group" aria-label="Pending changes on this tab" style="gap:12px">
     <span class="grow"><b>${plural(n, 'unapplied change')}:</b> ${text || 'see the review'}${topo ? html` · ${plural(topo, 'topology change')} in the same draft, so review it first` : ''}. Edits wait here, land at a bucket boundary, and never reset history.</span>
     <button type="button" class="lat-btn lat-btn--sm" data-act="discard">Discard…</button>
-    ${topo ? html`<button type="button" class="lat-btn lat-btn--primary lat-btn--sm" data-act="reviewAll">Review ${n} changes…</button>` : html`<button type="button" class="lat-btn lat-btn--primary lat-btn--sm" data-act="apply">Apply ${plural(n, 'change')} at ${hms(rev.boundary)}</button>`}</div>`;
+    ${needsReview ? html`<button type="button" class="lat-btn lat-btn--primary lat-btn--sm" data-act="reviewAll">Review ${n} changes…</button>` : html`<button type="button" class="lat-btn lat-btn--primary lat-btn--sm" data-act="apply">Apply ${plural(n, 'change')} at ${hms(rev.boundary)}</button>`}</div>`;
 }
 
 export default {

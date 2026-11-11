@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/view"
@@ -1427,8 +1428,9 @@ func TestOSAHealthDetails(t *testing.T) {
 // A nonexistent session grants no privileges, as documented by the
 // AuthorizationManager API and observed on the 9.1.1 reference server.
 func TestPrivilegeChecksRequireValidSession(t *testing.T) {
+	password := uuid.NewString()
 	e := startWith(t, topology.Phase1("privileges"), sim.Options{})
-	if err := e.login("administrator@vsphere.local", "test-password"); err != nil {
+	if err := e.login("administrator@vsphere.local", password); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
@@ -1460,7 +1462,7 @@ func TestPrivilegeChecksRequireValidSession(t *testing.T) {
 	// Privilege checks can name another active session, and stop granting it
 	// as soon as that session logs out.
 	firstClient := e.client
-	if err := e.login("other@vsphere.local", "test-password"); err != nil {
+	if err := e.login("other@vsphere.local", password); err != nil {
 		t.Fatal(err)
 	}
 	otherKey, otherClient := e.cookie, e.client
@@ -1480,6 +1482,7 @@ func TestPrivilegeChecksRequireValidSession(t *testing.T) {
 }
 
 func TestMixedProductVersionsAcrossAPIs(t *testing.T) {
+	password := uuid.NewString()
 	sc := scenario.Phase1("mixed-version")
 	sc.VCenter = scenario.Version{Preset: "9.0"}
 	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-01", ESX: scenario.Version{Preset: "8.0u3"}}}
@@ -1489,7 +1492,7 @@ func TestMixedProductVersionsAcrossAPIs(t *testing.T) {
 	}
 	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
 	e := startWith(t, topo, sim.Options{})
-	if err := e.login("administrator@vsphere.local", "test-credential"); err != nil {
+	if err := e.login("administrator@vsphere.local", password); err != nil {
 		t.Fatal(err)
 	}
 	about := e.client.ServiceContent.About
@@ -1514,7 +1517,7 @@ func TestMixedProductVersionsAcrossAPIs(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
 		if strings.HasPrefix(path, "/api/") {
 			login, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
-			login.SetBasicAuth("administrator@vsphere.local", "test-credential")
+			login.SetBasicAuth("administrator@vsphere.local", password)
 			res, err := http.DefaultClient.Do(login)
 			if err != nil {
 				t.Fatal(err)

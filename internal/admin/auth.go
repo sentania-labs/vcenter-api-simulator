@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -186,8 +187,47 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 			return
 		}
 		cookie, err := r.Cookie("vcsim_console")
-		if err != nil || !a.valid(cookie.Value) {
-			http.Error(w, "sign in required", http.StatusUnauthorized)
+		authed := err == nil && a.valid(cookie.Value)
+		if r.Method == http.MethodGet && (path == "/auth.js" || path == "/auth.css" || path == "/lattice/tokens.css" || path == "/lattice/lattice.css") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Method == http.MethodGet && (path == "/claim" || path == "/login") {
+			if authed {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+				return
+			}
+			claimed, err := a.claimed()
+			if err != nil {
+				http.Error(w, "console authentication unavailable", http.StatusInternalServerError)
+				return
+			}
+			if claimed && path == "/claim" {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+			if !claimed && path == "/login" {
+				http.Redirect(w, r, "/claim", http.StatusSeeOther)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !authed {
+			if strings.HasPrefix(path, "/api/") || r.Method != http.MethodGet {
+				http.Error(w, "sign in required", http.StatusUnauthorized)
+				return
+			}
+			claimed, err := a.claimed()
+			if err != nil {
+				http.Error(w, "console authentication unavailable", http.StatusInternalServerError)
+				return
+			}
+			if claimed {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/claim", http.StatusSeeOther)
+			}
 			return
 		}
 		if path == "/api/auth/logout" && r.Method == http.MethodPost {

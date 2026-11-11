@@ -212,6 +212,8 @@ func TestConsoleScriptTests(t *testing.T) {
 }
 
 func TestProtectedCaptureAPI(t *testing.T) {
+	password := testPassword()
+	loginBody, _ := json.Marshal(map[string]string{"password": password})
 	dir := t.TempDir()
 	c, err := control.New(control.Options{Scenario: scenario.Phase1("capture"), SourceHash: "capture", DataDir: dir})
 	if err != nil {
@@ -222,7 +224,7 @@ func TestProtectedCaptureAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	protected, err := ProtectedHandler(c, nil, dir, "console-test-password", false, capture)
+	protected, err := ProtectedHandler(c, nil, dir, password, false, capture)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestProtectedCaptureAPI(t *testing.T) {
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated: %d", res.StatusCode)
 	}
-	req, _ = http.NewRequest("POST", srv.URL+"/api/auth/login", strings.NewReader(`{"password":"console-test-password"}`))
+	req, _ = http.NewRequest("POST", srv.URL+"/api/auth/login", strings.NewReader(string(loginBody)))
 	req.Header.Set("Content-Type", "application/json")
 	res, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -279,5 +281,81 @@ func TestProtectedCaptureAPI(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK || capture.State().UnansweredHeld != 0 {
 		t.Fatalf("clear: %d", res.StatusCode)
+	}
+}
+
+func TestConsoleClaimRoutesAndRestart(t *testing.T) {
+	claimBody, _ := json.Marshal(map[string]string{"password": testPassword()})
+	dir := t.TempDir()
+	ctl, err := control.New(control.Options{Scenario: scenario.Phase1("console-claim"), DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	makeServer := func() *httptest.Server {
+		handler, err := ProtectedHandler(ctl, nil, dir, "", false, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return httptest.NewServer(handler)
+	}
+	server := makeServer()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	get := func(path string, cookie *http.Cookie) *http.Response {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	res := get("/", nil)
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/claim" {
+		t.Fatalf("fresh console: %d", res.StatusCode)
+	}
+	for _, path := range []string{"/claim", "/auth.js", "/auth.css", "/lattice/lattice.css"} {
+		res = get(path, nil)
+		res.Body.Close()
+		if res.StatusCode != 200 {
+			t.Fatalf("claim asset %s: %d", path, res.StatusCode)
+		}
+	}
+	res = get("/api/state", nil)
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unclaimed API: %d", res.StatusCode)
+	}
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/auth/claim", strings.NewReader(string(claimBody)))
+	req.Header.Set("Content-Type", "application/json")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("claim: %d", res.StatusCode)
+	}
+	cookie := res.Cookies()[0]
+	res = get("/", cookie)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("claimed console: %d", res.StatusCode)
+	}
+	server.Close()
+	server = makeServer()
+	defer server.Close()
+	res = get("/api/state", cookie)
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("session survived restart: %d", res.StatusCode)
+	}
+	res = get("/", nil)
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
+		t.Fatalf("claimed redirect: %d", res.StatusCode)
 	}
 }
