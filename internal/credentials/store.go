@@ -128,6 +128,9 @@ func (s *Snapshot) Delete(name string) error {
 	if _, ok := s.users[name]; !ok {
 		return errors.New("user not found")
 	}
+	if !s.AnyLogin && len(s.users) == 1 {
+		return errors.New("Keep at least one vCenter user, or allow any username and password first.")
+	}
 	delete(s.users, name)
 	return nil
 }
@@ -138,7 +141,7 @@ func (s *Store) Commit(snapshot Snapshot) ([]string, error) {
 	defer s.mu.Unlock()
 	next := clone(snapshot)
 	if !next.AnyLogin && len(next.users) == 0 {
-		return nil, errors.New("at least one user is required unless any-login is enabled")
+		return nil, errors.New("Keep at least one vCenter user, or allow any username and password first.")
 	}
 	changed := []string{}
 	if s.current.AnyLogin != next.AnyLogin {

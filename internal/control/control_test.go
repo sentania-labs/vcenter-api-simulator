@@ -211,11 +211,15 @@ func TestFailedCredentialApplyLeavesTelemetryUnchanged(t *testing.T) {
 	sc.Latency.SDK = &scenario.Delay{FixedMs: 200}
 	sc.Faults = []scenario.Fault{{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError}}
 	put(t, c, sc)
-	if _, err := c.DeleteUser(DefaultUsername); err != nil {
+	if _, err := c.PutUser("test-reader", uuid.NewString(), "read-only"); err != nil {
+		t.Fatal(err)
+	}
+	// A directory at the destination makes credential persistence fail.
+	if err := os.Mkdir(filepath.Join(c.opts.DataDir, "vcenter-users.json"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Apply("now"); err == nil {
-		t.Fatal("expected removal of the last user to fail")
+		t.Fatal("expected credential persistence to fail")
 	}
 	if c.applied() != old || old.sim.Env.Knobs.SDKDelay() != nil {
 		t.Fatal("failed apply changed the running latency")
@@ -225,6 +229,25 @@ func TestFailedCredentialApplyLeavesTelemetryUnchanged(t *testing.T) {
 	}
 	if !newAPIClient(t, c).login(DefaultUsername, DefaultPassword) {
 		t.Fatal("failed apply changed credentials")
+	}
+}
+
+func TestCannotRemoveLastRequiredUser(t *testing.T) {
+	c := newCtl(t, scenario.Phase1("last-user"), "", "t")
+	if _, err := c.DeleteUser(DefaultUsername); err == nil || !strings.Contains(err.Error(), "Keep at least one vCenter user") {
+		t.Fatalf("last user removal: %v", err)
+	}
+	if c.DraftState().Pending.Exists {
+		t.Fatal("rejected removal created a draft")
+	}
+	if _, err := c.SetAnyLogin(true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DeleteUser(DefaultUsername); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SetAnyLogin(false); err == nil || !strings.Contains(err.Error(), "Add a vCenter user") {
+		t.Fatalf("disabled any-login without users: %v", err)
 	}
 }
 
@@ -1853,6 +1876,23 @@ func TestVersionChangeReviewsAndKeepsIdentity(t *testing.T) {
 	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
 	if status != http.StatusInternalServerError {
 		t.Fatalf("old session remained: %d", status)
+	}
+}
+
+func TestHostVersionChangeIsNotListedAsUnaffected(t *testing.T) {
+	c := newCtl(t, scenario.Phase1("host-version-review"), "", "t")
+	sc := editable(t, c)
+	key := c.applied().topo.Clusters()[0].Hosts[0].Key
+	sc.HostVersions = map[string]scenario.Version{key: {Preset: "9.0"}}
+	put(t, c, sc)
+	rv, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range rv.NotAffected {
+		if strings.Contains(s, "other clusters") {
+			t.Fatalf("changed cluster marked unaffected: %v", rv.NotAffected)
+		}
 	}
 }
 

@@ -295,6 +295,8 @@ resumes unless the scenario file changed since, in which case the file wins.
 `9.1.1`. ESX defaults to the selected vCenter release; a cluster can set
 `esxVersion` and `hostVersions` can override a host by its topology key.
 A custom version supplies `version`, `build`, `apiVersion`, and `fullName`.
+When ESX matches a custom vCenter, it uses the same version, build, and API
+version; its ESXi product name is synthesized from the supplied values.
 Hosts newer than vCenter are rejected unless `forceNewerHosts: true` is set;
 the review lists each forced mismatch. Version changes rebuild the simulator
 at apply, preserve inventory identities, and end sessions.

@@ -391,7 +391,7 @@ func StorageNumber(name string) uint32 {
 // Validate checks the file and fills Defaults from the built-in defaults.
 func (s *Scenario) Validate() error {
 	if err := s.validateVersions(); err != nil {
-		return fmt.Errorf("scenario versions: %w", err)
+		return err
 	}
 	if s.Seed == "" {
 		return errors.New("scenario: seed is required")

@@ -2,7 +2,7 @@
 // person asks to change them; neither is loaded back from the server.
 import { api, html, raw, clone, bytes, int } from './lib.js';
 
-const UI = { modes: {}, custom: {}, force: null, scenarioKey: '', editingUser: '', editingRole: 'administrator' };
+const UI = { modes: {}, custom: {}, open: {}, force: null, scenarioKey: '', editingUser: '', editingRole: 'administrator' };
 const idFor = (kind, key = '') => `${kind}-${encodeURIComponent(key)}`;
 const selected = (yes) => raw(yes ? 'selected' : '');
 const disabled = (yes) => raw(yes ? 'disabled' : '');
@@ -38,7 +38,7 @@ function versionPanel(d, locked) {
     ${presetHelp()}
     ${clusters.map((cluster) => {
       const override = (sc.clusters || []).find((c) => c.key === cluster.key);
-      return html`<details class="well"><summary>${cluster.datacenter} / ${cluster.name} · ${cluster.hosts} hosts</summary>
+      return html`<details class="well" data-version-cluster="${cluster.key}" ${raw(UI.open[cluster.key] ? 'open' : '')}><summary>${cluster.datacenter} / ${cluster.name} · ${cluster.hosts} hosts</summary>
         ${versionControl('cluster', cluster.key, 'ESX version for this cluster', override?.esxVersion, 'inherit', locked)}
         <p class="anno">A host can use a different version while it is being upgraded.</p>
         <div class="fields c2">${Array.from({ length: cluster.hosts }, (_, i) => {
@@ -101,13 +101,12 @@ export default {
   render(ctx, d) {
     const pending = !!ctx.state?.pending?.exists, locked = !!ctx.state?.pending?.scheduled;
     return html`<div class="page-head"><span class="page-title">Simulator settings</span><span class="grow"></span><button type="button" class="lat-btn lat-btn--primary" data-act="settings.review" ${disabled(!pending || locked)}>Review &amp; Apply…</button>${pending && !locked ? '' : html`<span class="anno">${locked ? 'Changes are scheduled' : 'No pending changes'}</span>`}</div>
-      ${locked ? html`<div class="lat-banner lat-banner--info">A change is scheduled. Cancel it to edit versions or users.</div>` : ''}
       ${d.auth?.managed ? html`<div class="lat-banner lat-banner--info">The console password is managed by the deployment. Change it in the deployment settings.</div>` : ''}
-      <div class="settings-grid">${usersPanel(d, locked)}${versionPanel(d, locked)}${capturePanel(d, locked)}${timeoutPanel(d, locked)}${certificatePanel(d, locked)}</div>`;
+      <div class="settings-grid">${usersPanel(d, locked)}${versionPanel(d, locked)}${capturePanel(d, false)}${timeoutPanel(d, false)}${certificatePanel(d, false)}</div>`;
   },
   actions: {
     'settings.review'(ctx) { ctx.go('#/topology/review'); },
-    'settings.versionMode'(ctx, el) { UI.modes[idFor(el.dataset.kind, el.dataset.key)] = el.value; ctx.rerender(); },
+    'settings.versionMode'(ctx, el) { document.querySelectorAll('details[data-version-cluster]').forEach((d) => { UI.open[d.dataset.versionCluster] = d.open; }); UI.modes[idFor(el.dataset.kind, el.dataset.key)] = el.value; ctx.rerender(); },
     'settings.custom'(ctx, el) { (UI.custom[el.dataset.id] ||= {})[el.dataset.field] = el.value; },
     'settings.force'(ctx, el) { UI.force = el.checked; },
     async 'settings.saveVersions'(ctx, el, ev, d) {

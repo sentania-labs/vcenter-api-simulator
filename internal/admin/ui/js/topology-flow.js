@@ -112,6 +112,7 @@ function famRows(p, scope) {
 
 function genRender(ctx, data) {
   const st = ctx.state;
+  if (st?.pending?.scheduled) return html`<section class="lat-card"><p>Changes are scheduled. Cancel the scheduled change before creating a draft.</p><button type="button" class="lat-btn" data-act="gen.cancel">Back to Topology</button></section>`;
 
   const p = pv?.projection;
   const sel = pv?.selected;
@@ -259,6 +260,7 @@ function reviewRender(ctx, data) {
       <div class="row"><button type="button" class="lat-btn lat-btn--primary" data-act="rev.back">Back to Topology</button></div></section>`;
   }
   const rv = data.rv;
+  const scheduled = !!st?.pending?.scheduled;
   const topoOnly = rv.rebuildsVcenter;
   const boundary = localTime(rv.boundary);
   const ids = rv.identities || [];
@@ -276,7 +278,7 @@ function reviewRender(ctx, data) {
     <div class="row"><span class="page-title" id="rev-title">Review before apply</span>${badge(rv.rebuildsVcenter ? 'Topology changes' : rv.settingsChanges ? 'Settings changes' : 'Telemetry changes', 'warn')}${originText ? badge(originText) : ''}<span class="grow"></span><span class="anno">Step 2 of 2 · nothing has changed yet</span></div>
     ${rv.discarded ? banner('warn', html`<b>Replaces a pending draft.</b> ${rv.discarded}`) : ''}
     ${newDraft && cl && (cl.removed > 0 || cl.added > 0 || cl.restored > 0) ? banner('info', html`<b>Cluster changes.</b> ${int(cl.removed)} removed, ${int(cl.added)} added and ${int(cl.restored)} restored. Restored objects regain their previous IDs; removed objects are no longer present.`) : ''}
-    <div class="g" style="grid-template-columns: 1.25fr 1fr;">
+    <div class="g" style="grid-template-columns: minmax(0,1.25fr) minmax(0,1fr);">
       <div class="stack" style="gap:10px">
         <h2 class="lat-card-title">Changes <span class="aside">${int(rv.topologyChanges)} topology · ${int(rv.telemetryChanges)} telemetry · ${int(rv.settingsChanges)} settings</span></h2>
         <div class="lat-table-scroll"><table class="lat-table review-changes"><thead><tr><th>Object</th><th>Field</th><th>Before</th><th>After</th><th>Effect</th></tr></thead>
@@ -297,12 +299,12 @@ function reviewRender(ctx, data) {
 
       <div class="stack" style="gap:10px">
         <h2 class="lat-card-title" id="rev-when">When it takes effect</h2>
-        <div class="opts" role="radiogroup" aria-labelledby="rev-when">
+        <fieldset class="opts" role="radiogroup" aria-labelledby="rev-when" ${raw(scheduled ? 'disabled' : '')} style="border:0;padding:0;margin:0">
           <label class="opt${when === 'boundary' ? ' is-on' : ''}"><input type="radio" class="sr-only" name="rev-when" value="boundary" data-chg="rev.when" data-k="rev-when-boundary" ${when === 'boundary' ? 'checked' : ''}><span class="dot"></span><span class="t">At the next update</span><span class="num" title="${rv.boundary}">${boundary}</span>
             <span class="s">${topoOnly ? html`Responses in flight finish using the current settings; the new topology starts at ${boundary}.` : html`The changes take effect at ${boundary}.`}</span></label>
           <label class="opt${when === 'now' ? ' is-on' : ''}"><input type="radio" class="sr-only" name="rev-when" value="now" data-chg="rev.when" data-k="rev-when-now" ${when === 'now' ? 'checked' : ''}><span class="dot"></span><span class="t">Immediately</span><span></span>
             <span class="s">A collection cycle in progress may see both ${topoOnly ? 'topologies' : 'settings'}.</span></label>
-        </div>
+        </fieldset>
         <h2 class="lat-card-title">Projected load after apply <span class="aside">${rv.scope === 'dashboard' ? 'dashboard kinds' : 'all modeled kinds'} · projected</span></h2>
         <div class="tiles" style="grid-template-columns:repeat(3,1fr)">
           ${tile('Entities', int(rv.after.entities), delta(rv.before.entities, rv.after.entities))}
@@ -310,9 +312,9 @@ function reviewRender(ctx, data) {
           ${tile('Calls', int(rv.after.calls), delta(rv.before.calls, rv.after.calls))}
         </div>
         <div class="anno">${topoOnly ? html`Hosts ${int(rv.hostsBefore)} → ${int(rv.hostsAfter)} · ` : ''}calls scale with clusters × kinds, not hosts; the extra load lands in response size.</div>
-        <div class="row" style="margin-top:6px"><button type="button" class="lat-btn" data-act="rev.discard">Discard draft…</button><span class="grow"></span>
+        <div class="row" style="margin-top:6px"><button type="button" class="lat-btn" data-act="rev.discard" ${raw(scheduled ? 'disabled' : '')}>Discard draft…</button><span class="grow"></span>
           <button type="button" class="lat-btn" data-act="rev.back">← Back to edit</button>
-          <button type="button" class="lat-btn lat-btn--primary" data-act="rev.apply" ${applying ? 'disabled' : ''}>${when === 'now' ? 'Apply now' : html`Apply at ${boundary}`}</button></div>
+          <button type="button" class="lat-btn lat-btn--primary" data-act="rev.apply" ${applying || scheduled ? 'disabled' : ''}>${when === 'now' ? 'Apply now' : html`Apply at ${boundary}`}</button></div>
       </div>
     </div>
   </section>`;

@@ -76,9 +76,6 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 		return Version{}, err
 	}
 	fallback := vc.Preset
-	if fallback == "" && s.ESX.empty() {
-		return Version{}, fmt.Errorf("custom vCenter version requires an ESX version")
-	}
 	spec := s.ESX
 	for _, c := range s.Clusters {
 		if c.Key == cluster && !c.ESX.empty() {
@@ -87,6 +84,9 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 	}
 	if h, ok := s.HostVersions[host]; ok {
 		spec = h
+	}
+	if spec.empty() && fallback == "" {
+		return Version{Version: vc.Version, Build: vc.Build, APIVersion: vc.APIVersion, FullName: "VMware ESXi " + vc.Version + " build-" + vc.Build}, nil
 	}
 	return resolveVersion(spec, esxVersions, fallback)
 }
@@ -146,7 +146,13 @@ func (s *Scenario) validateVersions() error {
 			return err
 		}
 		if isNewer && !s.ForceNewerHosts {
-			return fmt.Errorf("host %s version %s is newer than vCenter %s; set forceNewerHosts to allow it", host, v.Version, vc.Version)
+			where := "Default ESX version"
+			if host != "" {
+				where = "Host " + host
+			} else if cluster != "" {
+				where = "ESX version for " + cluster
+			}
+			return fmt.Errorf("%s (%s) is newer than vCenter %s. Select Allow hosts newer than vCenter to continue.", where, v.Version, vc.Version)
 		}
 		return nil
 	}

@@ -67,6 +67,15 @@ func (c *Controller) DeleteUser(name string) (CredentialsView, error) {
 func (c *Controller) SetAnyLogin(enabled bool) (CredentialsView, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !enabled {
+		s := c.auth.Snapshot()
+		if c.draft != nil && c.draft.Credentials != nil {
+			s = *c.draft.Credentials
+		}
+		if len(s.Users()) == 0 {
+			return CredentialsView{}, invalid("Add a vCenter user before turning off access for any username and password.")
+		}
+	}
 	d, err := c.credentialDraft()
 	if err != nil {
 		return CredentialsView{}, err

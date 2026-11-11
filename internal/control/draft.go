@@ -1048,6 +1048,22 @@ func sameCluster(o, c *topology.Cluster) bool {
 		fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed
 }
 
+func sameHostVersions(a, b *topology.Cluster) bool {
+	if len(a.Hosts) != len(b.Hosts) {
+		return false
+	}
+	versions := make(map[string]scenario.Version, len(a.Hosts))
+	for _, h := range a.Hosts {
+		versions[h.Key] = h.Version
+	}
+	for _, h := range b.Hosts {
+		if v, ok := versions[h.Key]; !ok || v != h.Version {
+			return false
+		}
+	}
+	return true
+}
+
 func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool) []string {
 	var out []string
 	if topoChanged {
@@ -1065,7 +1081,7 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] && !touched[c.Key] {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && sameHostVersions(o, c) && !affectedDC[c.Datacenter.Name] && !touched[c.Key] {
 				kept++
 			} else {
 				touched[c.Key] = true

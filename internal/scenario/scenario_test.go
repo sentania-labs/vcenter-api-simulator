@@ -183,6 +183,18 @@ func TestVersionPresetsAndNewerHostValidation(t *testing.T) {
 	}
 }
 
+func TestCustomVCenterCanBeMatchedByESX(t *testing.T) {
+	s := Phase1("custom-match")
+	s.VCenter = Version{Version: "8.0.2", Build: "23504390", APIVersion: "8.0.2.0", FullName: "VMware vCenter Server 8.0.2"}
+	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
+	if err != nil || host.Version != s.VCenter.Version || host.Build != s.VCenter.Build || host.APIVersion != s.VCenter.APIVersion {
+		t.Fatalf("custom match: %+v, %v", host, err)
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEveryPresetCarriesItsOwnAPIVersionAndLicenseVersion(t *testing.T) {
 	vcenters, esxes := VersionPresets()
 	for i, esx := range esxes {
