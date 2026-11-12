@@ -7,7 +7,7 @@ b, strong { font-weight: 650; color: var(--ink); }
 code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
 h1, h2, h3, p { margin: 0; }
 button { font: inherit; }
-body.phone #overlay { position: fixed; inset: 0; background: rgba(15,20,28,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+#overlay:not([hidden]) { position: fixed; inset: 0; background: rgba(15,20,28,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
 #overlay[hidden] { display: none; }
 .m-dlg { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-xl); padding: 18px 20px; max-width: 480px; width: 100%; max-height: 90%; overflow: auto; }
 .m-dlg h2 { font-size: 17px; font-weight: 650; margin-bottom: 8px; }
