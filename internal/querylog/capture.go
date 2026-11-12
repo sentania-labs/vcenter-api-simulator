@@ -112,6 +112,14 @@ func (c *Capture) Set(s Settings) error {
 	if err != nil {
 		return err
 	}
+	if !s.Full && c.settings.Full {
+		// Turning full capture off is the one switch that discards: what it
+		// captured goes with it. Unanswered requests are kept until deleted.
+		if err = os.Truncate(c.path, 0); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		c.full = nil
+	}
 	f, err := os.CreateTemp(filepath.Dir(c.settingsPath), ".capture-settings-*")
 	if err != nil {
 		return err
@@ -127,16 +135,8 @@ func (c *Capture) Set(s Settings) error {
 	if err = os.Rename(f.Name(), c.settingsPath); err != nil {
 		return err
 	}
-	switch {
-	case s.Full && !c.settings.Full:
+	if s.Full && !c.settings.Full {
 		c.fullSince = time.Now()
-	case !s.Full && c.settings.Full:
-		// Turning full capture off is the one switch that discards: what it
-		// captured goes with it. Unanswered requests are kept until deleted.
-		if err := os.Truncate(c.path, 0); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		c.full = nil
 	}
 	c.settings = s
 	return nil
