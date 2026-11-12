@@ -321,6 +321,8 @@ func (c *Controller) verdict(asks []Ask, tools []ToolView) Verdict {
 			before = "before its sign-in was refused"
 		case ToolSignedOut:
 			before = "before its sign-in ended"
+		case ToolLeft:
+			before = "before it signed out"
 		}
 		who = fmt.Sprintf("No tool is connected right now. This is what the tool at %s asked for %s.", t.Addr, before)
 	}

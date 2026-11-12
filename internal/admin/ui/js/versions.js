@@ -25,7 +25,7 @@ const main = {
 export default {
   screen(p, q) {
     if (p[1] === 'vcenter') return taskScreen('vcenter-version', q, 'versions', 'Versions');
-    if (p[1] === 'cluster' && p[2] && p[3]) return taskScreen('cluster-versions', { cluster: `${p[2]}/${p[3]}` }, 'versions', 'Versions');
+    if (p[1] === 'cluster' && p[2] && p[3]) return taskScreen('cluster-versions', { ...q, cluster: `${p[2]}/${p[3]}` }, 'versions', 'Versions');
     return main;
   },
 };

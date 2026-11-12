@@ -37,7 +37,7 @@ Only where the simulator behaves differently from what the mockup assumed, so th
 - **Hosts per cluster are 3 to 64**, not 1 to 64, and removing hosts leaves at least three: a vSAN cluster needs three.
 - **Clusters and datastores are addressed by datacenter and name**, and the datacenter is shown where a name repeats.
 - **Remove hosts** says how many VMs go with them and that the highest-numbered VMs are the ones removed, which is how the simulator places VMs.
-- **Two more tool states**: "quiet" (signed in, nothing asked for 15 minutes) and "signed out" (its session ended and it has not signed in again).
+- **Three more tool states**: "quiet" (signed in, nothing asked for 15 minutes), "signed out" (its session ended and it is still asking without signing in again) and "it signed out" (the tool signed itself out and has not signed in again; this is not raised as a problem).
 - **Requests refused while paused** are listed under "Failing on purpose".
 - **The console password is read-only** on Security when the deployment supplies it (the `VCSIM_ADMIN_PASSWORD` environment variable, which is how the Helm chart sets it).
 - **Scheduled changes do not survive a restart**; the history says which were dropped.

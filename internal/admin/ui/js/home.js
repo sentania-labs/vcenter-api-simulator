@@ -12,6 +12,7 @@ const toolState = (t) => {
     case 'denied': return `Was signed in as ${t.user}. Its last sign-in, at ${at}, was refused. Check the username and password it uses.`;
     case 'signedout': return `Was signed in as ${t.user}. Since ${at} its requests have been refused, because its sign-in ended and it has not signed in again.`;
     case 'quiet': return `Was signed in as ${t.user}. It last asked for something at ${at} and has been quiet since.`;
+    case 'left': return `Was signed in as ${t.user}. It signed out at ${at}. A tool that collects on a schedule signs in again by itself for its next collection.`;
     default: return `Signed in as ${t.user}. Last asked for something ${ago(t.last)}.`;
   }
 };

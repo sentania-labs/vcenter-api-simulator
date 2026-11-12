@@ -102,6 +102,13 @@ test('Home says what is running, who is connected and what needs attention', () 
   assert.match(text(gone), /The simulator is paused/);
   assert.match(text(gone), /Not connected now: the tool at 10\.20\.0\.31/);
   assert.match(text(gone), /until you paused the simulator at/);
+
+  // a tool that signed itself out: not connected, said plainly, and not a problem
+  const left = home.screen(['home']).render(ctxOf({ ...homeView, attention: [], tools: [{ ...homeView.tools[0], state: 'left', since: now, unknown: 0, fault: 0 }] }));
+  clean(left, 'Home, signed out');
+  assert.match(text(left), /No tool is connected right now\. One was until /);
+  assert.match(text(left), /Not connected now: the tool at 10\.20\.0\.31/);
+  assert.match(text(left), /Was signed in as ops-collector@vsphere\.local\. It signed out at .+\. A tool that collects on a schedule signs in again by itself for its next collection\./);
 });
 
 test('Clusters lists, finds and marks what is new', () => {
@@ -203,6 +210,42 @@ test('every task draws its questions and its summary', async () => {
     assert.match(t, /One thing needs fixing before this can go ahead\. Something general\./, kind);
     assert.equal(t.includes('When should this happen?'), !form.noWhen, kind);
     assert.deepEqual(calls, [], kind);
+  }
+  globalThis.fetch = realFetch;
+});
+
+// "Try again" opens the failed change's screen with ?retry=1. Every task route has to carry
+// that through, including the ones that take their subject from the path.
+test('"Try again" restores the failed change on every task route', async () => {
+  const realFetch = globalThis.fetch;
+  const reply = (data) => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => data, text: async () => JSON.stringify(data) });
+  const routes = [
+    [storage, ['storage', 'dc-01', 'nfs-ds-1', 'change'], 'storage-size', { id: 'dc-01/nfs-ds-1', size: 4, unit: 'TB', full: 'Empty' }, { size: 9 }],
+    [storage, ['storage', 'dc-01', 'nfs-ds-1', 'problem'], 'storage-disconnect', { id: 'dc-01/nfs-ds-1', cluster: 'dc-01/cluster-01', pick: [] }, { pick: ['esx02'] }],
+    [versions, ['versions', 'cluster', 'dc-01', 'cluster-01'], 'cluster-versions', { cluster: 'dc-01/cluster-01', mode: 'same', ver: '9.1.1', low: '9.0', pick: [], allow: false }, { mode: 'mixed', pick: ['esx01'] }],
+    [users, ['users', 'edit', 'tool-1@vsphere.local'], 'change-user', { name: 'tool-1@vsphere.local', role: 'read', pw: '' }, { role: 'full' }],
+    [clusters, ['cluster', 'dc-01', 'cluster-01', 'add-hosts'], 'add-hosts', { cluster: 'dc-01/cluster-01', n: 2 }, { n: 7 }],
+    [clusters, ['clusters', 'add'], 'add-cluster', { dc: 'dc-01', hosts: 4, vms: 8, vsan: 'ESA', count: 1 }, { hosts: 12 }],
+  ];
+  for (const [mod, parts, kind, values, failed] of routes) {
+    const asked = [];
+    globalThis.fetch = async (url) => { asked.push(url); return reply(url.includes('/preview') ? { sum: [] } : { kind, title: 'A task', values, options: { role: 'read' } }); };
+    const load = async (query, retry) => {
+      const ctx = { ...ctxOf(homeView), retry };
+      const d = await mod.screen(parts, query).load(ctx);
+      return { ctx, d };
+    };
+    const saved = { kind, params: failed };
+    const again = await load({ retry: '1' }, saved);
+    for (const [k, v] of Object.entries(failed)) assert.deepEqual(again.ctx.F[k], v, `${kind}: ${k} was not restored`);
+    assert.match(again.d.form.intro || '', kind === 'change-user' ? /./ : /These are the values of the change that failed/, kind);
+    assert.equal(again.ctx.retry, null, `${kind}: the saved answers are used once`);
+    assert.ok(asked[0].startsWith(`/api/task/${kind}?`), `${kind} asked ${asked[0]}`);
+    // opened without "Try again", or for another kind of change: the form's own values
+    const fresh = await load({}, saved);
+    for (const k of Object.keys(failed)) assert.deepEqual(fresh.ctx.F[k], values[k], `${kind}: ${k} without retry`);
+    const other = await load({ retry: '1' }, { kind: 'some-other-change', params: failed });
+    for (const k of Object.keys(failed)) assert.deepEqual(other.ctx.F[k], values[k], `${kind}: ${k} with another change's answers`);
   }
   globalThis.fetch = realFetch;
 });

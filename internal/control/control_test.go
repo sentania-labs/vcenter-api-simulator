@@ -748,6 +748,162 @@ func TestUsers(t *testing.T) {
 }
 
 // One place knows whether a tool is connected, and every screen reads it.
+// A tool that signs itself out is not connected any more: Home says when it
+// signed out, Users no longer shows the account in use, and a change to
+// that account does not warn about a signed-in tool. The sign-out is not
+// counted as something the tool asked for, and signing in again brings it
+// back. It holds on both surfaces a tool can sign out of.
+func TestToolThatSignsOutIsNotConnected(t *testing.T) {
+	const user, pass = "administrator@vsphere.local", "first-password"
+	inUse := func(c *Controller) []string {
+		for _, u := range c.Users().Users {
+			if u.Name == user {
+				return u.InUse
+			}
+		}
+		t.Fatalf("no user %s", user)
+		return nil
+	}
+	changing := func(c *Controller) string {
+		return preview(t, c, "change-user", map[string]string{"name": user}, map[string]any{"pw": "another-password-1"})
+	}
+	connected := func(c *Controller, when string) {
+		t.Helper()
+		home := c.Home()
+		if len(home.Tools) != 1 || home.Tools[0].State != ToolConnected || home.Tools[0].Since != nil {
+			t.Fatalf("%s: tools %+v", when, home.Tools)
+		}
+		if got := inUse(c); len(got) != 1 {
+			t.Errorf("%s: account in use by %v", when, got)
+		}
+		wantContains(t, changing(c), "is signed in as this user right now.")
+	}
+	left := func(c *Controller, when string, at time.Time) {
+		t.Helper()
+		home := c.Home()
+		if len(home.Tools) != 1 {
+			t.Fatalf("%s: tools %+v", when, home.Tools)
+		}
+		tv := home.Tools[0]
+		if tv.State != ToolLeft || tv.Since == nil || !tv.Since.Equal(at) {
+			t.Fatalf("%s: state %s since %v, want %s since %v", when, tv.State, tv.Since, ToolLeft, at)
+		}
+		if !tv.Last.Before(at) {
+			t.Errorf("%s: the sign-out counted as something the tool asked for (last %v, signed out %v)", when, tv.Last, at)
+		}
+		if tv.User != user {
+			t.Errorf("%s: the account it used was forgotten: %q", when, tv.User)
+		}
+		if got := inUse(c); len(got) != 0 {
+			t.Errorf("%s: account still shown in use by %v", when, got)
+		}
+		wantContains(t, changing(c), "Nothing is signed in as this user at the moment.")
+		for _, a := range home.Attention {
+			if strings.Contains(a.T, "The tool at") {
+				t.Errorf("%s: signing out was raised as a problem: %+v", when, a)
+			}
+		}
+	}
+
+	t.Run("SOAP Logout", func(t *testing.T) {
+		c := newCtl(t, small(t), "", "t")
+		tool := newTool(t, c, "collector/2.0")
+		if !tool.login(user, pass) || tool.content() != 200 {
+			t.Fatal("sign in")
+		}
+		connected(c, "signed in")
+		if st, body := tool.post("/sdk", `<Logout xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this></Logout>`); st != 200 {
+			t.Fatalf("Logout: %d %s", st, body)
+		}
+		out := lastCall(c)
+		if out.Method != "Logout" || out.Reason != activity.ReasonAnswered || out.User != user {
+			t.Fatalf("the sign-out was recorded as %+v", out)
+		}
+		left(c, "after Logout", out.Time)
+		// a second sign-out, with no session left, changes nothing
+		tool.post("/sdk", `<Logout xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this></Logout>`)
+		if tv := c.Home().Tools[0]; tv.State != ToolLeft && tv.State != ToolSignedOut {
+			t.Errorf("after a second Logout: %s", tv.State)
+		}
+		if !tool.login(user, pass) || tool.content() != 200 {
+			t.Fatal("sign in again")
+		}
+		connected(c, "signed in again")
+	})
+
+	t.Run("REST DELETE /api/session", func(t *testing.T) {
+		c := newCtl(t, small(t), "", "t")
+		tool := newTool(t, c, "rest-collector/1.0")
+		rest := func(method, path, token string) (int, string) {
+			req, err := http.NewRequest(method, tool.srv.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("User-Agent", tool.agent)
+			if token == "" {
+				req.SetBasicAuth(user, pass)
+			} else {
+				req.Header.Set("vmware-api-session-id", token)
+			}
+			res, err := tool.hc.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			b, _ := io.ReadAll(res.Body)
+			return res.StatusCode, string(b)
+		}
+		signIn := func() string {
+			st, body := rest(http.MethodPost, "/api/session", "")
+			var token string
+			if st/100 != 2 || json.Unmarshal([]byte(body), &token) != nil || token == "" {
+				t.Fatalf("REST sign-in: %d %s", st, body)
+			}
+			if st, body := rest(http.MethodGet, "/api/vcenter/cluster", token); st != 200 {
+				t.Fatalf("list clusters: %d %s", st, body)
+			}
+			return token
+		}
+		token := signIn()
+		connected(c, "signed in")
+		if st, body := rest(http.MethodDelete, "/api/session", token); st/100 != 2 {
+			t.Fatalf("DELETE /api/session: %d %s", st, body)
+		}
+		out := lastCall(c)
+		if out.Method != "DELETE /api/session" || out.User != user {
+			t.Fatalf("the sign-out was recorded as %+v", out)
+		}
+		left(c, "after DELETE /api/session", out.Time)
+		signIn()
+		connected(c, "signed in again")
+	})
+}
+
+// A tool that holds two sessions and signs out of one is still connected
+// once it is served on the other.
+func TestSigningOutOfOneSessionKeepsAToolWithAnotherConnected(t *testing.T) {
+	b := newToolbook()
+	t0 := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	call := func(at time.Time, method string) activity.Call {
+		return activity.Call{Time: at, Surface: activity.SurfaceSDK, Client: "10.0.0.9", Agent: "collector/2.0", User: "ops@vsphere.local", Method: method, Reason: activity.ReasonAnswered}
+	}
+	b.note(call(t0, "Login"), true)
+	b.note(call(t0.Add(time.Second), "RetrievePropertiesEx"), false)
+	b.note(call(t0.Add(10*time.Second), "Logout"), false)
+	if v := b.list(t0.Add(11*time.Second), false, time.Time{}); len(v) != 1 || v[0].State != ToolLeft {
+		t.Fatalf("after Logout: %+v", v)
+	}
+	// a request that was already on its way when it signed out is not it coming back
+	b.note(call(t0.Add(9*time.Second), "RetrievePropertiesEx"), false)
+	if v := b.list(t0.Add(11*time.Second), false, time.Time{}); v[0].State != ToolLeft {
+		t.Fatalf("an earlier request undid the sign-out: %+v", v)
+	}
+	b.note(call(t0.Add(12*time.Second), "RetrievePropertiesEx"), false)
+	if v := b.list(t0.Add(13*time.Second), false, time.Time{}); v[0].State != ToolConnected {
+		t.Fatalf("served on its other session: %+v", v)
+	}
+}
+
 func TestToolsAreTrackedAcrossPauseAndCertificate(t *testing.T) {
 	c := newCtl(t, small(t), "", "t")
 	tool := newTool(t, c, "collector/2.0")

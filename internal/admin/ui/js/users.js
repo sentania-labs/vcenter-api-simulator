@@ -52,7 +52,7 @@ const main = {
 export default {
   screen(p, q) {
     if (p[1] === 'add') return taskScreen('add-user', q, 'users', 'Users');
-    if (p[1] === 'edit' && p[2]) return taskScreen('change-user', { name: p[2] }, 'users', 'Users');
+    if (p[1] === 'edit' && p[2]) return taskScreen('change-user', { ...q, name: p[2] }, 'users', 'Users');
     return main;
   },
 };

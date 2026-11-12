@@ -56,8 +56,8 @@ export default {
     if (p[1] === 'add-iscsi' || p[1] === 'add-nfs') return taskScreen(p[1], q, 'storage', 'Storage');
     if (!p[1]) return listScreen;
     const id = `${p[1]}/${p[2]}`;
-    if (p[3] === 'problem') return taskScreen('storage-disconnect', { id }, 'storage', 'Storage');
-    if (p[3] === 'change') return taskScreen('storage-size', { id }, 'storage', 'Storage');
+    if (p[3] === 'problem') return taskScreen('storage-disconnect', { ...q, id }, 'storage', 'Storage');
+    if (p[3] === 'change') return taskScreen('storage-size', { ...q, id }, 'storage', 'Storage');
     return itemScreen(id);
   },
 };

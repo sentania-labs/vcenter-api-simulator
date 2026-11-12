@@ -224,9 +224,11 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
   action that starts a new identity registry.
 - **Home says what is true.** Whether a tool is connected, as which account,
   what it calls itself, and if it is not connected, since when and why (its
-  user was removed, the certificate was replaced, the simulator is paused, or
-  it has gone quiet). A tool counts as connected while it has been answered
-  within the last 15 minutes.
+  user was removed, the certificate was replaced, the simulator is paused, it
+  signed itself out, or it has gone quiet). A tool counts as connected while
+  it has been answered within the last 15 minutes and has not signed out
+  since; one that signs out after each collection shows as connected again
+  when it next signs in.
 - **Requests says why each request was answered as it was.** "Not answered"
   means only requests the simulator has no answer for; a refused sign-in, a
   refusal a real vCenter makes too, and a fault you switched on are each

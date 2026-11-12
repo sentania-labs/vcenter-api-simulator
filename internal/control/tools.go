@@ -31,6 +31,7 @@ const (
 	ToolCert      = "cert"      // the certificate was replaced and it has not come back
 	ToolDenied    = "denied"    // its last sign-in was refused
 	ToolSignedOut = "signedout" // its session ended and it has not signed in again
+	ToolLeft      = "left"      // it signed itself out and has not signed in again
 	ToolQuiet     = "quiet"     // it has asked for nothing for a while
 )
 
@@ -42,6 +43,7 @@ type tool struct {
 	lastOK      time.Time // its last request made while signed in that the simulator served
 	denied      time.Time // its last refused sign-in
 	unsigned    time.Time // the first request refused for not being signed in, since it was last served
+	left        time.Time // when it signed itself out, while it has not been served as signed in since
 	deniedUser  string
 	deniedCount int
 	gone        time.Time // when it was cut off, with why
@@ -83,6 +85,18 @@ func (b *toolbook) wasRemoved(user string) bool {
 
 func toolKey(addr, agent string) string { return addr + "|" + agent }
 
+// isSignOut reports whether a request is a tool signing itself out of the
+// simulated vCenter.
+func isSignOut(call activity.Call) bool {
+	switch call.Surface {
+	case activity.SurfaceSDK:
+		return call.Method == "Logout"
+	case activity.SurfaceREST:
+		return call.Method == "DELETE /api/session"
+	}
+	return false
+}
+
 // note files one request. It returns the tool's address when the request
 // shows a tool that had been cut off is back.
 func (b *toolbook) note(call activity.Call, signIn bool) (reconnected string) {
@@ -112,7 +126,19 @@ func (b *toolbook) note(call activity.Call, signIn bool) (reconnected string) {
 		// again it is not connected, whatever it sends
 		t.unsigned = call.Time
 	}
+	if served && call.User != "" && t.signedIn && isSignOut(call) {
+		// Signing out is the tool leaving, not the tool asking for
+		// something: from here it is not connected until it signs in again
+		// (or is served on another session it still holds).
+		if call.Time.After(t.left) {
+			t.left = call.Time
+		}
+		return ""
+	}
 	if served && (call.User != "" || signIn) && t.signedIn {
+		if call.Time.After(t.left) {
+			t.left = time.Time{}
+		}
 		if t.why != "" {
 			if !call.Time.After(t.gone) {
 				// it was already on its way when the tool was cut off: an
@@ -169,6 +195,8 @@ func (t *tool) state(now time.Time, paused bool, pausedAt time.Time) (string, ti
 		return ToolDenied, t.denied
 	case t.unsigned.After(t.lastOK):
 		return ToolSignedOut, t.unsigned
+	case !t.left.IsZero():
+		return ToolLeft, t.left
 	case paused:
 		if pausedAt.Sub(t.lastOK) <= quietAfter {
 			return ToolPaused, pausedAt
