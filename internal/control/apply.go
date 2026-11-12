@@ -73,10 +73,7 @@ func (c *Controller) applyScenario(next *scenario.Scenario, freshRegistry bool) 
 	c.cur.Store(nr)
 	c.syncConditions(nr)
 	c.armExpiry()
-	go func(s interface{ Close() }) {
-		time.Sleep(drainGrace)
-		s.Close()
-	}(old.sim)
+	c.drain(old.sim)
 	c.save()
 	return true, nil
 }

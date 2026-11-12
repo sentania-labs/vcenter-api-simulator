@@ -145,6 +145,10 @@ type Controller struct {
 	signMu    sync.Mutex // guards the two below; taken after mu when both are held, never the other way round
 	signins   map[string]time.Time
 	signinsAt time.Time // when signins was last written
+
+	drainMu  sync.Mutex // guards the two below
+	draining map[*sim.Simulator]bool
+	closed   bool
 }
 
 // New builds the simulated vCenter and the control plane around it.
@@ -350,6 +354,41 @@ func (c *Controller) Close() {
 	if r := c.cur.Load(); r != nil {
 		r.sim.Close()
 	}
+	c.drainMu.Lock()
+	c.closed = true
+	left := c.draining
+	c.draining = nil
+	c.drainMu.Unlock()
+	for s := range left {
+		s.Close()
+	}
+}
+
+// drain lets a replaced vCenter keep answering the requests that were in
+// flight at the swap for drainGrace, then closes it. Close closes whatever
+// is still draining, so a replaced vCenter's temporary files never outlive
+// the controller.
+func (c *Controller) drain(s *sim.Simulator) {
+	c.drainMu.Lock()
+	if c.closed {
+		c.drainMu.Unlock()
+		s.Close()
+		return
+	}
+	if c.draining == nil {
+		c.draining = map[*sim.Simulator]bool{}
+	}
+	c.draining[s] = true
+	c.drainMu.Unlock()
+	time.AfterFunc(drainGrace, func() {
+		c.drainMu.Lock()
+		mine := c.draining[s]
+		delete(c.draining, s)
+		c.drainMu.Unlock()
+		if mine {
+			s.Close()
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

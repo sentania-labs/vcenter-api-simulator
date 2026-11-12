@@ -81,6 +81,31 @@ func newCtl(t *testing.T, sc *scenario.Scenario, dir, hash string) *Controller {
 	return newCtlAt(t, sc, dir, hash, nil)
 }
 
+// A change that builds a new vCenter keeps the replaced one answering for a
+// while. Closing the controller inside that time still removes everything
+// both of them wrote to the temporary directory.
+func TestCloseLeavesNoTemporaryFilesBehind(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	c := newCtl(t, small(t), "", "t")
+	must(t, c, "add-hosts", map[string]string{"cluster": "dc-01/cluster-01"}, map[string]any{"n": 1})
+	during, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(during) == 0 {
+		t.Fatal("the simulated vCenter wrote nothing to the temporary directory, so this test proves nothing")
+	}
+	c.Close()
+	left, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range left {
+		t.Errorf("left behind after Close: %s", e.Name())
+	}
+}
+
 func params(t *testing.T, v map[string]any) json.RawMessage {
 	t.Helper()
 	b, err := json.Marshal(v)
