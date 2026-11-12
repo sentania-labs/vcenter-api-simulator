@@ -141,20 +141,26 @@ func (c *Controller) DismissFailure() {
 func (c *Controller) fail(text string, err error, kind string, params json.RawMessage, route string) {
 	why, fix := whyFailed(err)
 	c.failure = &Failure{At: c.now(), What: fmt.Sprintf("The change %q was not made.", text), Why: why, Fix: fix,
-		Kind: kind, Params: scrub(params), Route: route}
+		Kind: kind, Params: scrub(kind, params), Route: route}
 	c.addHistory(fmt.Sprintf("Failed: %s. %s Nothing was changed.", lower1(text), why))
 	c.save()
 }
 
+// plainParams lists, by task kind, the values named like a secret that are
+// not one and so are kept for "Try again". Every other task loses them all.
+var plainParams = map[string]string{"replace-everything": "key"}
+
 // scrub removes passwords and private keys from a task's values before they
 // are kept for "Try again".
-func scrub(params json.RawMessage) json.RawMessage {
+func scrub(kind string, params json.RawMessage) json.RawMessage {
 	var m map[string]any
 	if json.Unmarshal(params, &m) != nil {
 		return json.RawMessage("{}")
 	}
 	for _, k := range []string{"pw", "pw2", "cur", "key", "crt"} {
-		delete(m, k)
+		if plainParams[kind] != k {
+			delete(m, k)
+		}
 	}
 	b, err := json.Marshal(m)
 	if err != nil {

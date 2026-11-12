@@ -1122,13 +1122,39 @@ func TestScheduledChangeFiresOnItsOwn(t *testing.T) {
 }
 
 func TestFailureKeepsNoSecrets(t *testing.T) {
-	got := string(scrub(json.RawMessage(`{"name":"a","pw":"secret-1","key":"-----BEGIN","cur":"x","crt":"y","role":"read"}`)))
-	for _, bad := range []string{"secret-1", "BEGIN", `"cur"`, `"crt"`} {
-		if strings.Contains(got, bad) {
-			t.Errorf("kept %s in %s", bad, got)
+	secrets := `{"name":"a","pw":"secret-1","pw2":"secret-2","key":"-----BEGIN","cur":"x","crt":"y","role":"read"}`
+	for _, kind := range []string{"own-certificate", "console-password", "add-user", "change-user", ""} {
+		got := string(scrub(kind, json.RawMessage(secrets)))
+		for _, bad := range []string{"secret-1", "secret-2", "BEGIN", `"cur"`, `"crt"`} {
+			if strings.Contains(got, bad) {
+				t.Errorf("%q kept %s in %s", kind, bad, got)
+			}
 		}
+		wantContains(t, got, `"name":"a"`)
 	}
-	wantContains(t, got, `"name":"a"`)
+}
+
+// A failed replace-everything keeps the environment name that was typed, so
+// "Try again" builds the environment that failed; a failed own-certificate
+// change keeps the names it was given but neither the certificate nor the key.
+func TestFailureKeepsWhatIsNotASecret(t *testing.T) {
+	replace, err := json.Marshal(replaceParams{Start: "own", Key: "prod-lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContains(t, string(scrub("replace-everything", replace)), `"key":"prod-lab"`)
+	if strings.Contains(string(scrub("", replace)), "prod-lab") {
+		t.Error("a task not known to carry a plain key still kept it")
+	}
+	cert, err := json.Marshal(certParams{Names: "vcsim.lab.example", Crt: "-----BEGIN CERTIFICATE", Key: "-----BEGIN PRIVATE KEY", CrtName: "tls.crt", KeyName: "tls.key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(scrub("own-certificate", cert))
+	if strings.Contains(got, "BEGIN") {
+		t.Errorf("kept the certificate or key: %s", got)
+	}
+	wantContains(t, got, `"names":"vcsim.lab.example"`)
 }
 
 // What was changed survives a restart; what was only scheduled does not,
