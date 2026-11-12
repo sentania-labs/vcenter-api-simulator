@@ -30,9 +30,9 @@ go build ./cmd/vcsimulator
 | `-scenario FILE` | the scenario ([reference](SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
 | `-data DIR` | holds `registry.json` (identities) and `tls/` (the self-signed certificate, created once); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
-| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. Console capture settings override this default after they are changed. |
-| `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; console capture settings can override this default |
-| `-debug-capture=false` | initially stop writing license-service requests (`/ls/`) to stdout; on by default, see below. The console's "Log requests to the license service" switch overrides this default once it has been changed |
+| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. A start-up default: see the saved capture settings below |
+| `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; a start-up default, and the console has no switch for it |
+| `-debug-capture=false` | initially stop writing license-service requests (`/ls/`) to stdout; on by default, see below. a start-up default: see the saved capture settings below |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
@@ -56,9 +56,16 @@ redacted, but request bodies can contain inventory identifiers. Treat the
 records accordingly. Unanswered records are bounded in memory and kept until
 deleted; turning full capture off deletes what it captured.
 
+The start-up flags `-query-log`, `-unanswered-stdout` and `-debug-capture` only
+set the first defaults. The first time any capture switch on **Requests** is
+used, all the capture settings (including the ones with no switch, such as
+unanswered requests to stdout) are saved in `capture-settings.json` in the
+data directory, and from then on the saved settings win over the flags at
+every start.
+
 Debug capture is on by default. **Requests** has a third capture switch,
 "Log requests to the license service", that turns it on and off; the choice is
-saved and wins over the `-debug-capture` start-up default after a restart. It
+saved with the other capture settings. It
 writes one JSON line to stdout (`"event":"request-capture"`) for
 every request to `/ls/`, with the method, path, query, the names of all
 headers, the values of Content-Type, SOAPAction, User-Agent, Accept and
