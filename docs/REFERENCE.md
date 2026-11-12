@@ -266,7 +266,7 @@ Smoke a simulator you are running yourself with PowerCLI (installs
 VMware.PowerCLI for the current user when missing):
 
 ```sh
-pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install
+pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install -User <username> -Password <password>
 ```
 
 The pack harness needs the pack checked out at
