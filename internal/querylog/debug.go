@@ -160,7 +160,6 @@ func sensitiveKey(k string) bool {
 type debugRecord struct {
 	Event         string            `json:"event"`
 	Time          time.Time         `json:"time"`
-	Reason        string            `json:"reason"`
 	Method        string            `json:"method"`
 	Path          string            `json:"path"`
 	Query         string            `json:"query,omitempty"`
@@ -175,19 +174,8 @@ type debugRecord struct {
 
 func isLicenseService(p string) bool { return p == "/ls" || strings.HasPrefix(p, "/ls/") }
 
-// debugReason says why a finished request is worth logging, or "".
-func debugReason(path string, status int) string {
-	switch {
-	case isLicenseService(path):
-		return "ls-sdk"
-	case status == http.StatusNotFound, status == http.StatusMethodNotAllowed, status == http.StatusNotImplemented:
-		return "unanswered"
-	}
-	return ""
-}
-
-func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, reason string, now time.Time) debugRecord {
-	rec := debugRecord{Event: "request-capture", Time: now.UTC(), Reason: reason, Method: r.Method,
+func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, now time.Time) debugRecord {
+	rec := debugRecord{Event: "request-capture", Time: now.UTC(), Method: r.Method,
 		Path: scrubRuns(r.URL.Path), Query: scrubQuery(r.URL.RawQuery), Status: status, BodyBytes: len(body)}
 	rec.Headers = map[string]string{}
 	for _, h := range debugHeaders {
@@ -221,8 +209,8 @@ func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, reason s
 	return rec
 }
 
-// debugWrap logs license-service and unanswered requests with headers and a
-// scrubbed body to stdout.
+// debugWrap logs license-service requests with headers and a scrubbed body to
+// stdout.
 func (c *Capture) debugWrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
@@ -251,11 +239,10 @@ func (c *Capture) debugWrap(next http.Handler) http.Handler {
 		if rw.status == 0 {
 			rw.status = http.StatusOK
 		}
-		reason := debugReason(r.URL.Path, rw.status)
-		if reason == "" {
+		if !isLicenseService(r.URL.Path) {
 			return
 		}
-		rec := buildDebug(r, body, cut, rw.status, reason, start)
+		rec := buildDebug(r, body, cut, rw.status, start)
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		enc := json.NewEncoder(c.stdout)

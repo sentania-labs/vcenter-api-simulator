@@ -16,7 +16,7 @@ type Settings struct {
 	Full       bool `json:"full"`
 	Unanswered bool `json:"unanswered"`
 	Stdout     bool `json:"stdout"`
-	// Debug logs license-service and unanswered requests, headers and a scrubbed
+	// Debug logs license-service requests, headers and a scrubbed
 	// body, to stdout. On by default.
 	Debug bool `json:"debug"`
 }

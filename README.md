@@ -65,9 +65,9 @@ continues growing until cleared.
 
 Debug capture is on by default and can be switched off in the console's capture
 settings. It writes one JSON line to stdout (`"event":"request-capture"`) for
-every request to `/ls/` and every request answered 404, 405 or 501, with the
-method, path, query, the names of all headers, the values of Content-Type,
-SOAPAction, User-Agent, Accept and Content-Length, and the request body. Before
+every request to `/ls/`, with the method, path, query, the names of all
+headers, the values of Content-Type, SOAPAction, User-Agent, Accept and
+Content-Length, and the request body. Before
 logging, the content of Security, Assertion, BinarySecurityToken, SignatureValue,
 X509 data, password and userName elements, JSON or form fields of that kind, and
 any run of more than 64 base64 or hex characters is replaced by a

@@ -199,7 +199,7 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 		capture := captures[0]
 		get("/api/capture", func(r *http.Request) (any, error) { return capture.State(), nil })
 		send("PUT", "/api/capture", func(r *http.Request) (any, error) {
-			settings := capture.State().Settings
+			var settings querylog.Settings
 			if err := decode(r, &settings); err != nil {
 				return nil, err
 			}

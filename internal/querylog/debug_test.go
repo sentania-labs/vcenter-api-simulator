@@ -121,7 +121,7 @@ func TestDebugCaptureLicenseServiceHeadersAndBody(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Reason != "ls-sdk" || got.Method != "POST" || got.Path != "/ls/sdk" || got.Status != 404 || got.Event != "request-capture" ||
+	if got.Method != "POST" || got.Path != "/ls/sdk" || got.Status != 404 || got.Event != "request-capture" ||
 		got.Headers["SOAPAction"] != `"urn:cislicense/1.0"` || got.Headers["User-Agent"] != "ops-client/1" || got.Headers["Content-Type"] != "text/xml; charset=utf-8" ||
 		got.Headers["Authorization"] != "" || got.Headers["Cookie"] != "" || !strings.Contains(got.Query, "mode=x") ||
 		!strings.Contains(got.Body, "CisLicenseSessionManagementService") || got.BodyBytes != len(loginEnvelope) {
@@ -133,7 +133,7 @@ func TestDebugCaptureLicenseServiceHeadersAndBody(t *testing.T) {
 	}
 }
 
-func TestDebugCaptureAnyMethodAndUnansweredOnly(t *testing.T) {
+func TestDebugCaptureLicenseServiceOnly(t *testing.T) {
 	c, out := debugCapture(t, Settings{Debug: true})
 	h := c.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -148,7 +148,7 @@ func TestDebugCaptureAnyMethodAndUnansweredOnly(t *testing.T) {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(rq[0], rq[1], nil))
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 3 || strings.Contains(out.String(), `"/ok"`) {
+	if len(lines) != 2 || strings.Contains(out.String(), `"/ok"`) || strings.Contains(out.String(), "/api/missing") {
 		t.Fatalf("unexpected lines: %q", lines)
 	}
 }
