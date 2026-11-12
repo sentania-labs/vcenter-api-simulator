@@ -840,6 +840,7 @@ func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
 		}
 	}
 	h.rest.mu.Unlock()
+	h.license.revoke(func(user string) bool { return affected["*"] || affected[user] })
 	return nil
 }
 

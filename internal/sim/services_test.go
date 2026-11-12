@@ -1,7 +1,10 @@
 package sim_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"encoding/pem"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,8 +38,10 @@ func licenseEnvelope(t *testing.T, header, body string) []byte {
 
 // serviceSim is the simulator plus the certificate the listener serves.
 type serviceSim struct {
-	t   *testing.T
-	srv *httptest.Server
+	t    *testing.T
+	srv  *httptest.Server
+	sim  *sim.Simulator
+	cert *serve.Certificate
 }
 
 func startServices(t *testing.T) serviceSim {
@@ -67,7 +72,7 @@ func startServicesLogged(t *testing.T, capture *querylog.Capture) serviceSim {
 	}
 	srv := httptest.NewServer(next)
 	t.Cleanup(srv.Close)
-	return serviceSim{t: t, srv: srv}
+	return serviceSim{t: t, srv: srv, sim: s, cert: cert}
 }
 
 // newCertificate is the certificate the listener serves, from a temp directory.
@@ -248,15 +253,38 @@ func TestLookupServiceContent(t *testing.T) {
 			t.Errorf("%s appears %d times, want once, in %s", open, n, text)
 		}
 	}
-	// the observed reference text lengths are 13, 19, 28 and 4 characters
-	for _, w := range wants {
-		if len(w.value) == 0 {
-			t.Errorf("empty reference for %s", w.element)
-		}
+	// the observed reference text lengths are 13, 19, 28 and 4 characters,
+	// measured on the response itself
+	var envelope struct {
+		Body struct {
+			Response struct {
+				Returnval struct {
+					Children []struct {
+						XMLName xml.Name
+						Type    string `xml:"type,attr"`
+						Text    string `xml:",chardata"`
+					} `xml:",any"`
+				} `xml:"returnval"`
+			} `xml:"RetrieveServiceContentResponse"`
+		} `xml:"Body"`
 	}
-	for _, pair := range [][2]int{{len("lookupService"), 13}, {len("serviceRegistration"), 19}, {len("deploymentInformationService"), 28}, {len("l10n"), 4}} {
-		if pair[0] != pair[1] {
-			t.Errorf("reference length %d, want %d", pair[0], pair[1])
+	if err := xml.Unmarshal(out, &envelope); err != nil {
+		t.Fatalf("response is not XML: %v: %s", err, text)
+	}
+	lengths := map[string]int{}
+	for _, child := range envelope.Body.Response.Returnval.Children {
+		if child.Type == "" {
+			t.Errorf("%s has no type attribute", child.XMLName.Local)
+		}
+		lengths[child.XMLName.Local] = len(child.Text)
+	}
+	wantLengths := map[string]int{"lookupService": 13, "serviceRegistration": 19, "deploymentInformationService": 28, "l10n": 4}
+	if len(lengths) != len(wantLengths) {
+		t.Errorf("got references %v, want exactly %v", lengths, wantLengths)
+	}
+	for name, want := range wantLengths {
+		if lengths[name] != want {
+			t.Errorf("%s text length %d, want %d", name, lengths[name], want)
 		}
 	}
 	// an unclassified lookup operation stays unanswered, as captured
@@ -281,6 +309,8 @@ func TestCertificateAuthorityRoot(t *testing.T) {
 		{"/rest/2.0/vcenter/certificate-authority/get-root", http.StatusOK},
 		{"/rest/1.0/vcenter/certificate-authority/get-root", http.StatusOK},
 		{"/api/vcenter/certificate-authority/get-root", http.StatusOK},
+		{"/api/1.0/vcenter/certificate-authority/get-root", http.StatusOK},
+		{"/api/2.0/vcenter/certificate-authority/get-root", http.StatusOK},
 	} {
 		path, want := tc.path, tc.want
 		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
@@ -319,6 +349,14 @@ func TestCertificateAuthorityRoot(t *testing.T) {
 			!strings.HasSuffix(strings.TrimSpace(pemText), "-----END CERTIFICATE-----") {
 			t.Fatalf("%s: not a PEM certificate: %q", path, pemText)
 		}
+		block, _ := pem.Decode([]byte(pemText))
+		if block == nil || block.Type != "CERTIFICATE" {
+			t.Fatalf("%s: undecodable PEM: %q", path, pemText)
+		}
+		served := e.cert.Current()
+		if served == nil || len(served.Certificate) == 0 || !bytes.Equal(block.Bytes, served.Certificate[0]) {
+			t.Errorf("%s: certificate differs from the one the listener serves", path)
+		}
 	}
 }
 
@@ -342,17 +380,14 @@ func restToken(t *testing.T, srv *httptest.Server) string {
 // a signed-in caller still gets the UserSession.
 func TestCurrentSessionNullAndUserSession(t *testing.T) {
 	e := startServices(t)
-	fetch := func(key string) string {
+	fetch := func() string {
 		this := "SessionManager"
-		if key != "" {
-			this = key
-		}
 		return `<?xml version='1.0' encoding='UTF-8'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body>` +
 			`<Fetch xmlns="urn:vim25"><_this type="SessionManager">` + this + `</_this><prop>currentSession</prop></Fetch></soapenv:Body></soapenv:Envelope>`
 	}
 
 	// anonymously: 200 with an empty FetchResponse
-	res, body := postTo(t, e.srv, "/sdk", `"urn:vim25/8.0"`, []byte(fetch("")))
+	res, body := postTo(t, e.srv, "/sdk", `"urn:vim25/8.0"`, []byte(fetch()))
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("anonymous fetch status %d: %s", res.StatusCode, body)
 	}
@@ -365,7 +400,7 @@ func TestCurrentSessionNullAndUserSession(t *testing.T) {
 
 	// signed in: the UserSession, and empty again after logout
 	soapCookie := sdkLogin(t, e.srv)
-	res, body = postTo(t, e.srv, "/sdk", `"urn:vim25/8.0"`, []byte(fetch(soapCookie)), &http.Cookie{Name: "vmware_soap_session", Value: soapCookie})
+	res, body = postTo(t, e.srv, "/sdk", `"urn:vim25/8.0"`, []byte(fetch()), &http.Cookie{Name: "vmware_soap_session", Value: soapCookie})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("signed-in fetch status %d: %s", res.StatusCode, body)
 	}
@@ -379,7 +414,7 @@ func TestCurrentSessionNullAndUserSession(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("logout status %d: %s", res.StatusCode, body)
 	}
-	res, body = postTo(t, e.srv, "/sdk", `"urn:vim25/8.0"`, []byte(fetch(soapCookie)), &http.Cookie{Name: "vmware_soap_session", Value: soapCookie})
+	res, body = postTo(t, e.srv, "/sdk", `"urn:vim25/8.0"`, []byte(fetch()), &http.Cookie{Name: "vmware_soap_session", Value: soapCookie})
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("logged-out fetch status %d: %s", res.StatusCode, body)
 	}
@@ -448,5 +483,51 @@ func TestLicenseRequestCaptureRecordsOperation(t *testing.T) {
 	}
 	if records[1].Operation != "RetrieveServiceContent" || records[1].Path != "/ls/sdk" {
 		t.Errorf("unanswered record = %+v, want the RetrieveServiceContent operation", records[1])
+	}
+}
+
+// Only the exact certificate-authority forms are answered, and a request that is
+// not a POST to a license or lookup path keeps the mux's previous 404.
+func TestServicesLeaveOtherRequestsAlone(t *testing.T) {
+	e := startServices(t)
+	token := restToken(t, e.srv)
+	req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/api/1.0/vcenter/certificate-authority/get-rootXYZ", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err := e.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if strings.Contains(string(body), "BEGIN CERTIFICATE") {
+		t.Errorf("a suffixed path was answered with the certificate: %s", body)
+	}
+	for _, path := range []string{"/ls", "/ls/sdk", "/lookupservice", "/lookupservice/sdk"} {
+		res, err := e.srv.Client().Get(e.srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s status %d, want the previous 404", path, res.StatusCode)
+		}
+	}
+}
+
+// Changing a user's credentials ends that user's license session too.
+func TestLicenseSessionRevokedByCredentialChange(t *testing.T) {
+	e := startServices(t)
+	res, body := postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", loginBody))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login %d: %s", res.StatusCode, body)
+	}
+	cookie := licenseCookieValue(t, res)
+	if err := e.sim.UpdateCredentials(func() ([]string, error) { return []string{"operator"}, nil }); err != nil {
+		t.Fatal(err)
+	}
+	logout := `<Logout xmlns="urn:internalcis.license"><_this type="CisLicenseSessionManagementService">cis.license.SessionManagementService</_this></Logout>`
+	res, body = postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", logout), cookie)
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Errorf("logout of a revoked session %d, want a fault: %s", res.StatusCode, body)
 	}
 }

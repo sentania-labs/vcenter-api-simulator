@@ -3,6 +3,7 @@ package sim
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/pem"
@@ -133,7 +134,7 @@ func (s *licenseSessions) authorized(user, password string) bool {
 		return true
 	}
 	expected, ok := s.credentials[user]
-	return ok && expected == password
+	return ok && subtle.ConstantTimeCompare([]byte(expected), []byte(password)) == 1
 }
 
 func (s *licenseSessions) valid(value string) bool {
@@ -158,6 +159,16 @@ func (s *licenseSessions) put(value, user string) {
 	s.mu.Lock()
 	s.tokens[value] = licenseSession{user: user, last: time.Now()}
 	s.mu.Unlock()
+}
+
+func (s *licenseSessions) revoke(affected func(user string) bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for value, session := range s.tokens {
+		if affected(session.user) {
+			delete(s.tokens, value)
+		}
+	}
 }
 
 func (s *licenseSessions) end(value string) {
@@ -194,8 +205,7 @@ func (s *licenseSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return true
+		return false
 	}
 	body, err := readBody(r, maxLocalSOAPBody)
 	if err != nil {
@@ -263,8 +273,7 @@ func serveLookup(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return true
+		return false
 	}
 	body, err := readBody(r, maxLocalSOAPBody)
 	if err != nil {
@@ -297,8 +306,7 @@ func (h *handler) caRoot(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return true
+		return false
 	}
 	if !h.rest.valid(r.Header.Get(restSessionHeader)) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -318,20 +326,13 @@ func (h *handler) caRoot(w http.ResponseWriter, r *http.Request) bool {
 // caRootPathMatches reports one of the answered certificate-authority forms:
 // the base form of either prefix and its numbered 1.0 and 2.0 spellings.
 func caRootPathMatches(path string) bool {
-	for _, prefix := range []string{caRootAPIPath, caRootPath} {
-		if path == prefix {
-			return true
-		}
-		for _, version := range []string{"/1.0/", "/2.0/"} {
-			cut := strings.Index(prefix, "vcenter/")
-			if cut < 0 {
-				continue
-			}
-			numbered := prefix[:cut] + strings.TrimPrefix(version, "/") + prefix[cut:]
-			if strings.HasPrefix(path, numbered) {
-				return true
-			}
-		}
+	switch path {
+	case caRootPath, caRootAPIPath,
+		"/rest/1.0/vcenter/certificate-authority/get-root",
+		"/rest/2.0/vcenter/certificate-authority/get-root",
+		"/api/1.0/vcenter/certificate-authority/get-root",
+		"/api/2.0/vcenter/certificate-authority/get-root":
+		return true
 	}
 	return false
 }
@@ -351,19 +352,13 @@ func (h *handler) currentSessionNull(w http.ResponseWriter, r *http.Request, bod
 
 // anonymousCurrentSession reports a Fetch of SessionManager.currentSession that
 // no session authenticates; a signed-in caller keeps the UserSession answer.
-// The reference of such a read is the session key itself, so the key is compared
-// against the read's own _this value.
 func anonymousCurrentSession(h *handler, r *http.Request, body []byte) bool {
 	req := decodeSOAPRequest(body)
 	if req.targetType != "SessionManager" || len(req.texts) != 1 || req.texts[0] != "currentSession" {
 		return false
 	}
-	if cookie, err := r.Cookie(soap.SessionCookieName); err == nil && cookie.Value != "" {
-		if h.liveSOAPSession(cookie.Value) {
-			return req.this != cookie.Value
-		}
-	}
-	return true
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	return err != nil || cookie.Value == "" || !h.liveSOAPSession(cookie.Value)
 }
 
 // liveSOAPSession reports whether this key is a session the store still lists.
@@ -397,12 +392,11 @@ func decodeSOAPRequest(body []byte) soapRequest {
 	var req soapRequest
 	decoder := xml.NewDecoder(bytes.NewReader(body))
 	var (
-		pending  string
-		inBody   bool
-		inOp     bool
-		inHeader bool
-		depth    int
-		opDepth  int
+		pending string
+		inBody  bool
+		inOp    bool
+		depth   int
+		opDepth int
 	)
 	for {
 		tok, err := decoder.Token()
@@ -424,8 +418,6 @@ func decodeSOAPRequest(body []byte) soapRequest {
 				}
 				inOp = true
 				opDepth = depth
-			case inHeader:
-				continue
 			}
 			pending = ""
 			switch t.Name.Local {
@@ -438,8 +430,6 @@ func decodeSOAPRequest(body []byte) soapRequest {
 				pending = "_this"
 			case "prop", "username", "password":
 				pending = t.Name.Local
-			case "Header":
-				inHeader = true
 			}
 		case xml.CharData:
 			if !inOp || pending == "" {
@@ -457,8 +447,6 @@ func decodeSOAPRequest(body []byte) soapRequest {
 		case xml.EndElement:
 			pending = ""
 			switch {
-			case inHeader && depth == opDepth:
-				inHeader = false
 			case inOp && depth == opDepth:
 				if req.operation == "" {
 					req.operation = t.Name.Local
