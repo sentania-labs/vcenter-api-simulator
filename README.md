@@ -75,8 +75,9 @@ key, signed entitlement, private key, security, signature, x509 or user) is
 replaced by a `[scrubbed:Name len=N]` marker, as is any run of more than 64
 base64 or hex characters. Element names, namespaces, other attributes and order
 are kept. Authorization, Cookie and session headers never have their values
-logged. A body over 64 KiB is cut and flagged. The license service itself is
-still not answered.
+logged. A body over 64 KiB is cut and flagged. Every request to `/ls/`,
+`/lookupservice/` and the REST paths above is captured with its operation name,
+whether the simulator answered it locally or the vcsim mux did.
 
 The console uses a separate password from vCenter. On first access, claim it
 with a password, or set `VCSIM_ADMIN_PASSWORD` (the chart's
@@ -131,6 +132,15 @@ What the scenario controls, and what the simulator guarantees:
   `administrator@vsphere.local` / `VMware123!VMware123!`. Set
   `auth.anyLogin: true` or `-any-login` to accept arbitrary non-empty credentials. The certificate persists,
   so the 2.0.0 pack's certificate pin survives restarts.
+- **License and lookup services.** `/ls/sdk` answers `Login` and `Logout` of
+  the license session-management service, and `/lookupservice/sdk` answers
+  `RetrieveServiceContent`, both anonymously where the real server does. The
+  same accounts as `/sdk` are accepted. An anonymous or logged-out
+  `SessionManager.currentSession` read answers an empty `FetchResponse`.
+  `/rest/vcenter/certificate-authority/get-root` and its `/api` and numbered
+  forms return the simulator's own certificate as PEM once the request carries
+  a valid `vmware-api-session-id`. A license session never authenticates
+  `/sdk`; the two stores are separate.
 - **Faults and latency.** Per-family or per-method SOAP faults
   (`invalid-argument`, `not-supported`, `system-error`, `timeout`) by
   cluster and time window; per-family and `/sdk` latency with jitter.
@@ -138,7 +148,13 @@ What the scenario controls, and what the simulator guarantees:
 Known gaps: the vDS is served under vcsim's base type
 `DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
 populated vSAN iSCSI target service, file service, and FC-backed datastores
-are not modeled because the walk captured no populated examples. Shared NFS
+are not modeled because the walk captured no populated examples.
+The license data model (assigned-license records, entitlements, the
+`LicenseManager` managed object), the STS token services, and the console's
+per-service `currentSession` shapes beyond what was captured are not modelled.
+Among the answered operations, the bad-credential fault of a real vCenter's
+license service was never observed, so a refused license login answers the
+captured invalid-request fault shape and that shape is not claimed as verified. Shared NFS
 v3 and iSCSI-backed VMFS datastores can be configured in a scenario; the
 iSCSI shape is plausible but not verified against a lab iSCSI host. REST
 inventory reads share SOAP inventory identities. List endpoints honour `names`, the parent and state
