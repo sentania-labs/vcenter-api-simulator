@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"encoding/xml"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -131,5 +132,23 @@ func TestBodyReaders(t *testing.T) {
 	}
 	if LoginUser([]byte("nothing")) != "" || ObjectType([]byte("nothing")) != "" {
 		t.Error("something was read out of nothing")
+	}
+}
+
+// The Login body is written by an XML encoder, which escapes quotes and
+// ampersands; the account name is what a person typed.
+func TestLoginUserIsTheNameThatWasSent(t *testing.T) {
+	type login struct {
+		XMLName  xml.Name `xml:"Login"`
+		UserName string   `xml:"userName"`
+	}
+	for _, name := range []string{"o'brien@vsphere.local", `a"b&c@vsphere.local`, "<x>@vsphere.local"} {
+		body, err := xml.Marshal(login{UserName: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := LoginUser(body); got != name {
+			t.Errorf("sent %q, read %q from %s", name, got, body)
+		}
 	}
 }

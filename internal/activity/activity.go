@@ -7,6 +7,7 @@ package activity
 
 import (
 	"bytes"
+	"html"
 	"net/http"
 	"regexp"
 	"strings"
@@ -404,7 +405,7 @@ var loginUserRe = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?userName[^>]*>([^<]{1,
 // LoginUser returns the account name a SOAP Login body carries, or "".
 func LoginUser(body []byte) string {
 	if m := loginUserRe.FindSubmatch(body); m != nil {
-		return strings.TrimSpace(string(m[1]))
+		return strings.TrimSpace(html.UnescapeString(string(m[1])))
 	}
 	return ""
 }

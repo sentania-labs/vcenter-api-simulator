@@ -38,7 +38,7 @@ function fail(field, message) {
   (field === 'pw' ? password : confirm).focus();
 }
 function clear() {
-  for (const f of ['pw', 'pw2']) { $('row-' + f).classList.remove('has-err'); $('err-' + f).hidden = true; }
+  for (const f of ['pw', 'pw2']) { $('row-' + f).classList.remove('has-err'); $('err-' + f).hidden = true; $('err-' + f).textContent = ''; }
   if (claim) $('hint-pw').hidden = false;
 }
 password.addEventListener('input', clear);

@@ -1,7 +1,10 @@
 package control
 
 import (
+	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
@@ -297,5 +301,55 @@ func TestAddedSlownessAddsToAScenarioFamilyDelayInEitherOrder(t *testing.T) {
 				t.Errorf("the screen claims a replacement that is not happening: %s", all)
 			}
 		})
+	}
+}
+
+// The license-service log is a console switch; a choice made there is saved
+// and wins over the start-up default after a restart.
+func TestLicenseServiceLogSwitch(t *testing.T) {
+	dir := t.TempDir()
+	var out bytes.Buffer
+	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true, Debug: true}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newCtl(t, small(t), "", "t")
+	c.Capture = capture
+	call := func(cap *querylog.Capture) {
+		h := cap.Wrap(http.NotFoundHandler())
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/ls/sdk", strings.NewReader("<a/>")))
+	}
+	call(capture)
+	if !strings.Contains(out.String(), `"event":"request-capture"`) {
+		t.Fatalf("nothing logged by default: %q", out.String())
+	}
+	if !c.Requests().Capture.Debug {
+		t.Error("the screen does not show the log as on")
+	}
+	out.Reset()
+	text, err := c.SetCapture("debug", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContains(t, text, "no longer written to the simulator's log")
+	call(capture)
+	if out.Len() != 0 || c.Requests().Capture.Debug {
+		t.Fatalf("still logging after it was switched off: %q", out.String())
+	}
+	again, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true, Debug: true}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(again)
+	if out.Len() != 0 {
+		t.Fatalf("the start-up default beat the saved choice: %q", out.String())
+	}
+	c.Capture = again
+	if _, err := c.SetCapture("debug", true); err != nil {
+		t.Fatal(err)
+	}
+	call(again)
+	if !strings.Contains(out.String(), `"event":"request-capture"`) {
+		t.Fatalf("not logging after it was switched on: %q", out.String())
 	}
 }

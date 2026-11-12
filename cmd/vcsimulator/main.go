@@ -65,6 +65,7 @@ func main() {
 	seed := flag.String("seed", "phase1", "identity seed for the built-in scenario (ignored with -scenario)")
 	queryLog := flag.String("query-log", "", "enable full query capture to this JSONL path (may contain inventory identifiers)")
 	unansweredStdout := flag.Bool("unanswered-stdout", false, "write unanswered requests as JSON lines to stdout")
+	debugCapture := flag.Bool("debug-capture", true, "initially write license-service requests (/ls/) to stdout, with secrets scrubbed; the console's choice overrides this default")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
 	tlsManaged := flag.Bool("tls-managed", false, "the deployment manages the certificate pair in -tls-dir")
 	tlsDir := flag.String("tls-dir", "", "directory holding the persisted self-signed certificate (default <data>/tls)")
@@ -181,7 +182,7 @@ func main() {
 	}
 	defer ctl.Close()
 
-	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: true}, os.Stdout)
+	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: *debugCapture}, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
 	}

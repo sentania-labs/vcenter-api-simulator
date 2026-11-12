@@ -32,7 +32,7 @@ go build ./cmd/vcsimulator
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
 | `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. Console capture settings override this default after they are changed. |
 | `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; console capture settings can override this default |
-| `-debug-capture=false` | stop writing license-service requests (`/ls/`) to stdout; on by default, see below |
+| `-debug-capture=false` | initially stop writing license-service requests (`/ls/`) to stdout; on by default, see below. The console's "Log requests to the license service" switch overrides this default once it has been changed |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
@@ -56,8 +56,10 @@ redacted, but request bodies can contain inventory identifiers. Treat the
 records accordingly. Unanswered records are bounded in memory and kept until
 deleted; turning full capture off deletes what it captured.
 
-Debug capture is on by default and has no switch in the console; start with
-`-debug-capture=false` to turn it off. It writes one JSON line to stdout (`"event":"request-capture"`) for
+Debug capture is on by default. **Requests** has a third capture switch,
+"Log requests to the license service", that turns it on and off; the choice is
+saved and wins over the `-debug-capture` start-up default after a restart. It
+writes one JSON line to stdout (`"event":"request-capture"`) for
 every request to `/ls/`, with the method, path, query, the names of all
 headers, the values of Content-Type, SOAPAction, User-Agent, Accept and
 Content-Length, and the request body. Before

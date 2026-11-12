@@ -128,7 +128,7 @@ test('Requests leads with the verdict and lists problems with what happened', ()
       { id: 2, t: 'vSAN performance data for host network cards', tech: 'VsanPerfQueryPerf: vsan-pnic-net', n: 11, st: 'fault', tone: 'warn', label: 'Failing on purpose', long: 'x', who: 'the tool at 10.20.0.31', cond: 7, last: now },
       { id: 3, t: 'Signing in and out', tech: 'Login', n: 14, st: 'ok', tone: 'ok', label: 'Answered', long: 'x', who: 'the tool at 10.20.0.31', last: now },
     ],
-    multiTool: false, capture: { available: true, unanswered: true, full: false, kept: 37, kinds: 4, fullKept: 0 }, reportUrl: 'https://example.test/issues/new',
+    multiTool: false, capture: { available: true, unanswered: true, full: false, debug: true, kept: 37, kinds: 4, fullKept: 0 }, reportUrl: 'https://example.test/issues/new',
   };
   const out = requests.screen(['requests'], {}).render(ctxOf(homeView), d);
   clean(out, 'Requests');
@@ -137,6 +137,10 @@ test('Requests leads with the verdict and lists problems with what happened', ()
   assert.match(t, /Turn the fault off/);
   assert.match(t, /37 unanswered requests of 4 kinds have been captured/);
   assert.match(t, /Download unanswered requests/);
+  assert.match(t, /There are three kinds/);
+  assert.match(t, /Log requests to the license service: On/);
+  const off = text(requests.screen(['requests'], {}).render(ctxOf(homeView), { ...d, capture: { ...d.capture, debug: false } }));
+  assert.match(off, /Log requests to the license service: Off/);
   assert.ok(t.indexOf('Which license') < t.indexOf('Signing in and out'), 'problems come first');
   const only = text(requests.screen(['requests'], { show: 'unknown' }).render(ctxOf(homeView), d));
   assert.ok(!only.includes('Signing in and out'));

@@ -380,6 +380,8 @@ type CaptureView struct {
 	Available  bool `json:"available"`
 	Unanswered bool `json:"unanswered"`
 	Full       bool `json:"full"`
+	// Debug is the license-service request log on stdout.
+	Debug bool `json:"debug"`
 	// Kept and Kinds count the unanswered requests held; FullKept the
 	// requests full capture holds.
 	Kept      int        `json:"kept"`
@@ -394,7 +396,7 @@ func (c *Controller) captureView() CaptureView {
 		return CaptureView{}
 	}
 	st := c.Capture.State()
-	return CaptureView{Available: true, Unanswered: st.Settings.Unanswered, Full: st.Settings.Full, Kept: st.UnansweredHeld, Kinds: st.UnansweredKinds,
+	return CaptureView{Available: true, Unanswered: st.Settings.Unanswered, Full: st.Settings.Full, Debug: st.Settings.Debug, Kept: st.UnansweredHeld, Kinds: st.UnansweredKinds,
 		FullKept: st.FullHeld, FullSince: st.FullSince, Error: st.Error}
 }
 
@@ -419,7 +421,7 @@ func (c *Controller) Requests() RequestsView {
 		Capture: c.captureView(), ReportURL: c.opts.ReportURL}
 }
 
-// SetCapture turns one of the two kinds of capture on or off and returns
+// SetCapture turns one of the three kinds of capture on or off and returns
 // the words that say what that did.
 func (c *Controller) SetCapture(kind string, on bool) (string, error) {
 	if c.Capture == nil {
@@ -434,6 +436,8 @@ func (c *Controller) SetCapture(kind string, on bool) (string, error) {
 		next.Full = on
 	case "unanswered":
 		next.Unanswered = on
+	case "debug":
+		next.Debug = on
 	default:
 		return "", invalid("There is no such kind of capture.")
 	}
@@ -449,6 +453,14 @@ func (c *Controller) SetCapture(kind string, on bool) (string, error) {
 			return `**Capturing.** Every request is captured from now on. Repeat the action in your tool, then download and turn this off. The Requests tab shows "Capturing all" while it is on.`, nil
 		}
 		return "**Stopped.** Full capture is off, and what it had captured was deleted.", nil
+	}
+	if kind == "debug" {
+		c.addHistory("Logging of license-service requests turned " + state + ".")
+		c.save()
+		if on {
+			return "**On.** Every request a tool sends to the license service is written to the simulator's log from now on, with passwords and sign-in tokens removed.", nil
+		}
+		return "**Off.** Requests to the license service are no longer written to the simulator's log.", nil
 	}
 	c.addHistory("Capture of unanswered requests turned " + state + ".")
 	c.save()
