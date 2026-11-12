@@ -25,20 +25,24 @@ const maxDebugScan = 1 << 20
 // debugHeaders are the only headers whose values are logged.
 var debugHeaders = []string{"Content-Type", "SOAPAction", "User-Agent", "Accept", "Content-Length"}
 
-// scrubElements are elements whose content is replaced, matched by local name
-// without regard to case or namespace prefix.
-var scrubElements = map[string]bool{
-	"security": true, "assertion": true, "binarysecuritytoken": true, "signaturevalue": true,
-	"x509data": true, "x509certificate": true, "password": true, "username": true,
-	"sessionid": true, "sessionkey": true, "sessioncookie": true, "vmware-api-session-id": true,
-	"ticket": true, "token": true, "secret": true, "securitycontexttoken": true,
-	"cookie": true, "authorization": true,
+// scrubWords extends the query log's sensitive words with the SAML, X509,
+// signature and user-name names a request body can carry.
+var scrubWords = append(append([]string{}, sensitiveWords...), "security", "signature", "x509", "user")
+
+func scrubName(n string) bool {
+	n = strings.ToLower(n)
+	for _, w := range scrubWords {
+		if strings.Contains(n, w) {
+			return true
+		}
+	}
+	return false
 }
 
 var (
 	longRun    = regexp.MustCompile(`[A-Za-z0-9+/=_-]{65,}`)
-	jsonSecret = regexp.MustCompile(`(?i)("[^"\\]*(?:password|passwd|secret|token|session|authorization|cookie|ticket|credential|assertion|username|user)[^"\\]*"\s*:\s*)("(?:[^"\\]|\\.)*")`)
-	formSecret = regexp.MustCompile(`(?i)((?:^|[&;\s?])[\w.\-]*(?:password|passwd|secret|token|session|authorization|cookie|ticket|credential|assertion|username)[\w.\-]*=)([^&;\s]*)`)
+	jsonSecret = regexp.MustCompile(`(?i)("[^"\\]*(?:` + strings.Join(scrubWords, "|") + `)[^"\\]*"\s*:\s*)("(?:[^"\\]|\\.)*")`)
+	formSecret = regexp.MustCompile(`(?i)((?:^|[&;\s?])[\w.\-]*(?:` + strings.Join(scrubWords, "|") + `)[\w.\-]*=)([^&;\s]*)`)
 )
 
 func placeholder(kind string, n int) string { return fmt.Sprintf("[scrubbed:%s len=%d]", kind, n) }
@@ -74,8 +78,6 @@ func ScrubBody(data []byte) string {
 	return scrubRuns(scrubXML(data))
 }
 
-func localName(n xml.Name) string { return strings.ToLower(n.Local) }
-
 func scrubXML(data []byte) string {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = false
@@ -94,7 +96,7 @@ func scrubXML(data []byte) string {
 			return out.String()
 		}
 		start, ok := tok.(xml.StartElement)
-		if !ok || !scrubElements[localName(start.Name)] {
+		if !ok || !scrubName(start.Name.Local) {
 			continue
 		}
 		contentStart := d.InputOffset()
@@ -152,12 +154,7 @@ func scrubQuery(raw string) string {
 }
 func sensitiveKey(k string) bool {
 	k = strings.ToLower(k)
-	for _, w := range []string{"password", "passwd", "secret", "token", "session", "auth", "cookie", "ticket", "credential", "assertion", "key", "user"} {
-		if strings.Contains(k, w) {
-			return true
-		}
-	}
-	return false
+	return scrubName(k) || strings.Contains(k, "auth") || strings.Contains(k, "key")
 }
 
 type debugRecord struct {

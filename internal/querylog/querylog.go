@@ -110,11 +110,13 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, enabled fu
 	next.ServeHTTP(rw, r)
 }
 
+var sensitiveWords = []string{"password", "passwd", "secret", "token", "cookie", "ticket", "credential", "authorization", "session", "hash", "assertion", "privatekey", "licensekey", "signedentitlement"}
+
 // sensitive recognizes credential-bearing elements and attributes regardless
 // of case and namespace. Unknown or malformed bodies are omitted entirely.
 func sensitive(s string) bool {
 	s = strings.ToLower(s)
-	for _, word := range []string{"password", "passwd", "secret", "token", "cookie", "ticket", "credential", "authorization", "session", "hash", "assertion", "privatekey", "licensekey", "signedentitlement"} {
+	for _, word := range sensitiveWords {
 		if strings.Contains(s, word) {
 			return true
 		}

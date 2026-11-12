@@ -201,3 +201,21 @@ func TestScrubAssertionOutsideSecurityKeepsAttributes(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestScrubUsesOneSensitiveDefinition(t *testing.T) {
+	for name, in := range map[string]string{
+		"xml licenseKey":        `<r><ls:licenseKey>AAAAA-BBBBB-CCCCC-DDDDD-EEEEE</ls:licenseKey><ok>keep</ok></r>`,
+		"xml newPassword":       `<r><newPassword>AAAAA-BBBBB</newPassword><ok>keep</ok></r>`,
+		"xml signedEntitlement": `<r><signedEntitlement>AAAAA-BBBBB</signedEntitlement><ok>keep</ok></r>`,
+		"xml accessToken":       `<r><accessToken>AAAAA-BBBBB</accessToken><ok>keep</ok></r>`,
+		"json licenseKey":       `{"licenseKey":"AAAAA-BBBBB","ok":"keep"}`,
+		"json privateKey":       `{"privateKey":"AAAAA-BBBBB","ok":"keep"}`,
+		"form hash":             `hash=AAAAA-BBBBB&ok=keep`,
+		"form licenseKey":       `licenseKey=AAAAA-BBBBB&ok=keep`,
+	} {
+		got := ScrubBody([]byte(in))
+		if strings.Contains(got, "AAAAA") || !strings.Contains(got, "keep") || !strings.Contains(got, "[scrubbed:") {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+}
