@@ -63,6 +63,19 @@ or redacted, but request bodies can contain inventory identifiers. Treat the
 records accordingly. Unanswered records are bounded in memory; the full file
 continues growing until cleared.
 
+Debug capture is on by default and can be switched off in the console's capture
+settings. It writes one JSON line to stdout (`"event":"request-capture"`) for
+every request to `/ls/` and every request answered 404, 405 or 501, with the
+method, path, query, the names of all headers, the values of Content-Type,
+SOAPAction, User-Agent, Accept and Content-Length, and the request body. Before
+logging, the content of Security, Assertion, BinarySecurityToken, SignatureValue,
+X509 data, password and userName elements, JSON or form fields of that kind, and
+any run of more than 64 base64 or hex characters is replaced by a
+`[scrubbed:Name len=N]` marker; element names, namespaces, attributes and order
+are kept. Authorization, Cookie and session headers never have their values
+logged. A body over 64 KiB is cut and flagged. The license service itself is
+still not answered.
+
 The console uses a separate password from vCenter. On first access, claim it
 with a password, or set `VCSIM_ADMIN_PASSWORD` (the chart's
 `admin.existingSecret` points to a Secret with key `password`). A claim persists

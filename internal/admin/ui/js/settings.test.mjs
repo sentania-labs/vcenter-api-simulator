@@ -5,7 +5,7 @@ import settings from './settings.js';
 const data = () => ({
   users: { users: [{ name: 'administrator@vsphere.local', role: 'administrator' }, { name: 'reader@vsphere.local', role: 'read-only' }], anyLogin: false },
   draft: { scenario: { datacenters: [], clusters: [] } }, tree: { datacenters: [] },
-  capture: { settings: { full: false, unanswered: true, stdout: false }, fullHeld: 0, unansweredHeld: 0, fileBytes: 0, path: '/data/query-log.jsonl' },
+  capture: { settings: { full: false, unanswered: true, stdout: false, debug: true }, fullHeld: 0, unansweredHeld: 0, fileBytes: 0, path: '/data/query-log.jsonl' },
   certificate: { managed: true, names: ['console.example.test'], fingerprint: 'abc', expires: '2030-01-01T00:00:00Z' },
   settings: { sessionTimeoutSeconds: 0 },
 });
