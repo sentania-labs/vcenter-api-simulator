@@ -182,22 +182,9 @@ func (k *Knobs) delay(family, cluster string) time.Duration {
 	if !ok && k.latency.PerfQuery != nil {
 		d = *k.latency.PerfQuery
 	}
-	for _, c := range k.conds {
-		if c.Kind != scenario.CondSlow || !c.ActiveAt(now) {
-			continue
-		}
-		if c.Which == scenario.WhichPerf || (c.Which == scenario.WhichOne && c.Family == family) {
-			// a condition narrowed to clusters applies only when the
-			// request names one of them
-			if len(c.Clusters) == 0 || (cluster != "" && c.Selects(cluster)) {
-				if c.Replace {
-					d = scenario.Delay{}
-				}
-				d.FixedMs += c.FixedMs
-				d.JitterMs += c.JitterMs
-			}
-		}
-	}
+	added := scenario.SlowFor(k.conds, family, cluster, now)
+	d.FixedMs += added.FixedMs
+	d.JitterMs += added.JitterMs
 	k.cfg.RUnlock()
 	if d.FixedMs == 0 && d.JitterMs == 0 {
 		return 0

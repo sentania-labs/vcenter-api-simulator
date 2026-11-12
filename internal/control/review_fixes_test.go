@@ -244,6 +244,58 @@ func TestScenarioFamilyLatencyReplacesPerfQuery(t *testing.T) {
 		texts = append(texts, v.Text)
 	}
 	all := strings.Join(texts, "\n")
-	wantContains(t, all, "take about 100 ms, in place of any general slowness")
+	wantContains(t, all, "take about 100 ms, set by the scenario file in place of its general delay")
 	wantContains(t, all, "are not slowed down")
+}
+
+// Slowness added in the console adds to a scenario file's own delay for a
+// family, in whatever order the conditions are listed, and the screen says
+// the total that is applied. Oracle: the owner's stated semantics (the
+// file's family delay replaces only the file's general delay; anything
+// added later adds on top): 500 general, 100 family, 2000 added is 2100 for
+// that family, 2500 for the rest.
+func TestAddedSlownessAddsToAScenarioFamilyDelayInEitherOrder(t *testing.T) {
+	added := scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichPerf, FixedMs: 2000}
+	for name, first := range map[string]bool{"added after": false, "added before": true} {
+		t.Run(name, func(t *testing.T) {
+			sc := small(t)
+			sc.Latency = scenario.Latency{
+				PerfQuery: &scenario.Delay{FixedMs: 500},
+				Families:  map[string]scenario.Delay{"host-domowner": {FixedMs: 100}},
+			}
+			if first {
+				sc.Conditions = append(sc.Conditions, added)
+			}
+			c := newCtl(t, sc, "", "t")
+			if !first {
+				c.mu.Lock()
+				next := clone(c.applied().sc)
+				next.Conditions = append(next.Conditions, added)
+				_, err := c.applyScenario(next, false)
+				c.mu.Unlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			hold := func(family string) time.Duration {
+				body := fmt.Sprintf(`<VsanPerfQueryPerf><entityRefId>%s:abc</entityRefId></VsanPerfQueryPerf>`, family)
+				return c.applied().sim.Env.Hold([]byte(body))
+			}
+			if got := hold("host-domowner"); got != 2100*time.Millisecond {
+				t.Errorf("host-domowner is held %v, want 2.1s", got)
+			}
+			if got := hold("cluster-domclient"); got != 2500*time.Millisecond {
+				t.Errorf("cluster-domclient is held %v, want 2.5s", got)
+			}
+			var texts []string
+			for _, v := range c.Faults().On {
+				texts = append(texts, v.Text)
+			}
+			all := strings.Join(texts, "\n")
+			wantContains(t, all, "take about 2,100 ms in all: 100 ms from the scenario file plus 2,000 ms added here")
+			if strings.Contains(all, "in place of any general slowness") {
+				t.Errorf("the screen claims a replacement that is not happening: %s", all)
+			}
+		})
+	}
 }

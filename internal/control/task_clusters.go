@@ -766,8 +766,8 @@ func (c *Controller) RemoveCluster(key string) (string, error) {
 	c.addHistory(done)
 	for _, cond := range ended {
 		// it applied to this cluster alone, so it went with it
-		c.ended = append(c.ended, EndedCondition{ID: cond.ID, Kind: cond.Kind, Text: condText(old.sc, cond), At: c.now()})
-		c.addHistory(fmt.Sprintf("Turned off with %s, the only cluster it applied to: %s", clusterLabel(old.sc, key), lower1(condText(old.sc, cond))))
+		c.ended = append(c.ended, EndedCondition{ID: cond.ID, Kind: cond.Kind, Text: c.condText(old.sc, cond), At: c.now()})
+		c.addHistory(fmt.Sprintf("Turned off with %s, the only cluster it applied to: %s", clusterLabel(old.sc, key), lower1(c.condText(old.sc, cond))))
 	}
 	c.save()
 	return done + " The other clusters are unchanged.", nil

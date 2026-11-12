@@ -124,7 +124,7 @@ func planFault(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error) {
 			p.bad("pick", `Tick at least one cluster, or choose "Every cluster".`)
 		}
 	}
-	text := condText(old.sc, cond)
+	text := c.condText(old.sc, cond)
 	if !everywhere && in.Where == "some" && len(cond.Clusters) == 0 {
 		text = strings.TrimSuffix(strings.TrimSuffix(text, "."), ", on every cluster") + ", on the clusters you tick."
 	}

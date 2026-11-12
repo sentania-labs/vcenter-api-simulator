@@ -296,7 +296,9 @@ has a `kind` (`slow`, `error`, `missing`, `timeout`, `perfdown`), `which`
 requests it applies to (`perf`: every performance query; `one`: the queries
 of one `family`; `inv`: inventory requests on `/sdk`, slowness only; `method`:
 one other `/vsanHealth` method), optional `clusters`, `fixedMs` and `jitterMs`
-for slowness, and an optional `to` when it turns itself off. When the simulator
+for slowness, and an optional `to` when it turns itself off. Slowness with
+`base: true` is the file's own `latency:`; a `which: one` base delay stands in for
+the `which: perf` base delay, and all other slowness adds on top. When the simulator
 starts, the file's own `faults:`, `latency:` and `statsPrimary: false` are
 turned into conditions, so the console lists and can turn off everything that
 is on. A scenario file may also write `conditions:` directly.

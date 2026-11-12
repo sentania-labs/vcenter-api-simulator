@@ -84,7 +84,7 @@ func (c *Controller) lift(sc *scenario.Scenario) {
 	var base scenario.Delay
 	if d := l.PerfQuery; d != nil && (d.FixedMs > 0 || d.JitterMs > 0) {
 		base = *d
-		sc.Conditions = append(sc.Conditions, scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichPerf, FixedMs: d.FixedMs, JitterMs: d.JitterMs})
+		sc.Conditions = append(sc.Conditions, scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichPerf, FixedMs: d.FixedMs, JitterMs: d.JitterMs, Base: true})
 	}
 	var fams []string
 	for f := range l.Families {
@@ -94,7 +94,7 @@ func (c *Controller) lift(sc *scenario.Scenario) {
 	for _, f := range fams {
 		d := l.Families[f]
 		if d.FixedMs > 0 || d.JitterMs > 0 || base.FixedMs > 0 || base.JitterMs > 0 {
-			sc.Conditions = append(sc.Conditions, scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichOne, Family: f, FixedMs: d.FixedMs, JitterMs: d.JitterMs, Replace: true})
+			sc.Conditions = append(sc.Conditions, scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichOne, Family: f, FixedMs: d.FixedMs, JitterMs: d.JitterMs, Base: true})
 		}
 	}
 	if d := l.SDK; d != nil && (d.FixedMs > 0 || d.JitterMs > 0) {
@@ -215,7 +215,7 @@ func (c *Controller) sweep() {
 		if cond.To != nil {
 			at = cond.To.UTC()
 		}
-		c.ended = append(c.ended, EndedCondition{ID: cond.ID, Kind: cond.Kind, Text: condText(r.sc, cond), At: at})
+		c.ended = append(c.ended, EndedCondition{ID: cond.ID, Kind: cond.Kind, Text: c.condText(r.sc, cond), At: at})
 		what := "A fault"
 		if cond.Kind == scenario.CondSlow {
 			what = "Slowness"
@@ -268,7 +268,7 @@ func condWhere(sc *scenario.Scenario, cond scenario.Condition) string {
 }
 
 // condText is the one sentence that says what a condition does.
-func condText(sc *scenario.Scenario, cond scenario.Condition) string {
+func (c *Controller) condText(sc *scenario.Scenario, cond scenario.Condition) string {
 	w, wh := condWhat(cond), condWhere(sc, cond)
 	switch cond.Kind {
 	case scenario.CondSlow:
@@ -276,11 +276,15 @@ func condText(sc *scenario.Scenario, cond scenario.Condition) string {
 		if cond.JitterMs > 0 {
 			vary = fmt.Sprintf(" (give or take %s ms)", num(cond.JitterMs))
 		}
-		if cond.Replace && cond.FixedMs == 0 && cond.JitterMs == 0 {
-			return fmt.Sprintf("Requests for %s are not slowed down, whatever else is%s.", w, wh)
+		if cond.Base && cond.Which == scenario.WhichOne {
+			return c.baseFamilyText(sc, cond, w, wh)
 		}
-		if cond.Replace {
-			return fmt.Sprintf("Requests for %s take about %s ms%s, in place of any general slowness%s.", w, num(cond.FixedMs), vary, wh)
+		if cond.Base {
+			for _, o := range sc.Conditions {
+				if o.Base && o.Which == scenario.WhichOne {
+					return fmt.Sprintf("Requests for %s take about %s ms longer%s%s, except for data the scenario file gives its own delay.", w, num(cond.FixedMs), vary, wh)
+				}
+			}
 		}
 		return fmt.Sprintf("Requests for %s take about %s ms longer%s%s.", w, num(cond.FixedMs), vary, wh)
 	case scenario.CondError:
@@ -295,6 +299,29 @@ func condText(sc *scenario.Scenario, cond scenario.Condition) string {
 		return fmt.Sprintf("Requests for %s are never answered%s.", w, wh)
 	}
 	return fmt.Sprintf("The vSAN performance service is switched off%s.", wh)
+}
+
+// baseFamilyText says what a scenario file's own delay for one kind of data
+// comes to, including slowness added since, worked out by the function that
+// applies it.
+func (c *Controller) baseFamilyText(sc *scenario.Scenario, cond scenario.Condition, w, wh string) string {
+	total := cond.FixedMs
+	vary := cond.JitterMs
+	if now := c.now(); cond.ActiveAt(now) {
+		all := scenario.SlowFor(sc.Conditions, cond.Family, "", now)
+		total, vary = all.FixedMs, all.JitterMs
+	}
+	give := ""
+	if vary > 0 {
+		give = fmt.Sprintf(" (give or take %s ms)", num(vary))
+	}
+	if total != cond.FixedMs || vary != cond.JitterMs {
+		return fmt.Sprintf("Requests for %s take about %s ms%s in all: %s ms from the scenario file plus %s ms added here%s.", w, num(total), give, num(cond.FixedMs), num(total-cond.FixedMs), wh)
+	}
+	if total == 0 && vary == 0 {
+		return fmt.Sprintf("Requests for %s are not slowed down, whatever the scenario file's general delay is%s.", w, wh)
+	}
+	return fmt.Sprintf("Requests for %s take about %s ms%s, set by the scenario file in place of its general delay%s.", w, num(total), give, wh)
 }
 
 // offText says what is back to normal once a condition is off.
@@ -367,7 +394,7 @@ func (c *Controller) conditionViews() []ConditionView {
 		if cond.Ended(now) {
 			continue
 		}
-		v := ConditionView{ID: cond.ID, Kind: cond.Kind, Text: condText(sc, cond), Since: cond.From, Until: cond.To}
+		v := ConditionView{ID: cond.ID, Kind: cond.Kind, Text: c.condText(sc, cond), Since: cond.From, Until: cond.To}
 		if !cond.Started(now) {
 			v.Starts, v.Since = cond.From, nil
 		}
@@ -421,7 +448,7 @@ func (c *Controller) ConditionOff(id int) (string, error) {
 	}
 	now := c.now()
 	for _, cond := range gone {
-		c.ended = append(c.ended, EndedCondition{ID: cond.ID, Kind: cond.Kind, Text: condText(r.sc, cond), At: now})
+		c.ended = append(c.ended, EndedCondition{ID: cond.ID, Kind: cond.Kind, Text: c.condText(r.sc, cond), At: now})
 		what := "A fault"
 		if cond.Kind == scenario.CondSlow {
 			what = "Slowness"

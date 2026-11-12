@@ -39,10 +39,10 @@ type Condition struct {
 	Clusters []string `yaml:"clusters,omitempty" json:"clusters,omitempty"`
 	FixedMs  int      `yaml:"fixedMs,omitempty" json:"fixedMs,omitempty"`
 	JitterMs int      `yaml:"jitterMs,omitempty" json:"jitterMs,omitempty"`
-	// Replace makes a slowness condition for one family the family's whole
-	// delay: slowness listed before it no longer adds to it. A scenario
-	// file's per-family latency means this.
-	Replace bool `yaml:"replace,omitempty" json:"replace,omitempty"`
+	// Base marks slowness that came from a scenario file's own latency
+	// settings. A family's base delay stands in for the file's general one;
+	// every other slowness adds on top of whichever applies.
+	Base bool `yaml:"base,omitempty" json:"base,omitempty"`
 	// From is when it was switched on; To, when set, is when it turns
 	// itself off.
 	From *time.Time `yaml:"from,omitempty" json:"from,omitempty"`
@@ -101,6 +101,41 @@ func (c Condition) Selects(cluster string) bool {
 	return false
 }
 
+// SlowFor is how long a performance query for a family on a cluster is
+// delayed at t by the slowness conditions: the base delay that applies
+// (the family's own, else the general one) plus all other slowness that
+// applies, whatever order they are listed in. A condition narrowed to
+// clusters applies only when the request names one of them.
+func SlowFor(conds []Condition, family, cluster string, t time.Time) Delay {
+	var d, general, own Delay
+	hasOwn := false
+	for _, c := range conds {
+		if c.Kind != CondSlow || !c.ActiveAt(t) {
+			continue
+		}
+		if c.Which != WhichPerf && !(c.Which == WhichOne && c.Family == family) {
+			continue
+		}
+		if len(c.Clusters) > 0 && (cluster == "" || !c.Selects(cluster)) {
+			continue
+		}
+		target := &d
+		if c.Base && c.Which == WhichOne {
+			target, hasOwn = &own, true
+		} else if c.Base {
+			target = &general
+		}
+		target.FixedMs += c.FixedMs
+		target.JitterMs += c.JitterMs
+	}
+	if !hasOwn {
+		own = general
+	}
+	d.FixedMs += own.FixedMs
+	d.JitterMs += own.JitterMs
+	return d
+}
+
 // FaultKind is the Fault kind an error, missing or timeout condition
 // answers with.
 func (c Condition) FaultKind() string {
@@ -133,15 +168,15 @@ func (s *Scenario) validateConditions(cat *catalog.Catalog, generated map[string
 			if c.Which != WhichPerf && c.Which != WhichOne && c.Which != WhichInv {
 				return fmt.Errorf("%s: slowness applies to perf, one or inv", where)
 			}
-			if c.Replace && c.Which != WhichOne {
-				return fmt.Errorf("%s: replace goes with which: one", where)
+			if c.Base && c.Which == WhichInv {
+				return fmt.Errorf("%s: base goes with which: perf or one", where)
 			}
-			if c.FixedMs < 0 || c.JitterMs < 0 || (c.FixedMs+c.JitterMs == 0 && !c.Replace) {
+			if c.FixedMs < 0 || c.JitterMs < 0 || (c.FixedMs+c.JitterMs == 0 && !(c.Base && c.Which == WhichOne)) {
 				return fmt.Errorf("%s: slowness needs a delay above zero", where)
 			}
 		case CondError, CondMissing, CondTimeout:
-			if c.Replace {
-				return fmt.Errorf("%s: replace goes with slowness", where)
+			if c.Base {
+				return fmt.Errorf("%s: base goes with slowness", where)
 			}
 			if c.Which != WhichPerf && c.Which != WhichOne && c.Which != WhichMethod {
 				return fmt.Errorf("%s: a fault applies to perf, one or method", where)
