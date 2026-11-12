@@ -184,9 +184,10 @@ test('every task draws its questions and its summary', async () => {
     fault: { values: { kind: 'slow', which: 'one', one: 'vsan-pnic-net', ms: 200, jitter: 50, where: 'some', pick: [], until: 'off' }, options: { clusters: [['dc-01/cluster-01', 'cluster-01']], main: [['vsan-pnic-net', 'Host network cards']], more: [['cache-disk', 'Cache disks']], kinds: 69 } },
   };
   const plan = { sum: [{ t: 'Adds **cluster-12** to dc-01.' }, { t: 'Nothing else is touched.', note: true }], go: 'Go ahead', extra: { tooNew: '9.1.1', hostOpts: [['all', 'Put all 4 hosts on ESX 9.2.0 as well', 'The usual choice.']], found: { state: 'bad', text: 'valid for other.test, signed by itself, runs out 3 March 2027.' } } };
+  const calls = [], realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { calls.push(url); throw new Error('drawing a form must not call the simulator'); };
   for (const [kind, f] of Object.entries(forms)) {
     const form = { kind, title: 'A task', crumbs: [['Back', '/home']], options: {}, ...f };
-    const calls = [];
     const screen = taskScreen(kind, {}, 'home', 'A task');
     const ctx = { ...ctxOf(homeView), F: { ...f.values, _err: { _: 'Something general.' } } };
     const out = screen.render(ctx, { form, plan });
@@ -197,8 +198,9 @@ test('every task draws its questions and its summary', async () => {
     assert.match(t, /Go ahead/, kind);
     assert.match(t, /One thing needs fixing before this can go ahead\. Something general\./, kind);
     assert.equal(t.includes('When should this happen?'), !form.noWhen, kind);
-    assert.equal(calls.length, 0);
+    assert.deepEqual(calls, [], kind);
   }
+  globalThis.fetch = realFetch;
 });
 
 test('turning full capture off asks first, and deletes nothing until confirmed', async () => {
