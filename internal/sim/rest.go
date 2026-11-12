@@ -15,6 +15,9 @@ import (
 	"github.com/vmware/govmomi/simulator"
 )
 
+// saltPath is the appliance salt minion configuration, answered with made-up values.
+const saltPath = "/api/appliance/salt/minion/configuration"
+
 // restSessions holds local read-only API sessions. It shares the scenario's
 // credential policy with SOAP but never stores a password in a session.
 type restSession struct {
@@ -90,6 +93,12 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	}
 	s.mu.Unlock()
 	if !valid {
+		if r.URL.Path == saltPath {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error_type":"UNAUTHENTICATED","messages":[{"args":[],"default_message":"Authentication required.","id":"com.vmware.vapi.endpoint.method.authentication.required"}]}`))
+			return true
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		return true
 	}
@@ -106,6 +115,17 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/cis/tagging/category", "/api/cis/tagging/tag", "/api/vcenter/namespace-management/clusters":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[]"))
+		return true
+	case saltPath:
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"minion_service_enabled": true,
+			"masters":                []string{"salt.example.invalid"},
+			"memory_limit_mb":        -1.0,
+			"minion_id":              "00000000-0000-4000-8000-000000000000",
+			"cpu_limit_pct":          -1.0,
+			"grains":                 []map[string]string{{"key": "role", "value": "simulator"}},
+		})
 		return true
 	case "/api/appliance/system/version":
 		w.Header().Set("Content-Type", "application/json")

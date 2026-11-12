@@ -69,6 +69,8 @@ function capturePanel(d, locked) {
     <p class="anno">The full log records request contents and can hold inventory identifiers. Passwords are never kept.</p>
     <label class="chk"><input type="checkbox" data-chg="settings.capture" data-field="unanswered" ${disabled(locked)} ${raw(s.unanswered ? 'checked' : '')}> Unanswered requests</label>
     <label class="chk"><input type="checkbox" data-chg="settings.capture" data-field="stdout" ${disabled(locked)} ${raw(s.stdout ? 'checked' : '')}> Send unanswered requests to cluster logs</label>
+    <label class="chk"><input type="checkbox" data-chg="settings.capture" data-field="debug" ${disabled(locked)} ${raw(s.debug ? 'checked' : '')}> Debug capture of license-service requests</label>
+    <p class="anno">Writes each license-service request to the logs with its content type, user agent and a scrubbed body. Credentials, cookies and tokens are replaced by a length marker.</p>
     <p>${int(d.capture.fullHeld)} recent full requests held · ${int(d.capture.unansweredHeld)} unanswered requests held · ${bytes(d.capture.fileBytes)} written to ${d.capture.path}</p>
     ${d.capture.error ? html`<div class="lat-banner lat-banner--bad" role="alert">${d.capture.error}</div>` : ''}
     <div class="row"><a class="lat-btn" href="/api/capture/full.jsonl" download>Download full log</a><a class="lat-btn" href="/api/capture/unanswered.jsonl" download>Download unanswered requests</a><button type="button" class="lat-btn" data-act="settings.clearCapture" ${disabled(locked)}>Clear captured requests…</button></div></section>`;

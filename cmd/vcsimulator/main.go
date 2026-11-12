@@ -170,7 +170,7 @@ func main() {
 	}
 	defer ctl.Close()
 
-	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout}, os.Stdout)
+	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: true}, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
 	}

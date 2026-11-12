@@ -185,3 +185,57 @@ func TestRESTInventoryEnumValues(t *testing.T) {
 		}
 	}
 }
+
+func TestSaltMinionConfiguration(t *testing.T) {
+	sc := tenClusters(t)
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	client := e.srv.Client()
+	url := e.srv.URL + "/api/appliance/salt/minion/configuration"
+
+	res, err := client.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fault struct {
+		ErrorType string           `json:"error_type"`
+		Messages  []map[string]any `json:"messages"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&fault); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 401 || fault.ErrorType != "UNAUTHENTICATED" || len(fault.Messages) == 0 {
+		t.Fatalf("unauthenticated: %d %+v", res.StatusCode, fault)
+	}
+
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "password")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	_ = json.NewDecoder(res.Body).Decode(&token)
+	res.Body.Close()
+	req, _ = http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got struct {
+		Enabled *bool    `json:"minion_service_enabled"`
+		Masters []string `json:"masters"`
+		Memory  *float64 `json:"memory_limit_mb"`
+		ID      string   `json:"minion_id"`
+		CPU     *float64 `json:"cpu_limit_pct"`
+		Grains  []struct{ Key, Value string }
+	}
+	if res.StatusCode != 200 || json.NewDecoder(res.Body).Decode(&got) != nil {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if got.Enabled == nil || len(got.Masters) != 1 || got.Memory == nil || *got.Memory != -1 || got.CPU == nil || *got.CPU != -1 || len(got.ID) != 36 || len(got.Grains) == 0 || got.Grains[0].Key == "" {
+		t.Fatalf("shape: %+v", got)
+	}
+}

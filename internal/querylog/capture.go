@@ -16,6 +16,9 @@ type Settings struct {
 	Full       bool `json:"full"`
 	Unanswered bool `json:"unanswered"`
 	Stdout     bool `json:"stdout"`
+	// Debug logs license-service requests, headers and a scrubbed
+	// body, to stdout. On by default.
+	Debug bool `json:"debug"`
 }
 type State struct {
 	Settings       Settings `json:"settings"`
@@ -172,7 +175,7 @@ func (c *Capture) save(r record) {
 	}
 }
 func (c *Capture) Wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serve(w, r, next, c.capturing, c.save) })
+	return c.debugWrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serve(w, r, next, c.capturing, c.save) }))
 }
 func (c *Capture) capturing() bool {
 	c.mu.Lock()
