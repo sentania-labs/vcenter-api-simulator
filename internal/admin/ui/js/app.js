@@ -151,7 +151,7 @@ function body() {
   try { out = String(s.render(ctx, ctx.data)); }
   catch (e) { console.error(e); return html`<div class="m-page"><div class="m-empty"><h3>This screen could not be drawn</h3><p>Reload the page. If it keeps happening, tell the simulator's maintainers what you were doing.</p></div></div>`; }
   const flash = String(flashLine());
-  if (flash) out = out.replace('<div class="m-page">', '<div class="m-page">' + flash);
+  if (flash) out = out.replace('<div class="m-page">', () => '<div class="m-page">' + flash);
   return raw(out);
 }
 
