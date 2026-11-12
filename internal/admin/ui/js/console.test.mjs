@@ -200,3 +200,27 @@ test('every task draws its questions and its summary', async () => {
     assert.equal(calls.length, 0);
   }
 });
+
+test('turning full capture off asks first, and deletes nothing until confirmed', async () => {
+  const sent = [];
+  globalThis.fetch = async (url, o = {}) => { sent.push({ url, method: o.method }); return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({}), text: async () => '{}' }; };
+  const asked = [];
+  const run = async (answer, capture) => {
+    sent.length = 0; asked.length = 0;
+    const ctx = { data: { capture }, confirm: async (o) => { asked.push(o); return answer; }, act: async (f) => { await f(); } };
+    await requests.screen(['requests'], {}).actions.capture(ctx, { dataset: { k: 'full' } });
+  };
+  const on = { available: true, full: true, fullKept: 12 };
+  await run(false, on);
+  assert.equal(asked.length, 1);
+  assert.match(text(asked[0].body), /deletes the 12 requests captured so far/);
+  assert.match(String(asked[0].body), /href="\/api\/capture\/all"/);
+  assert.equal(sent.length, 0, 'declining sends nothing');
+  await run(true, on);
+  assert.deepEqual(sent.map((s) => [s.url, s.method]), [['/api/capture', 'PUT']]);
+  await run(true, { ...on, fullKept: 0 });
+  assert.equal(asked.length, 0, 'nothing captured, nothing to confirm');
+  assert.equal(sent.length, 1);
+  await run(true, { ...on, full: false });
+  assert.equal(asked.length, 0, 'turning it on needs no confirmation');
+});

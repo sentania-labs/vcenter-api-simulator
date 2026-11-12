@@ -190,6 +190,9 @@ func (k *Knobs) delay(family, cluster string) time.Duration {
 			// a condition narrowed to clusters applies only when the
 			// request names one of them
 			if len(c.Clusters) == 0 || (cluster != "" && c.Selects(cluster)) {
+				if c.Replace {
+					d = scenario.Delay{}
+				}
 				d.FixedMs += c.FixedMs
 				d.JitterMs += c.JitterMs
 			}

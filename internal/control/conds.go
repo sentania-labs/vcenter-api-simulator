@@ -92,12 +92,9 @@ func (c *Controller) lift(sc *scenario.Scenario) {
 	}
 	sort.Strings(fams)
 	for _, f := range fams {
-		// in a scenario file a family's delay replaces the general one;
-		// conditions add up, so keep the difference
 		d := l.Families[f]
-		fixed, jitter := max(0, d.FixedMs-base.FixedMs), max(0, d.JitterMs-base.JitterMs)
-		if fixed > 0 || jitter > 0 {
-			sc.Conditions = append(sc.Conditions, scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichOne, Family: f, FixedMs: fixed, JitterMs: jitter})
+		if d.FixedMs > 0 || d.JitterMs > 0 || base.FixedMs > 0 || base.JitterMs > 0 {
+			sc.Conditions = append(sc.Conditions, scenario.Condition{Kind: scenario.CondSlow, Which: scenario.WhichOne, Family: f, FixedMs: d.FixedMs, JitterMs: d.JitterMs, Replace: true})
 		}
 	}
 	if d := l.SDK; d != nil && (d.FixedMs > 0 || d.JitterMs > 0) {
@@ -278,6 +275,12 @@ func condText(sc *scenario.Scenario, cond scenario.Condition) string {
 		vary := ""
 		if cond.JitterMs > 0 {
 			vary = fmt.Sprintf(" (give or take %s ms)", num(cond.JitterMs))
+		}
+		if cond.Replace && cond.FixedMs == 0 && cond.JitterMs == 0 {
+			return fmt.Sprintf("Requests for %s are not slowed down, whatever else is%s.", w, wh)
+		}
+		if cond.Replace {
+			return fmt.Sprintf("Requests for %s take about %s ms%s, in place of any general slowness%s.", w, num(cond.FixedMs), vary, wh)
 		}
 		return fmt.Sprintf("Requests for %s take about %s ms longer%s%s.", w, num(cond.FixedMs), vary, wh)
 	case scenario.CondError:

@@ -65,7 +65,12 @@ function main(q) {
       },
       download(ctx, el) { download(ctx, el.dataset.what, Number(el.dataset.n)); },
       async capture(ctx, el) {
-        const k = el.dataset.k, on = !ctx.data.capture[k];
+        const k = el.dataset.k, on = !ctx.data.capture[k], n = ctx.data.capture.fullKept;
+        if (k === 'full' && !on && n) {
+          const yes = await ctx.confirm({ title: 'Turn off full capture?', danger: true, ok: 'Turn off and delete', cancel: 'Keep capturing', body: html`<p>Turning this off deletes the ${plural(n, 'request')} captured so far. They cannot be brought back.</p>
+            <p><a href="/api/capture/all" download="vcsim-all-requests-${today()}.txt">Download them first</a>, then come back and turn this off.</p><p>The simulator and your tools are not affected.</p>` });
+          if (!yes) return;
+        }
         await ctx.act(() => api('/capture', { method: 'PUT', body: { kind: k, on } }));
       },
       async clearKept(ctx) {

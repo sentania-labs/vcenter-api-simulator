@@ -39,6 +39,10 @@ type Condition struct {
 	Clusters []string `yaml:"clusters,omitempty" json:"clusters,omitempty"`
 	FixedMs  int      `yaml:"fixedMs,omitempty" json:"fixedMs,omitempty"`
 	JitterMs int      `yaml:"jitterMs,omitempty" json:"jitterMs,omitempty"`
+	// Replace makes a slowness condition for one family the family's whole
+	// delay: slowness listed before it no longer adds to it. A scenario
+	// file's per-family latency means this.
+	Replace bool `yaml:"replace,omitempty" json:"replace,omitempty"`
 	// From is when it was switched on; To, when set, is when it turns
 	// itself off.
 	From *time.Time `yaml:"from,omitempty" json:"from,omitempty"`
@@ -129,10 +133,16 @@ func (s *Scenario) validateConditions(cat *catalog.Catalog, generated map[string
 			if c.Which != WhichPerf && c.Which != WhichOne && c.Which != WhichInv {
 				return fmt.Errorf("%s: slowness applies to perf, one or inv", where)
 			}
-			if c.FixedMs < 0 || c.JitterMs < 0 || c.FixedMs+c.JitterMs == 0 {
+			if c.Replace && c.Which != WhichOne {
+				return fmt.Errorf("%s: replace goes with which: one", where)
+			}
+			if c.FixedMs < 0 || c.JitterMs < 0 || (c.FixedMs+c.JitterMs == 0 && !c.Replace) {
 				return fmt.Errorf("%s: slowness needs a delay above zero", where)
 			}
 		case CondError, CondMissing, CondTimeout:
+			if c.Replace {
+				return fmt.Errorf("%s: replace goes with slowness", where)
+			}
 			if c.Which != WhichPerf && c.Which != WhichOne && c.Which != WhichMethod {
 				return fmt.Errorf("%s: a fault applies to perf, one or method", where)
 			}

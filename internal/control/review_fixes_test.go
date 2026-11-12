@@ -210,3 +210,40 @@ func TestCertificateKindAndExpiry(t *testing.T) {
 		t.Error("Home does not say the certificate has run out")
 	}
 }
+
+// In a scenario file a family's latency replaces perfQuery rather than
+// adding to it (docs/SCENARIO.md: "overrides perfQuery"). Oracle: that
+// document. A reading that adds the general delay to the family's own, or
+// that drops a family set below the general delay, holds the request for
+// the wrong time.
+func TestScenarioFamilyLatencyReplacesPerfQuery(t *testing.T) {
+	sc := small(t)
+	sc.Latency = scenario.Latency{
+		PerfQuery: &scenario.Delay{FixedMs: 500},
+		Families: map[string]scenario.Delay{
+			"host-domowner": {FixedMs: 100},
+			"vsan-pnic-net": {},
+		},
+	}
+	c := newCtl(t, sc, "", "t")
+	hold := func(family string) time.Duration {
+		body := fmt.Sprintf(`<VsanPerfQueryPerf><entityRefId>%s:abc</entityRefId></VsanPerfQueryPerf>`, family)
+		return c.applied().sim.Env.Hold([]byte(body))
+	}
+	for family, want := range map[string]time.Duration{
+		"host-domowner":     100 * time.Millisecond,
+		"vsan-pnic-net":     0,
+		"cluster-domclient": 500 * time.Millisecond,
+	} {
+		if got := hold(family); got != want {
+			t.Errorf("%s is held %v, want %v", family, got, want)
+		}
+	}
+	var texts []string
+	for _, v := range c.Faults().On {
+		texts = append(texts, v.Text)
+	}
+	all := strings.Join(texts, "\n")
+	wantContains(t, all, "take about 100 ms, in place of any general slowness")
+	wantContains(t, all, "are not slowed down")
+}
