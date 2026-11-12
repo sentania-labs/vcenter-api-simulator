@@ -61,25 +61,134 @@ func ScrubBody(data []byte) string {
 	if len(trimmed) == 0 {
 		return ""
 	}
-	if trimmed[0] != '<' {
-		s := jsonSecret.ReplaceAllStringFunc(string(data), func(m string) string {
-			p := jsonSecret.FindStringSubmatch(m)
-			n := len(p[2])
-			if p[2][0] == '"' {
-				n -= 2
-			}
-			return p[1] + `"` + placeholder("value", n) + `"`
-		})
-		s = formSecret.ReplaceAllStringFunc(s, func(m string) string {
-			p := formSecret.FindStringSubmatch(m)
-			if p[2] == "" {
-				return m
-			}
-			return p[1] + placeholder("value", len(p[2]))
-		})
-		return scrubRuns(s)
+	switch trimmed[0] {
+	case '<':
+		return scrubRuns(scrubXML(data))
+	case '{', '[':
+		// A JSON-looking body that does not parse cannot be scrubbed
+		// structurally, so none of it is logged.
+		if out, ok := scrubJSON(trimmed); ok {
+			return scrubRuns(out)
+		}
+		return placeholder("unparsed", len(data))
 	}
-	return scrubRuns(scrubXML(data))
+	if bytes.IndexByte(trimmed, '=') >= 0 {
+		return scrubRuns(scrubForm(string(data)))
+	}
+	return scrubRuns(scrubText(string(data)))
+}
+
+// scrubText is the fallback for bodies that are neither XML, JSON nor a form.
+func scrubText(s string) string {
+	s = jsonSecret.ReplaceAllStringFunc(s, func(m string) string {
+		p := jsonSecret.FindStringSubmatch(m)
+		return p[1] + `"` + placeholder("value", len(p[2])) + `"`
+	})
+	return formSecret.ReplaceAllStringFunc(s, func(m string) string {
+		p := formSecret.FindStringSubmatch(m)
+		if p[2] == "" {
+			return m
+		}
+		return p[1] + placeholder("value", len(p[2]))
+	})
+}
+
+// scrubForm scrubs a URL-encoded form field by field. A field whose decoded
+// name is sensitive, or cannot be decoded, loses its whole value.
+func scrubForm(s string) string {
+	var out strings.Builder
+	start := 0
+	for i := 0; i <= len(s); i++ {
+		if i < len(s) && s[i] != '&' && s[i] != ';' {
+			continue
+		}
+		field := s[start:i]
+		if k, v, has := strings.Cut(field, "="); has {
+			if dk, err := url.QueryUnescape(k); (err != nil || scrubName(dk) || sensitiveKey(dk)) && v != "" {
+				field = k + "=" + placeholder("value", len(v))
+			}
+		}
+		out.WriteString(field)
+		if i < len(s) {
+			out.WriteByte(s[i])
+		}
+		start = i + 1
+	}
+	return out.String()
+}
+
+// scrubJSON rewrites a JSON document keeping key order, replacing the whole
+// value of any member whose decoded key is sensitive. ok is false when the
+// body is not exactly one valid JSON value.
+func scrubJSON(data []byte) (string, bool) {
+	if !json.Valid(data) {
+		return "", false
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var out bytes.Buffer
+	if !jsonValue(dec, &out) {
+		return "", false
+	}
+	return out.String(), true
+}
+func jsonString(out *bytes.Buffer, s string) {
+	enc := json.NewEncoder(out)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	out.Truncate(out.Len() - 1)
+}
+func jsonValue(dec *json.Decoder, out *bytes.Buffer) bool {
+	tok, err := dec.Token()
+	if err != nil {
+		return false
+	}
+	switch t := tok.(type) {
+	case json.Delim:
+		closer := byte(']')
+		if t == '{' {
+			closer = '}'
+		}
+		out.WriteByte(byte(t))
+		for first := true; dec.More(); first = false {
+			if !first {
+				out.WriteByte(',')
+			}
+			if t == '{' {
+				kt, err := dec.Token()
+				key, ok := kt.(string)
+				if err != nil || !ok {
+					return false
+				}
+				jsonString(out, key)
+				out.WriteByte(':')
+				if scrubName(key) || sensitiveKey(key) {
+					var raw json.RawMessage
+					if dec.Decode(&raw) != nil {
+						return false
+					}
+					out.WriteString(`"` + placeholder("value", len(raw)) + `"`)
+					continue
+				}
+			}
+			if !jsonValue(dec, out) {
+				return false
+			}
+		}
+		if _, err := dec.Token(); err != nil {
+			return false
+		}
+		out.WriteByte(closer)
+	case string:
+		jsonString(out, t)
+	case json.Number:
+		out.WriteString(t.String())
+	case bool:
+		fmt.Fprint(out, t)
+	case nil:
+		out.WriteString("null")
+	}
+	return true
 }
 
 var attrPair = regexp.MustCompile(`([\w:.\-]+)(\s*=\s*)("[^"]*"|'[^']*')`)

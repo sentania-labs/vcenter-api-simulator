@@ -236,3 +236,58 @@ func TestScrubAttributesAndNonStringJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubJSONStructurally(t *testing.T) {
+	for name, in := range map[string]string{
+		"nested":        `{"credentials":{"nested":{"first":"abc","second":"hunter2"}},"name":"vm1"}`,
+		"escaped key":   `{"password":"hunter2","name":"vm1"}`,
+		"escaped quote": `{"password":"hun\"ter2\\\"tail","name":"vm1"}`,
+		"array value":   `{"tokens":["hunter2",{"a":"hunter2"}],"name":"vm1"}`,
+		"number":        `{"password":123456,"name":"vm1"}`,
+		"deep":          `{"outer":{"inner":[{"Secret":{"x":"hunter2"}}]},"name":"vm1"}`,
+		"escaped name":  `{"userName":"hunter2tail","name":"vm1"}`,
+	} {
+		got := ScrubBody([]byte(in))
+		for _, leak := range []string{"hunter2", "tail", "123456", `\"`} {
+			if strings.Contains(got, leak) {
+				t.Fatalf("%s leaked %q: %s", name, leak, got)
+			}
+		}
+		if !strings.Contains(got, `"name":"vm1"`) || !json.Valid([]byte(got)) {
+			t.Fatalf("%s lost structure: %s", name, got)
+		}
+	}
+}
+
+func TestScrubJSONKeepsOrderAndInvalidJSONIsOmitted(t *testing.T) {
+	got := ScrubBody([]byte(`{"b":1,"a":[true,null,"x"],"c":{"z":1.50}}`))
+	if got != `{"b":1,"a":[true,null,"x"],"c":{"z":1.50}}` {
+		t.Fatal(got)
+	}
+	for _, in := range []string{`{"password":"hunter2`, `{"password":"hunter2",}`, `[{"token":"hunter2"} x`} {
+		if got := ScrubBody([]byte(in)); strings.Contains(got, "hunter2") || !strings.Contains(got, "unparsed") {
+			t.Fatalf("%q: %s", in, got)
+		}
+	}
+}
+
+func TestScrubFormDecodesNamesAndTakesWholeValue(t *testing.T) {
+	for _, in := range []string{
+		`pass%77ord=hunter2&mode=x`,
+		`password[]=hunter2&mode=x`,
+		`user%4Eame=hunter2&mode=x`,
+		`mode=x;PASS%57ORD=hunter2`,
+		`mode=x&password=hunter2%26tail&other=1`,
+		`mode=x&pass%zzword=hunter2`,
+		`mode=x&session+id=hunter2`,
+		`mode=x&a=1&access_token=hunter2=more`,
+	} {
+		got := ScrubBody([]byte(in))
+		if strings.Contains(got, "hunter2") || strings.Contains(got, "tail") || strings.Contains(got, "more") || !strings.Contains(got, "mode=x") {
+			t.Fatalf("%q -> %s", in, got)
+		}
+	}
+	if got := ScrubBody([]byte(`mode=x&a=1`)); got != `mode=x&a=1` {
+		t.Fatal(got)
+	}
+}
