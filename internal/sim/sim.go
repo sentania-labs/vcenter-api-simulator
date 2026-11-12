@@ -42,6 +42,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
@@ -65,6 +66,9 @@ type Options struct {
 	UserRole     func(string) string
 	// SessionTimeout is the idle timeout of a session; zero means never.
 	SessionTimeout time.Duration
+	// Certificate is the key pair the listener serves; the certificate-authority
+	// read answers with its PEM.
+	Certificate *serve.Certificate
 	// Faults and Latency are the scenario's failure and latency knobs.
 	Faults  []scenario.Fault
 	Latency scenario.Latency
@@ -165,9 +169,10 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}}
+	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}, license: *newLicenseSessions(creds, opts.Authenticate), tls: opts.Certificate}
 	h.timeout.Store(int64(opts.SessionTimeout))
 	h.rest.timeout = &h.timeout
+	h.license.timeout = &h.timeout
 	s.Handler = h
 	return s, nil
 }
@@ -797,6 +802,8 @@ type handler struct {
 	role        func(string) string
 	registry    *simulator.Registry
 	rest        restSessions
+	license     licenseSessions
+	tls         *serve.Certificate
 }
 
 // UpdateCredentials serializes a policy change with requests and revokes
@@ -833,6 +840,7 @@ func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
 		}
 	}
 	h.rest.mu.Unlock()
+	h.license.revoke(func(user string) bool { return affected["*"] || affected[user] })
 	return nil
 }
 
@@ -875,7 +883,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer h.accessMu.RUnlock()
 	}
 	h.expireSOAPSession(r)
+	if h.caRoot(w, r) {
+		return
+	}
 	if h.rest.serve(w, r) {
+		return
+	}
+	if h.serveLicense(w, r) {
+		return
+	}
+	if serveLookup(w, r) {
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -913,6 +930,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if h.readOnlyRequest(r, body) {
 				noPermission(w)
+				return
+			}
+			if h.currentSessionNull(w, r, body) {
 				return
 			}
 			switch {

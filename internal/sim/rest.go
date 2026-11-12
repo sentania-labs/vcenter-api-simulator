@@ -47,6 +47,28 @@ func (s *restSessions) authorized(user, password string) bool {
 	expected, ok := s.credentials[user]
 	return ok && subtle.ConstantTimeCompare([]byte(expected), []byte(password)) == 1
 }
+
+// valid reports whether a REST session token is a live session, and refreshes
+// its idle timestamp, so a read served outside rest.serve keeps the session
+// alive the way any other authenticated REST request does.
+func (s *restSessions) valid(token string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.tokens[token]
+	if !ok {
+		return false
+	}
+	if s.timeout != nil {
+		if timeout := time.Duration(s.timeout.Load()); timeout > 0 && time.Since(session.last) >= timeout {
+			delete(s.tokens, token)
+			return false
+		}
+	}
+	session.last = time.Now()
+	s.tokens[token] = session
+	return true
+}
+
 func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	if r.URL.Path != "/api" && !strings.HasPrefix(r.URL.Path, "/api/") {
 		return false
