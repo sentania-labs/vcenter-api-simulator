@@ -216,7 +216,7 @@ func (c *Capture) debugWrap(next http.Handler) http.Handler {
 		c.mu.Lock()
 		on := c.settings.Debug && c.stdout != nil
 		c.mu.Unlock()
-		if !on {
+		if !on || !isLicenseService(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -238,9 +238,6 @@ func (c *Capture) debugWrap(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 		if rw.status == 0 {
 			rw.status = http.StatusOK
-		}
-		if !isLicenseService(r.URL.Path) {
-			return
 		}
 		rec := buildDebug(r, body, cut, rw.status, start)
 		c.mu.Lock()
