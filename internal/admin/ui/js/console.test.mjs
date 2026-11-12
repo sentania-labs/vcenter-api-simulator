@@ -144,10 +144,18 @@ test('Requests leads with the verdict and lists problems with what happened', ()
   assert.match(t, /Turn the fault off/);
   assert.match(t, /37 unanswered requests of 4 kinds have been captured/);
   assert.match(t, /Download unanswered requests/);
-  assert.match(t, /There are three kinds/);
-  assert.match(t, /Log requests to the license service: On/);
+  assert.match(t, /Capturing means keeping a copy of what tools ask for\. There are three kinds\./);
+  assert.match(t, /Record what tools ask about licensing: On/);
+  assert.match(t, /Keeps a record of what tools ask about licenses, so a tool that will not connect can be diagnosed\. Passwords and sign-in tokens are left out\./);
+  assert.match(t, /The record is in the simulator's own log, which whoever installed it can open, not in the downloads here\./);
   const off = text(requests.screen(['requests'], {}).render(ctxOf(homeView), { ...d, capture: { ...d.capture, debug: false } }));
-  assert.match(off, /Log requests to the license service: Off/);
+  assert.match(off, /Record what tools ask about licensing: Off/);
+  assert.match(off, /Off: what tools ask about licensing is not recorded\./);
+  // the capture box is for someone who has never run the simulator from a terminal
+  for (const said of [t, off]) {
+    const box = said.slice(said.indexOf('Request capture'));
+    for (const word of ['standard output', 'stdout', 'container log', 'license service', 'license-service', 'JSON']) assert.ok(!box.includes(word), `the capture box says "${word}"`);
+  }
   assert.ok(t.indexOf('Which license') < t.indexOf('Signing in and out'), 'problems come first');
   const only = text(requests.screen(['requests'], { show: 'unknown' }).render(ctxOf(homeView), d));
   assert.ok(!only.includes('Signing in and out'));

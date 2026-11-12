@@ -748,6 +748,66 @@ func TestUsers(t *testing.T) {
 }
 
 // One place knows whether a tool is connected, and every screen reads it.
+// A user added again under a name that was used before is a new account: it
+// has never signed in, whatever the removed one did, now and after a restart.
+func TestUserAddedAgainHasNeverSignedIn(t *testing.T) {
+	const name = "auditor@vsphere.local"
+	dir := t.TempDir()
+	c := newCtl(t, small(t), dir, "t")
+	row := func(c *Controller) UserRow {
+		t.Helper()
+		for _, u := range c.Users().Users {
+			if u.Name == name {
+				return u
+			}
+		}
+		t.Fatalf("no user %s in %+v", name, c.Users().Users)
+		return UserRow{}
+	}
+	add := func(pw string) {
+		t.Helper()
+		must(t, c, "add-user", nil, map[string]any{"name": name, "pw": pw, "role": "read"})
+	}
+	add("auditor-password-1")
+	if r := row(c); r.Last != nil {
+		t.Fatalf("a new user has already signed in: %v", r.Last)
+	}
+	tool := newTool(t, c, "collector/2.0")
+	if !tool.login(name, "auditor-password-1") || tool.content() != 200 {
+		t.Fatal("sign in")
+	}
+	if r := row(c); r.Last == nil || len(r.InUse) != 1 {
+		t.Fatalf("the sign-in was not recorded: %+v", r)
+	}
+	if _, _, err := c.RemoveUser(name); err != nil {
+		t.Fatal(err)
+	}
+	add("another-password-2")
+	if r := row(c); r.Last != nil || len(r.InUse) != 0 {
+		t.Errorf("the user added again shows the removed user's sign-in: last %v, in use by %v", r.Last, r.InUse)
+	}
+	// the removed tool's refused attempts are not sign-ins by the new account
+	if tool.login(name, "auditor-password-1") {
+		t.Fatal("the removed user's password still works")
+	}
+	if r := row(c); r.Last != nil {
+		t.Errorf("a refused sign-in counted as the new user signing in: %v", r.Last)
+	}
+	c.Close()
+	c2 := newCtl(t, small(t), dir, "t")
+	if r := row(c2); r.Last != nil {
+		t.Errorf("after a restart the user added again shows a sign-in: %v", r.Last)
+	}
+	// and a real sign-in by the new account is recorded as before
+	tool2 := newTool(t, c2, "collector/2.0")
+	if !tool2.login(name, "another-password-2") {
+		t.Fatal("the new account cannot sign in")
+	}
+	if r := row(c2); r.Last == nil {
+		t.Error("the new account's own sign-in was not recorded")
+	}
+}
+
 // A tool that signs itself out is not connected any more: Home says when it
 // signed out, Users no longer shows the account in use, and a change to
 // that account does not warn about a signed-in tool. The sign-out is not

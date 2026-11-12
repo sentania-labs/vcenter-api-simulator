@@ -131,6 +131,7 @@ func planAddUser(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error) {
 			return nil, err
 		}
 		c.tools.restore(name)
+		c.forgetSignin(name)
 		return &Outcome{Done: fmt.Sprintf("%s can now sign in with %s.", name, access[in.Role]), Marks: []Mark{{Type: "user", ID: name, Tag: "New"}}}, nil
 	}
 	return p, nil
@@ -246,6 +247,7 @@ func (c *Controller) RemoveUser(name string) (done, tone string, err error) {
 	}
 	c.tools.cut(name, ToolRemoved, c.now(), c.paused.Load(), c.pausedAt)
 	c.tools.forget(name, c.now())
+	c.forgetSignin(name)
 	done, tone = fmt.Sprintf("%s was removed and can no longer sign in.", name), "ok"
 	line := fmt.Sprintf("User %s removed.", name)
 	if len(live) > 0 {

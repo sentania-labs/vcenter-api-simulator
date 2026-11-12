@@ -64,8 +64,8 @@ data directory, and from then on the saved settings win over the flags at
 every start.
 
 Debug capture is on by default. **Requests** has a third capture switch,
-"Log requests to the license service", that turns it on and off; the choice is
-saved with the other capture settings. It
+"Record what tools ask about licensing", that turns it on and off; the choice
+is saved with the other capture settings. It
 writes one JSON line to stdout (`"event":"request-capture"`) for
 every request to `/ls/`, with the method, path, query, the names of all
 headers, the values of Content-Type, SOAPAction, User-Agent, Accept and

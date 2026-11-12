@@ -331,7 +331,7 @@ func TestLicenseServiceLogSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantContains(t, text, "no longer written to the simulator's log")
+	wantContains(t, text, "**Off.** What tools ask the simulator about licensing is no longer recorded.")
 	call(capture)
 	if out.Len() != 0 || c.Requests().Capture.Debug {
 		t.Fatalf("still logging after it was switched off: %q", out.String())
@@ -345,8 +345,21 @@ func TestLicenseServiceLogSwitch(t *testing.T) {
 		t.Fatalf("the start-up default beat the saved choice: %q", out.String())
 	}
 	c.Capture = again
-	if _, err := c.SetCapture("debug", true); err != nil {
+	text, err = c.SetCapture("debug", true)
+	if err != nil {
 		t.Fatal(err)
+	}
+	wantContains(t, text, "What tools ask the simulator about licensing is recorded in the simulator's own log from now on, with passwords and sign-in tokens left out.")
+	// the screen and the history say it in words a person who never opened a terminal follows
+	said := text
+	for _, e := range c.History() {
+		said += " " + e.Text
+	}
+	wantContains(t, said, "Recording of what tools ask about licensing turned off.")
+	for _, word := range []string{"standard output", "stdout", "container log", "license service", "license-service"} {
+		if strings.Contains(said, word) {
+			t.Errorf("the console says %q: %s", word, said)
+		}
 	}
 	call(again)
 	if !strings.Contains(out.String(), `"event":"request-capture"`) {

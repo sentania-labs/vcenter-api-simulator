@@ -704,6 +704,19 @@ func (c *Controller) noteSignin(user string, at time.Time) {
 	c.saveSignins(false)
 }
 
+// forgetSignin drops what is known about a user's last sign-in. A user who
+// is removed takes it with them, and a user who is added starts with none,
+// so an account added again under an old name reads "Never".
+func (c *Controller) forgetSignin(user string) {
+	c.signMu.Lock()
+	defer c.signMu.Unlock()
+	if _, ok := c.signins[user]; !ok {
+		return
+	}
+	delete(c.signins, user)
+	c.saveSignins(true)
+}
+
 // lastSignin is when a user last signed in.
 func (c *Controller) lastSignin(user string) (time.Time, bool) {
 	c.signMu.Lock()

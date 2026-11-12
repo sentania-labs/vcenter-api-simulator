@@ -457,12 +457,12 @@ func (c *Controller) SetCapture(kind string, on bool) (string, error) {
 		return "**Stopped.** Full capture is off, and what it had captured was deleted.", nil
 	}
 	if kind == "debug" {
-		c.addHistory("Logging of license-service requests turned " + state + ".")
+		c.addHistory("Recording of what tools ask about licensing turned " + state + ".")
 		c.save()
 		if on {
-			return "**On.** Every request a tool sends to the license service is written to the simulator's log from now on, with passwords and sign-in tokens removed.", nil
+			return "**On.** What tools ask the simulator about licensing is recorded in the simulator's own log from now on, with passwords and sign-in tokens left out.", nil
 		}
-		return "**Off.** Requests to the license service are no longer written to the simulator's log.", nil
+		return "**Off.** What tools ask the simulator about licensing is no longer recorded.", nil
 	}
 	c.addHistory("Capture of unanswered requests turned " + state + ".")
 	c.save()
