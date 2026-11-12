@@ -8,7 +8,7 @@ Simulated vCenter endpoints (seed {{ .Values.simulator.seed | quote }}):
   hostname:    {{ .Values.hostname }} (no Ingress; expose the Service or set ingress.enabled)
 {{- end }}
 
-Login: {{ if .Values.credentials.enabled }}initially includes the username/password in Secret {{ include "vcsim.credentialsSecretName" . }}{{ else }}administrator@vsphere.local with the published default password (see README){{ end }}. Console changes can override the initial credentials.
+Login: {{ if .Values.credentials.enabled }}initially includes the username/password in Secret {{ include "vcsim.credentialsSecretName" . }}{{ else }}no account is supplied, so nothing can sign in yet. Open the control console and choose the password of administrator@vsphere.local (see README), or set credentials.enabled{{ end }}. Console changes can override the initial credentials.
 
 Certificate: {{ if .Values.tls.existingSecret }}served from Secret {{ .Values.tls.existingSecret }}{{ else if .Values.tls.certManager.enabled }}issued by cert-manager into Secret {{ include "vcsim.tlsSecretName" . }}{{ else if .Values.persistence.enabled }}self-signed on first start, kept in PVC {{ default (include "vcsim.fullname" .) .Values.persistence.existingClaim }} across restarts{{ else }}self-signed and REGENERATED on every pod start (persistence.enabled=false); a management pack's certificate pin will not survive a restart{{ end }}.
 

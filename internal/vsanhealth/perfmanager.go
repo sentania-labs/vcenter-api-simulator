@@ -56,7 +56,7 @@ type PerfManager struct {
 func (m *PerfManager) VsanPerfQueryStatsObjectInformation(ctx *simulator.Context, req *vsantypes.VsanPerfQueryStatsObjectInformation) soap.HasFault {
 	info := vsantypes.VsanObjectInformation{DirectoryName: "unknown"}
 	cl := m.env.Cluster(req.Cluster)
-	if cl != nil && (cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary) {
+	if cl != nil && (cl.PrimaryOnline()) {
 		info.DirectoryName = ".vsan.stats"
 		info.VsanObjectUuid = cl.StatsUUID
 		info.VsanHealth = "healthy"
@@ -77,7 +77,7 @@ func (m *PerfManager) VsanPerfQueryStatsObjectInformation(ctx *simulator.Context
 
 func (m *PerfManager) VsanPerfQueryTimeRanges(ctx *simulator.Context, req *vsantypes.VsanPerfQueryTimeRanges) soap.HasFault {
 	cl := m.env.Cluster(req.Cluster)
-	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+	if cl != nil && !cl.PrimaryOnline() {
 		return &methods.VsanPerfQueryTimeRangesBody{Fault_: faultStatsPrimaryMissing()}
 	}
 	return &methods.VsanPerfQueryTimeRangesBody{Res: &vsantypes.VsanPerfQueryTimeRangesResponse{}}
@@ -85,7 +85,7 @@ func (m *PerfManager) VsanPerfQueryTimeRanges(ctx *simulator.Context, req *vsant
 
 func (m *PerfManager) VsanPerfQueryClusterHealth(ctx *simulator.Context, req *vsantypes.VsanPerfQueryClusterHealth) soap.HasFault {
 	cl := m.env.Cluster(&req.Cluster)
-	primary := cl == nil || cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
+	primary := cl == nil || cl.PrimaryOnline()
 	group, err := m.perfHealthGroup(cl, primary)
 	if err != nil {
 		return &methods.VsanPerfQueryClusterHealthBody{Fault_: simulator.Fault(err.Error(), &vim25types.SystemError{})}
@@ -103,7 +103,7 @@ func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *
 		return &methods.VsanPerfQueryNodeInformationBody{Fault_: fault}
 	}
 	if cl != nil && len(cl.Hosts) > 0 {
-		primary := cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
+		primary := cl.PrimaryOnline()
 		master := cl.Hosts[0].NodeUUID
 		now := m.env.Now().UTC()
 		sinceCollect := int64(now.Sub(now.Truncate(perf.Interval)) / time.Second)
@@ -172,7 +172,7 @@ func (b *queryPerfBody) Fault() *soap.Fault { return b.Fault_ }
 // bucket rule and fault shapes measured live (recon section 5.3).
 func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.VsanPerfQueryPerf) soap.HasFault {
 	cl := m.env.Cluster(req.Cluster)
-	if cl != nil && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+	if cl != nil && !cl.PrimaryOnline() {
 		return &queryPerfBody{Fault_: faultStatsPrimaryMissing()}
 	}
 	wildcards := 0

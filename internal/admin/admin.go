@@ -6,8 +6,10 @@ package admin
 
 import (
 	"embed"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net"
@@ -15,153 +17,44 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/control"
-	"github.com/sentania/vcenter-api-simulator/internal/querylog"
-	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
 //go:embed ui
 var uiFiles embed.FS
 
+// done is the answer to an action that happens at once: the words for the
+// green line, and whether they are good news (ok) or a warning (warn).
+type done struct {
+	Done string `json:"done"`
+	Tone string `json:"tone"`
+}
+
+func ok(text string, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	return done{text, "ok"}, nil
+}
+
 // Handler returns the admin plane's handler. Requests are served only for the
 // Host names localhost, 127.0.0.1 and ::1 (any port) and for allowedHosts.
-func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog.Capture) http.Handler {
+func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 	a := &api{c: c}
 	mux := http.NewServeMux()
 	get := func(p string, h func(*http.Request) (any, error)) { mux.HandleFunc("GET "+p, a.wrap(h)) }
 	send := func(m, p string, h func(*http.Request) (any, error)) { mux.HandleFunc(m+" "+p, a.wrap(h)) }
+	cluster := func(r *http.Request) string { return r.PathValue("dc") + "/" + r.PathValue("name") }
 
-	get("/api/state", func(r *http.Request) (any, error) { return c.State(), nil })
-	get("/api/settings", func(r *http.Request) (any, error) { return c.RuntimeSettings(), nil })
-	get("/api/certificate", func(r *http.Request) (any, error) { return c.CertificateInfo() })
-	send("POST", "/api/certificate/regenerate", func(r *http.Request) (any, error) {
-		var req struct {
-			Names []string `json:"names"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.RegenerateCertificate(req.Names)
+	// Home and the shell around every screen
+	get("/api/home", func(r *http.Request) (any, error) { return c.Home(), nil })
+	get("/api/history", func(r *http.Request) (any, error) { return c.History(), nil })
+	send("POST", "/api/check-address", func(r *http.Request) (any, error) {
+		works, text := c.CheckAddress()
+		return map[string]any{"ok": works, "text": text}, nil
 	})
-	send("PUT", "/api/certificate", func(r *http.Request) (any, error) {
-		var req struct {
-			Certificate string `json:"certificate"`
-			PrivateKey  string `json:"privateKey"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.UploadCertificate(req.Certificate, req.PrivateKey)
-	})
-	send("PUT", "/api/settings", func(r *http.Request) (any, error) {
-		var req control.RuntimeSettings
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.SetRuntimeSettings(req)
-	})
-	get("/api/credentials", func(r *http.Request) (any, error) { return c.CredentialsView(), nil })
-	send("PUT", "/api/credentials/user", func(r *http.Request) (any, error) {
-		var req struct {
-			Name     string `json:"name"`
-			Password string `json:"password"`
-			Role     string `json:"role"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.PutUser(req.Name, req.Password, req.Role)
-	})
-	send("DELETE", "/api/credentials/user", func(r *http.Request) (any, error) {
-		var req struct {
-			Name string `json:"name"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.DeleteUser(req.Name)
-	})
-	send("PUT", "/api/credentials/mode", func(r *http.Request) (any, error) {
-		var req struct {
-			AnyLogin bool `json:"anyLogin"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.SetAnyLogin(req.AnyLogin)
-	})
-	get("/api/tree", func(r *http.Request) (any, error) { return c.Tree(), nil })
-	get("/api/clusters/{dc}/{name}", func(r *http.Request) (any, error) {
-		return c.Cluster(r.PathValue("dc") + "/" + r.PathValue("name"))
-	})
-	get("/api/draft", func(r *http.Request) (any, error) { return c.DraftState(), nil })
-	send("PUT", "/api/draft", func(r *http.Request) (any, error) {
-		var req struct {
-			Scenario json.RawMessage `json:"scenario"`
-			Scope    string          `json:"scope"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.SetDraft(req.Scenario, req.Scope)
-	})
-	send("DELETE", "/api/draft", func(r *http.Request) (any, error) { return c.DiscardDraft(), nil })
-	send("POST", "/api/draft/generate", func(r *http.Request) (any, error) {
-		var p control.GenParams
-		if err := decode(r, &p); err != nil {
-			return nil, err
-		}
-		return c.Generate(p)
-	})
-	send("POST", "/api/preview/generate", func(r *http.Request) (any, error) {
-		var p control.GenParams
-		if err := decode(r, &p); err != nil {
-			return nil, err
-		}
-		return c.PreviewGenerate(p)
-	})
-	get("/api/presets", func(r *http.Request) (any, error) { return c.Presets(), nil })
-	get("/api/version-presets", func(r *http.Request) (any, error) {
-		vcenter, esx := scenario.VersionPresets()
-		return map[string]any{"vcenter": vcenter, "esx": esx}, nil
-	})
-	send("POST", "/api/draft/preset", func(r *http.Request) (any, error) {
-		var req struct {
-			Name string `json:"name"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.ApplyPreset(req.Name)
-	})
-	for path, act := range map[string]func(string) (control.DraftView, error){
-		"regenerate": c.Regenerate, "reset-seed": c.ResetSeed, "delete": c.DeleteCluster,
-	} {
-		act := act
-		send("POST", "/api/draft/"+path, func(r *http.Request) (any, error) {
-			var req struct {
-				Cluster string `json:"cluster"`
-			}
-			if err := decode(r, &req); err != nil {
-				return nil, err
-			}
-			return act(req.Cluster)
-		})
-	}
-	get("/api/review", func(r *http.Request) (any, error) { return c.Review() })
-	send("POST", "/api/apply", func(r *http.Request) (any, error) {
-		var req struct {
-			When string `json:"when"`
-		}
-		if err := decode(r, &req); err != nil {
-			return nil, err
-		}
-		return c.Apply(req.When)
-	})
-	send("POST", "/api/error/dismiss", func(r *http.Request) (any, error) { c.DismissError(); return map[string]bool{"ok": true}, nil })
-	send("POST", "/api/apply/cancel", func(r *http.Request) (any, error) { return c.CancelScheduled() })
 	send("POST", "/api/pause", func(r *http.Request) (any, error) {
 		var req struct {
 			Paused bool `json:"paused"`
@@ -172,59 +65,152 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 		c.SetPaused(req.Paused)
 		return map[string]bool{"paused": c.Paused()}, nil
 	})
-	get("/api/timeline", func(r *http.Request) (any, error) { return c.Timeline(), nil })
-	get("/api/families", func(r *http.Request) (any, error) { return c.Families(), nil })
-	get("/api/compat", func(r *http.Request) (any, error) { return c.Compatibility(), nil })
-	get("/api/activity", func(r *http.Request) (any, error) {
-		q := r.URL.Query()
-		after, _ := strconv.ParseUint(q.Get("after"), 10, 64)
-		limit, _ := strconv.Atoi(q.Get("limit"))
-		calls := c.Log.Query(activity.Filter{Surface: q.Get("surface"), Method: q.Get("method"), Family: q.Get("family"),
-			Cluster: q.Get("cluster"), Result: q.Get("result"), AfterSeq: after, Limit: limit})
-		if calls == nil {
-			calls = []activity.Call{}
-		}
-		return map[string]any{"calls": calls, "totals": c.Log.Totals()}, nil
+	send("POST", "/api/failure/dismiss", func(r *http.Request) (any, error) {
+		c.DismissFailure()
+		return map[string]bool{"ok": true}, nil
 	})
-	get("/api/activity/{seq}", func(r *http.Request) (any, error) {
-		seq, _ := strconv.ParseUint(r.PathValue("seq"), 10, 64)
-		call, ok := c.Log.Get(seq)
-		if !ok {
-			return nil, &control.Invalid{Msg: "that request has left the log"}
+	send("POST", "/api/setup/account", func(r *http.Request) (any, error) {
+		var req struct {
+			Password string `json:"password"`
 		}
-		return call, nil
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return map[string]bool{"ok": true}, c.SetupAccount(req.Password)
 	})
 
-	if len(captures) > 0 && captures[0] != nil {
-		capture := captures[0]
-		get("/api/capture", func(r *http.Request) (any, error) { return capture.State(), nil })
-		send("PUT", "/api/capture", func(r *http.Request) (any, error) {
-			var settings querylog.Settings
-			if err := decode(r, &settings); err != nil {
-				return nil, err
+	// tasks: every change the console makes
+	get("/api/task/{kind}", func(r *http.Request) (any, error) {
+		q := map[string]string{}
+		for k, v := range r.URL.Query() {
+			if len(v) > 0 {
+				q[k] = v[0]
 			}
-			if err := capture.Set(settings); err != nil {
-				return nil, err
-			}
-			return capture.State(), nil
-		})
-		send("DELETE", "/api/capture", func(r *http.Request) (any, error) {
-			if err := capture.Clear(); err != nil {
-				return nil, err
-			}
-			return capture.State(), nil
-		})
-		get("/api/capture/unanswered", func(r *http.Request) (any, error) { return capture.Records(true), nil })
-		get("/api/capture/full", func(r *http.Request) (any, error) { return capture.Records(false), nil })
-		for _, kind := range []string{"full", "unanswered"} {
-			kind := kind
-			mux.HandleFunc("GET /api/capture/"+kind+".jsonl", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/x-ndjson")
-				w.Header().Set("Cache-Control", "no-store")
-				w.Header().Set("Content-Disposition", "attachment; filename="+kind+"-requests.jsonl")
-				_ = capture.WriteJSONL(w, kind == "unanswered")
-			})
 		}
+		return c.TaskForm(r.PathValue("kind"), q, caller(r))
+	})
+	send("POST", "/api/task/{kind}/preview", func(r *http.Request) (any, error) {
+		var req struct {
+			Params json.RawMessage `json:"params"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.TaskPreview(r.PathValue("kind"), req.Params, caller(r))
+	})
+	send("POST", "/api/task/{kind}", func(r *http.Request) (any, error) {
+		var req struct {
+			Params    json.RawMessage `json:"params"`
+			At        *time.Time      `json:"at"`
+			Confirmed bool            `json:"confirmed"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.TaskRun(r.PathValue("kind"), req.Params, req.At, req.Confirmed, caller(r))
+	})
+	send("POST", "/api/scheduled/{id}/now", func(r *http.Request) (any, error) {
+		id, _ := strconv.Atoi(r.PathValue("id"))
+		return c.ScheduledNow(id)
+	})
+	send("DELETE", "/api/scheduled/{id}", func(r *http.Request) (any, error) {
+		id, _ := strconv.Atoi(r.PathValue("id"))
+		return ok(c.ScheduledCancel(id))
+	})
+
+	// clusters, storage, versions
+	get("/api/clusters", func(r *http.Request) (any, error) { return c.Clusters(), nil })
+	get("/api/clusters/{dc}/{name}", func(r *http.Request) (any, error) { return c.Cluster(cluster(r)) })
+	send("DELETE", "/api/clusters/{dc}/{name}", func(r *http.Request) (any, error) { return ok(c.RemoveCluster(cluster(r))) })
+	get("/api/storage", func(r *http.Request) (any, error) { return c.Storage(), nil })
+	get("/api/storage/{dc}/{name}", func(r *http.Request) (any, error) { return c.StorageItem(cluster(r)) })
+	send("DELETE", "/api/storage/{dc}/{name}", func(r *http.Request) (any, error) { return ok(c.RemoveStorage(cluster(r))) })
+	send("POST", "/api/storage/{dc}/{name}/reconnect", func(r *http.Request) (any, error) { return ok(c.ReconnectStorage(cluster(r))) })
+	get("/api/versions", func(r *http.Request) (any, error) { return c.Versions(), nil })
+
+	// users and security
+	get("/api/users", func(r *http.Request) (any, error) { return c.Users(), nil })
+	send("DELETE", "/api/users", func(r *http.Request) (any, error) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		text, tone, err := c.RemoveUser(req.Name)
+		if err != nil {
+			return nil, err
+		}
+		return done{text, tone}, nil
+	})
+	send("PUT", "/api/users/any-login", func(r *http.Request) (any, error) {
+		var req struct {
+			On bool `json:"on"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		text, tone, err := c.SetAnyLogin(req.On)
+		if err != nil {
+			return nil, err
+		}
+		return done{text, tone}, nil
+	})
+	get("/api/security", func(r *http.Request) (any, error) { return c.Security(), nil })
+
+	// slowness and faults
+	get("/api/faults", func(r *http.Request) (any, error) { return c.Faults(), nil })
+	send("DELETE", "/api/faults/{id}", func(r *http.Request) (any, error) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil || id < 0 {
+			return nil, &control.Invalid{Msg: "That is not something that can be turned off."}
+		}
+		return ok(c.ConditionOff(id))
+	})
+
+	// requests
+	get("/api/requests", func(r *http.Request) (any, error) { return c.Requests(), nil })
+	get("/api/requests/log", func(r *http.Request) (any, error) { return c.RequestLog(), nil })
+	get("/api/requests/call/{seq}", func(r *http.Request) (any, error) {
+		seq, _ := strconv.ParseUint(r.PathValue("seq"), 10, 64)
+		return c.RequestBody(seq)
+	})
+	get("/api/requests/supported", func(r *http.Request) (any, error) {
+		rows, vcenter := c.Supported()
+		return map[string]any{"rows": rows, "vcenter": vcenter}, nil
+	})
+	mux.HandleFunc("GET /api/requests/log.csv", func(w http.ResponseWriter, r *http.Request) {
+		download(w, "text/csv; charset=utf-8", "vcsim-requests", "csv")
+		out := csv.NewWriter(w)
+		_ = out.Write([]string{"Time", "Asked by", "What was asked for", "Name tools use", "Cluster", "What happened", "Took (ms)"})
+		for _, row := range c.RequestLog() {
+			_ = out.Write([]string{row.Time.Format(time.RFC3339), row.Who, row.T, row.Tech, row.Cluster, row.Label, strconv.FormatFloat(row.Ms, 'f', 1, 64)})
+		}
+		out.Flush()
+	})
+	send("PUT", "/api/capture", func(r *http.Request) (any, error) {
+		var req struct {
+			Kind string `json:"kind"`
+			On   bool   `json:"on"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return ok(c.SetCapture(req.Kind, req.On))
+	})
+	send("DELETE", "/api/capture", func(r *http.Request) (any, error) { return ok(c.ClearCapture()) })
+	for _, kind := range []string{"all", "unanswered"} {
+		kind := kind
+		mux.HandleFunc("GET /api/capture/"+kind, func(w http.ResponseWriter, r *http.Request) {
+			if c.Capture == nil {
+				http.NotFound(w, r)
+				return
+			}
+			// one request per line; a plain text file is what the project's
+			// issue page takes as an attachment
+			download(w, "text/plain; charset=utf-8", "vcsim-"+kind+"-requests", "txt")
+			_ = c.Capture.WriteJSONL(w, kind == "unanswered")
+		})
 	}
 
 	for _, path := range []string{"/claim", "/login"} {
@@ -240,14 +226,46 @@ func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog
 	return guard(mux, allowedHosts)
 }
 
+// download sets the headers of a file the browser should save, named with
+// today's date.
+func download(w http.ResponseWriter, contentType, name, ext string) {
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	// The console names the saved file itself, with the viewer's own date;
+	// the name here is for anything else that fetches the address.
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s.%s", name, ext))
+}
+
+// caller says who is using the console: its session, and the name the
+// console was opened with.
+func caller(r *http.Request) control.Caller {
+	who := control.Caller{Host: r.Host}
+	if cookie, err := r.Cookie(sessionCookie); err == nil {
+		who.Session = cookie.Value
+	}
+	return who
+}
+
 // ProtectedHandler requires a console session and keeps host and origin checks
 // on the authentication routes as well as the rest of the console.
-func ProtectedHandler(c *control.Controller, hosts []string, dir, seed string, secureCookie bool, capture *querylog.Capture) (http.Handler, error) {
+func ProtectedHandler(c *control.Controller, hosts []string, dir, seed string, secureCookie bool) (http.Handler, error) {
 	a, err := newConsoleAuth(dir, seed)
 	if err != nil {
 		return nil, err
 	}
-	return guard(a.protectConsole(Handler(c, hosts, capture), secureCookie), hosts), nil
+	c.ConsolePassword = func(current, next, session string) error {
+		switch err := a.change(current, next, session); {
+		case errors.Is(err, errRateLimited):
+			return &control.Invalid{Msg: "Too many wrong passwords. Wait a minute and try again."}
+		case errors.Is(err, errShort):
+			return &control.Invalid{Msg: "Use at least 8 characters."}
+		default:
+			return err
+		}
+	}
+	c.ConsoleManaged = func() bool { return a.managed }
+	a.accountNeeded = c.AccountNeeded
+	return guard(a.protectConsole(Handler(c, hosts), secureCookie), hosts), nil
 }
 
 type api struct{ c *control.Controller }
@@ -262,27 +280,36 @@ func decode(r *http.Request, v any) error {
 	}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	if err := dec.Decode(v); err != nil {
-		return &control.Invalid{Msg: "bad request body: " + err.Error()}
+		return &control.Invalid{Msg: "The console sent something the simulator could not read. Reload the page and try again."}
 	}
 	return nil
 }
 
 func (a *api) wrap(h func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Until first-run set-up has chosen the tools' password the console
+		// shows that step and nothing else, so nothing else is served.
+		if a.c.AccountNeeded() && r.URL.Path != "/api/home" && r.URL.Path != "/api/setup/account" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Choose the password your tools will sign in with first."})
+			return
+		}
 		v, err := h(r)
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		if err != nil {
 			var inv *control.Invalid
 			code := http.StatusInternalServerError
-			switch {
-			case errors.As(err, &inv):
-				code = http.StatusUnprocessableEntity
-			case errors.Is(err, control.ErrNoDraft):
-				code = http.StatusConflict
+			msg := "The simulator could not do that: " + err.Error()
+			if errors.As(err, &inv) {
+				code, msg = http.StatusUnprocessableEntity, inv.Msg
+			} else if errors.Is(err, control.ErrWrongConsolePassword) {
+				code, msg = http.StatusUnprocessableEntity, "That is not the current password."
 			}
 			w.WriteHeader(code)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": msg})
 			return
 		}
 		json.NewEncoder(w).Encode(v)

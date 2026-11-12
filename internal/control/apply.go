@@ -1,237 +1,170 @@
 package control
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
+	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
-
-// ApplyResult says what Apply did.
-type ApplyResult struct {
-	Scheduled bool      `json:"scheduled"`
-	At        time.Time `json:"at"`
-	Version   int       `json:"version"`
-	Message   string    `json:"message"`
-}
 
 // drainGrace is how long the replaced vCenter keeps answering requests that
 // were already in flight at the swap.
 var drainGrace = 30 * time.Second
 
-// Apply lands the pending draft: when "now", immediately; otherwise (the
-// default) at the next five-minute bucket boundary.
-func (c *Controller) Apply(when string) (*ApplyResult, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	d := c.draft
-	if d == nil {
-		if c.scheduled != nil {
-			return nil, invalid("a change is already scheduled for %s", c.scheduled.At.UTC().Format("15:04:05Z"))
-		}
-		return nil, ErrNoDraft
-	}
-	if err := clone(d.Scenario).Validate(); err != nil {
-		return nil, &Invalid{err.Error()}
-	}
-	switch when {
-	case "now":
-		return c.applyLocked(d)
-	case "", "boundary":
-		at := nextBoundary(c.now())
-		s := &Scheduled{Draft: d, At: at}
-		s.timer = time.AfterFunc(at.Sub(c.now()), func() { c.fire(s) })
-		c.scheduled, c.draft = s, nil
-		return &ApplyResult{Scheduled: true, At: at, Version: c.applied().version + 1,
-			Message: "Change scheduled"}, nil
-	}
-	return nil, invalid("when must be %q or %q", "boundary", "now")
+// Failure is a change that was not made. It stays on every screen until it
+// is hidden or tried again, and carries the change's own values so that
+// "Try again" can reopen it filled in.
+type Failure struct {
+	At   time.Time `json:"at"`
+	What string    `json:"what"`
+	Why  string    `json:"why"`
+	Fix  string    `json:"fix"`
+	// Kind and Params are the task that failed. Passwords and keys are
+	// left out of Params.
+	Kind   string          `json:"kind"`
+	Params json.RawMessage `json:"params"`
+	// Route is the task screen to reopen.
+	Route string `json:"route"`
 }
 
-func (c *Controller) fire(s *Scheduled) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.scheduled != s {
-		return
-	}
-	c.scheduled = nil
-	if _, err := c.applyLocked(s.Draft); err != nil {
-		c.draft = s.Draft // give the change back to the operator; applyLocked recorded the failure
-	}
-}
-
-// applyLocked builds and swaps. c.mu is held.
-func (c *Controller) applyLocked(d *Draft) (*ApplyResult, error) {
+// applyScenario makes next the served scenario. A change to clusters, hosts,
+// storage or versions builds a new vCenter beside the running one and swaps
+// them, which ends the sessions of connected tools; a change to slowness and
+// faults alone swaps the knobs in place. On error nothing has changed.
+// c.mu is held.
+func (c *Controller) applyScenario(next *scenario.Scenario, freshRegistry bool) (rebuilt bool, err error) {
 	old := c.applied()
-	res, err := c.applyOnce(d, old)
-	if err != nil {
-		// the running vCenter is untouched; say so where the operator will see it
-		hint := ""
-		if strings.Contains(err.Error(), "FileFault") || strings.Contains(err.Error(), "no space") || strings.Contains(err.Error(), "quota") {
-			hint = " The new vCenter could not write its datastore files: check the free space under TMPDIR."
-		}
-		c.lastErr = fmt.Sprintf("The change failed to apply at %s; the previous settings are still serving. %s%s", c.now().Format("15:04:05Z"), err.Error(), hint)
-		c.lastErrAt = c.now()
-		c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: old.version, Area: "Service",
-			Text: "Apply failed; previous settings are still serving", History: "preserved", Identities: "unchanged"})
-		_ = c.persist()
-		return nil, err
+	next = clone(next)
+	dropVanishedHostVersions(next)
+	if err := clone(next).Validate(); err != nil {
+		return false, &Invalid{err.Error()}
 	}
-	return res, nil
-}
-
-// applyOnce builds and swaps; on error nothing has changed.
-func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
-	rv, err := c.review(d)
-	if err != nil {
-		return nil, err
+	if !freshRegistry && topologyForm(old.sc) == topologyForm(next) {
+		nr := &running{version: old.version, at: old.at, sc: next, topo: old.topo, sim: old.sim}
+		old.sim.Env.Knobs.Set(next.Faults, next.Latency)
+		old.sim.Env.Knobs.SetConditions(next.Conditions)
+		c.cur.Store(nr)
+		c.syncConditions(nr)
+		c.armExpiry()
+		c.save()
+		return false, nil
 	}
-	topoChanged := rv.RebuildsVCenter
-	next := old.version
-	if topoChanged {
-		next++ // the version counts topologies; a latency or fault edit is not one
-	}
-	var nr *running
 	var newReg *registry.Registry
-	oldReg := c.reg
-	if topoChanged {
-		if d.Scenario.Seed != old.sc.Seed {
-			newReg, err = registry.Open(c.regPath(), d.Scenario.Seed, true)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			newReg = c.reg.Clone()
-			for _, k := range d.Regenerate {
-				newReg.Retire(k)
-			}
+	if freshRegistry || next.Seed != old.sc.Seed {
+		if newReg, err = registry.Open(c.regPath(), next.Seed, true); err != nil {
+			return false, err
 		}
-		nr, err = c.build(clone(d.Scenario), newReg, next)
-		if err != nil {
-			return nil, fmt.Errorf("apply: %w (the running topology is unchanged)", err)
-		}
-		if err := newReg.Save(); err != nil {
-			nr.sim.Close()
-			return nil, err
-		}
-		c.reg = newReg
 	} else {
-		// Keep the live knobs unchanged until credential persistence succeeds.
-		nr = &running{version: next, at: c.now(), sc: clone(d.Scenario), topo: old.topo, sim: old.sim}
+		newReg = c.reg.Clone()
 	}
-	if d.Credentials != nil {
-		if err := nr.sim.UpdateCredentials(func() ([]string, error) { return c.auth.Commit(*d.Credentials) }); err != nil {
-			if topoChanged {
-				nr.sim.Close()
-				c.reg = oldReg
-				if restoreErr := oldReg.Save(); restoreErr != nil {
-					return nil, fmt.Errorf("apply credentials: %v; restore registry: %w", err, restoreErr)
-				}
-			}
-			return nil, fmt.Errorf("apply credentials: %w", err)
-		}
+	nr, err := c.build(next, newReg, old.version+1)
+	if err != nil {
+		return false, err
 	}
-	if !topoChanged {
-		old.sim.Env.Knobs.Set(d.Scenario.Faults, d.Scenario.Latency)
+	if err := newReg.Save(); err != nil {
+		nr.sim.Close()
+		return false, err
 	}
+	c.reg = newReg
 	c.cur.Store(nr)
-	if topoChanged {
-		go func(s interface{ Close() }) {
-			time.Sleep(drainGrace)
-			s.Close()
-		}(old.sim)
-	}
-	c.scope = d.Scope
-	c.draft, c.lastErr = nil, ""
-	c.timeline = append(c.timeline, c.timelineEntry(rv, d, next))
-	if err := c.persist(); err != nil {
-		c.lastErr = "state not saved: " + err.Error()
-	}
-	return &ApplyResult{At: c.now(), Version: next, Message: "Changes applied"}, nil
+	c.syncConditions(nr)
+	c.armExpiry()
+	c.drain(old.sim)
+	c.save()
+	return true, nil
 }
 
 func (c *Controller) regPath() string { return c.opts.DataDir + "/registry.json" }
 
-// timelineEntry summarizes an applied review in one line per area.
-func (c *Controller) timelineEntry(rv *Review, d *Draft, version int) TimelineEntry {
-	area := "Topology"
-	if !rv.RebuildsVCenter {
-		area = "Telemetry"
-		if rv.SettingsCount > 0 {
-			area = "Settings"
-		}
+// save writes the state file. A change that is already live is not undone
+// or called a failure because it could not be saved: Home says that the
+// state is unsaved until a later save succeeds.
+func (c *Controller) save() {
+	if err := c.persist(); err != nil {
+		c.unsaved = err.Error()
+		log.Printf("control: state not saved: %v", err)
+		return
 	}
-	var parts []string
-	for i, ch := range rv.Changes {
-		if i == 3 {
-			parts = append(parts, fmt.Sprintf("+%d more", len(rv.Changes)-3+rv.More))
-			break
-		}
-		switch {
-		case ch.Area == "Telemetry" && ch.Before == "—":
-			parts = append(parts, fmt.Sprintf("Added %s %s", strings.ToLower(ch.Object), ch.Field))
-		case ch.Area == "Telemetry" && ch.After == "removed":
-			parts = append(parts, fmt.Sprintf("Removed %s %s", strings.ToLower(ch.Object), ch.Field))
-		case ch.Before == "—" || ch.After == "—":
-			parts = append(parts, fmt.Sprintf("%s %s", ch.Object, strings.ToLower(ch.Effect)))
-		default:
-			parts = append(parts, fmt.Sprintf("%s %s %s → %s", ch.Object, ch.Field, ch.Before, ch.After))
-		}
-	}
-	hist := "preserved"
-	for _, ch := range rv.Changes {
-		if strings.Contains(ch.Effect, "samples") || ch.Field == "Telemetry seed" {
-			hist = "changed"
-		}
-	}
-	ids := "unchanged"
-	var added, removed int
-	for _, r := range rv.Identities {
-		if r.Label == "Performance entities" || r.Label == "Virtual disk identities" {
-			continue
-		}
-		added += r.Added
-		removed += r.Removed
-	}
-	if added > 0 || removed > 0 {
-		ids = fmt.Sprintf("+%d / −%d", added, removed)
-	}
-	text := strings.Join(parts, " · ")
-	if text == "" {
-		text = "applied"
-	}
-	if rv.Origin != "edit" {
-		text = strings.Replace(rv.Origin, "preset:", "Preset ", 1) + " · " + text
-	}
-	return TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: version, Area: area, Text: text, History: hist, Identities: ids}
+	c.unsaved = ""
 }
 
-// SetPaused stops (true) or resumes (false) serving the API: while paused,
-// connections to /sdk and /vsanHealth are dropped, so a collection fails
-// instead of reading empty data. History and seeds are untouched.
+// whyFailed turns an apply error into the two sentences of the failure bar:
+// why it failed and what to do.
+func whyFailed(err error) (why, fix string) {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "FileFault") || strings.Contains(msg, "no space") || strings.Contains(msg, "quota"):
+		return "The machine that runs the simulator is out of disk space.", "Nothing was changed. Free some space there, then try again."
+	}
+	msg = strings.TrimPrefix(msg, "scenario: ")
+	return upper1(strings.TrimSuffix(msg, ".")) + ".", "Nothing was changed. Check the values, then try again."
+}
+
+// addHistory appends one line to the history. c.mu is held.
+func (c *Controller) addHistory(text string) {
+	c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Text: text})
+}
+
+// SetPaused stops (true) or resumes (false) the simulated vCenter: while
+// paused every connection is dropped, so a collection fails instead of
+// reading empty data. Nothing is lost.
 func (c *Controller) SetPaused(p bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.paused.Swap(p) == p {
 		return
 	}
-	c.pausedAt = c.now()
-	text := "API service resumed"
 	if p {
-		text = "API service paused: connections refused"
+		c.pausedAt = c.now()
+		c.addHistory("Simulator paused.")
+	} else {
+		c.addHistory("Simulator resumed.")
 	}
-	c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: c.applied().version,
-		Area: "Service", Text: text, History: "preserved", Identities: "unchanged"})
-	_ = c.persist()
+	c.save()
 }
 
 // Paused reports whether the API is paused.
 func (c *Controller) Paused() bool { return c.paused.Load() }
 
-// DismissError clears the failure banner.
-func (c *Controller) DismissError() {
+// DismissFailure hides the failure bar.
+func (c *Controller) DismissFailure() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.lastErr = ""
+	c.failure = nil
+}
+
+// fail records a change that was not made. c.mu is held.
+func (c *Controller) fail(text string, err error, kind string, params json.RawMessage, route string) {
+	why, fix := whyFailed(err)
+	c.failure = &Failure{At: c.now(), What: fmt.Sprintf("The change %q was not made.", text), Why: why, Fix: fix,
+		Kind: kind, Params: scrub(kind, params), Route: route}
+	c.addHistory(fmt.Sprintf("Failed: %s. %s Nothing was changed.", lower1(text), why))
+	c.save()
+}
+
+// plainParams lists, by task kind, the values named like a secret that are
+// not one and so are kept for "Try again". Every other task loses them all.
+var plainParams = map[string]string{"replace-everything": "key"}
+
+// scrub removes passwords and private keys from a task's values before they
+// are kept for "Try again".
+func scrub(kind string, params json.RawMessage) json.RawMessage {
+	var m map[string]any
+	if json.Unmarshal(params, &m) != nil {
+		return json.RawMessage("{}")
+	}
+	for _, k := range []string{"pw", "pw2", "cur", "key", "crt"} {
+		if plainParams[kind] != k {
+			delete(m, k)
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return b
 }

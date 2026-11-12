@@ -1,548 +1,532 @@
 package control
 
 import (
+	"bufio"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"reflect"
-	"regexp"
-	"runtime"
-	"slices"
+	"net"
+	"net/url"
 	"sort"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
-	"github.com/sentania/vcenter-api-simulator/internal/activity"
-	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
-	"github.com/sentania/vcenter-api-simulator/internal/topology"
-	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
 
-// State is the overview's data.
-type State struct {
-	Version  string `json:"version"`
-	Commit   string `json:"commit"`
-	Endpoint string `json:"endpoint"`
-	API      []string
-	Admin    string `json:"admin"`
-
-	Profile struct {
-		FullName string `json:"fullName"`
-		Version  string `json:"version"`
-		Build    string `json:"build"`
-		Source   string `json:"source"`
-	} `json:"profile"`
-	Clock struct {
-		Now    time.Time `json:"now"`
-		Bucket time.Time `json:"bucket"`
-		Next   time.Time `json:"nextBoundary"`
-	} `json:"clock"`
-	Running bool      `json:"running"`
-	Since   time.Time `json:"since"`
-
-	Topology struct {
-		Version       int       `json:"version"`
-		AppliedAt     time.Time `json:"appliedAt"`
-		Seed          string    `json:"seed"`
-		TelemetrySeed string    `json:"telemetrySeed"`
-		Config        string    `json:"config"` // short hash of the applied scenario
-		Datacenters   int       `json:"datacenters"`
-		BuildMs       int64     `json:"buildMs"`
-	} `json:"topology"`
-	Pending Pending `json:"pending"`
-
-	Projection *Projection `json:"projection"`
-	Scope      string      `json:"scope"`
-	Selected   Load        `json:"selected"`
-	Overridden int         `json:"overriddenClusters"`
-	Top        []FamilyProj
-
-	Scenario struct {
-		FaultRules int    `json:"faultRules"`
-		Latency    string `json:"latency"`
-	} `json:"scenario"`
-	Auth struct {
-		Mode  string   `json:"mode"`
-		Users []string `json:"users"`
-	} `json:"auth"`
-	TLS     string `json:"tls"`
-	Process struct {
-		RSSBytes   uint64  `json:"rssBytes"`
-		Cores      float64 `json:"cores"`
-		Goroutines int     `json:"goroutines"`
-	} `json:"process"`
-	Activity activity.Summary `json:"activity"`
-	Events   []Event          `json:"events"`
-	LastErr  string           `json:"lastError,omitempty"`
+// toolViews lists the tools as they stand right now. c.mu is held.
+func (c *Controller) toolViews() []ToolView {
+	return c.tools.list(c.now(), c.paused.Load(), c.pausedAt)
 }
 
-// Event is one line of the overview's recent events.
-type Event struct {
-	At     time.Time `json:"at"`
-	Text   string    `json:"text"`
-	Detail string    `json:"detail"`
-}
-
-var lastCPU struct {
-	t   time.Time
-	cpu time.Duration
-}
-
-func cpuCores(now time.Time) float64 {
-	var ru syscall.Rusage
-	if syscall.Getrusage(syscall.RUSAGE_SELF, &ru) != nil {
-		return 0
+// Address is the address tools should use, as one string.
+func (c *Controller) Address() string {
+	if c.opts.PublicURL != "" {
+		return strings.TrimRight(c.opts.PublicURL, "/")
 	}
-	cpu := time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
-	prev := lastCPU
-	lastCPU.t, lastCPU.cpu = now, cpu
-	if prev.t.IsZero() || !now.After(prev.t) {
-		return 0
+	host := c.opts.Endpoint
+	if host == "" {
+		host = "localhost"
 	}
-	return float64(cpu-prev.cpu) / float64(now.Sub(prev.t))
-}
-
-func rss() uint64 {
-	if b, err := os.ReadFile("/proc/self/statm"); err == nil {
-		f := strings.Fields(string(b))
-		if len(f) > 1 {
-			if n, err := strconv.ParseUint(f[1], 10, 64); err == nil {
-				return n * uint64(os.Getpagesize())
-			}
+	port := "443"
+	if len(c.opts.APIAddrs) > 0 {
+		if _, p, err := net.SplitHostPort(c.opts.APIAddrs[0]); err == nil {
+			port = p
 		}
 	}
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	return m.Sys
+	if port == "443" {
+		return "https://" + host
+	}
+	return "https://" + net.JoinHostPort(host, port)
 }
 
-// State assembles the overview.
-func (c *Controller) State() *State {
+// ---------------------------------------------------------------------------
+// Home
+
+// Attention is one thing that needs looking at, with the one button that
+// deals with it.
+type Attention struct {
+	K     string `json:"k"` // bad | warn | info
+	T     string `json:"t"`
+	D     string `json:"d"`
+	Label string `json:"label"`
+	// Href is where the button goes; or Act names what it does at once
+	// (retry, condOff) with ID.
+	Href string `json:"href,omitempty"`
+	Act  string `json:"act,omitempty"`
+	ID   int    `json:"id,omitempty"`
+}
+
+// HomeTool is a tool with what it has been asking for.
+type HomeTool struct {
+	ToolView
+	// Asks says in a phrase what it asks for; Unknown and Fault count the
+	// kinds of request not answered and failing on purpose. Carried is
+	// false when it asked for nothing more after an unanswered request.
+	Asks    string `json:"asks"`
+	Unknown int    `json:"unknown"`
+	Fault   int    `json:"fault"`
+	Carried bool   `json:"carried"`
+}
+
+// Estimate is the size of one full collection.
+type Estimate struct {
+	Requests int    `json:"requests"`
+	Size     string `json:"size"`
+}
+
+// Connect is what to give a tool so that it can connect.
+type Connect struct {
+	Username string `json:"username"`
+	AnyLogin bool   `json:"anyLogin"`
+	// Password says where the account's password came from: any (every
+	// password is accepted), inuse (the account is in use by a tool),
+	// console (set on the Users screen), setup (chosen in first-run
+	// set-up) or installer (supplied by the deployment).
+	Password string `json:"password"`
+	InUseBy  string `json:"inUseBy,omitempty"`
+	// Cert is made, own or managed; Issuer who issued an own certificate.
+	Cert   string `json:"cert"`
+	Issuer string `json:"issuer,omitempty"`
+}
+
+// HomeView is Home, and what the shell around every screen needs.
+type HomeView struct {
+	Now      time.Time  `json:"now"`
+	Running  bool       `json:"running"`
+	PausedAt *time.Time `json:"pausedAt,omitempty"`
+	Address  string     `json:"address"`
+	VCenter  string     `json:"vcenter"`
+	Counts   struct {
+		Clusters    int `json:"clusters"`
+		Hosts       int `json:"hosts"`
+		VMs         int `json:"vms"`
+		Datastores  int `json:"datastores"`
+		Datacenters int `json:"datacenters"`
+	} `json:"counts"`
+	EstimateAll  Estimate        `json:"estimateAll"`
+	EstimateDash Estimate        `json:"estimateDash"`
+	Tools        []HomeTool      `json:"tools"`
+	Attention    []Attention     `json:"attention"`
+	Scheduled    []ScheduledView `json:"scheduled"`
+	Recent       []TimelineEntry `json:"recent"`
+	HistoryCount int             `json:"historyCount"`
+	Connect      Connect         `json:"connect"`
+	Failure      *Failure        `json:"failure,omitempty"`
+	// Unanswered and Faults are the tab badges; Capturing is true while
+	// every request is captured in full.
+	Unanswered int  `json:"unanswered"`
+	Faults     int  `json:"faults"`
+	Capturing  bool `json:"capturing"`
+	// AccountNeeded: first-run set-up has not chosen the tools' password.
+	AccountNeeded bool `json:"accountNeeded"`
+}
+
+// Home assembles Home.
+func (c *Controller) Home() *HomeView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.sweep()
 	r := c.applied()
 	now := c.now()
-	s := &State{Version: c.opts.Version, Commit: c.opts.Commit, Endpoint: c.opts.Endpoint, API: c.opts.APIAddrs, Admin: c.opts.AdminAddr}
-	s.Profile.FullName, s.Profile.Version, s.Profile.Build = r.topo.VCenterVersion.FullName, r.topo.VCenterVersion.Version, r.topo.VCenterVersion.Build
-	s.Profile.Source = c.cat.Source
-	s.Clock.Now, s.Clock.Bucket, s.Clock.Next = now.UTC(), bucket(now), nextBoundary(now)
-	s.Running = !c.paused.Load()
-	s.Since = c.started
-	if !c.pausedAt.IsZero() {
-		s.Since = c.pausedAt
+	v := &HomeView{Now: now, Running: !c.paused.Load(), Address: c.Address(), VCenter: scenario.VersionLabel(r.topo.VCenterVersion),
+		Tools: []HomeTool{}, Attention: []Attention{}, Scheduled: c.scheduledViews(), Failure: c.failure, AccountNeeded: c.AccountNeeded()}
+	if !v.Running {
+		at := c.pausedAt
+		v.PausedAt = &at
 	}
-	s.Topology.Version, s.Topology.AppliedAt = r.version, r.at.UTC()
-	s.Topology.Seed, s.Topology.TelemetrySeed = r.sc.Seed, r.topo.TelemetrySeed
-	sum := sha256.Sum256([]byte(normal(r.sc)))
-	s.Topology.Config = "sha256:" + hex.EncodeToString(sum[:])[:8]
-	s.Topology.Datacenters = len(r.topo.Datacenters)
-	s.Topology.BuildMs = c.buildMs
-	s.Pending = c.pending()
-	s.Projection = Project(c.cat, r.topo)
-	s.Scope = c.scope
-	s.Selected = s.Projection.Selected(c.scope)
-	s.Overridden = len(r.sc.Clusters)
-	for i, f := range s.Projection.Families {
-		if i == 8 {
-			break
+	proj := Project(c.cat, r.topo)
+	v.Counts.Clusters, v.Counts.Hosts, v.Counts.VMs = proj.Clusters, proj.Hosts, proj.VMs
+	v.Counts.Datastores, v.Counts.Datacenters = proj.Datastores, len(r.topo.Datacenters)
+	v.EstimateAll = Estimate{proj.All.Calls, megabytes(proj.All.Bytes)}
+	v.EstimateDash = Estimate{proj.Dash.Calls, megabytes(proj.Dash.Bytes)}
+
+	asks := c.asks()
+	tools := c.toolViews()
+	counts := countAsks(asks)
+	live := 0
+	for _, t := range tools {
+		ht := HomeTool{ToolView: t, Carried: true}
+		key := toolKey(t.Addr, t.Agent)
+		var topics []string
+		seen := map[string]bool{}
+		topic := func(s string) {
+			if !seen[s] {
+				seen[s] = true
+				topics = append(topics, s)
+			}
 		}
-		s.Top = append(s.Top, f)
+		for _, a := range asks {
+			if a.client != key {
+				continue
+			}
+			switch a.St {
+			case "unknown":
+				ht.Unknown++
+				if strings.HasPrefix(a.Short, "The tool asked for nothing") {
+					ht.Carried = false
+				}
+			case "fault":
+				ht.Fault++
+			}
+			switch {
+			case a.T == kindInventory:
+				topic("lists of clusters, hosts and VMs")
+			case strings.HasPrefix(a.T, "vSAN performance data"):
+				topic("vSAN performance data")
+			case a.T == "vSAN health summary":
+				topic("vSAN health")
+			case a.T == "vSAN settings of each cluster" || a.T == "vSAN disks in each host":
+				topic("vSAN settings and disks")
+			}
+		}
+		ht.Asks = listAnd(topics)
+		if t.Connected() {
+			live++
+		}
+		v.Tools = append(v.Tools, ht)
 	}
-	s.Scenario.FaultRules = len(r.sc.Faults)
-	s.Scenario.Latency = latencyLine(r.sc.Latency)
-	s.Auth.Users = []string{}
-	if !c.auth.Snapshot().AnyLogin {
-		for _, user := range c.auth.Users() {
-			s.Auth.Users = append(s.Auth.Users, user.Name)
+
+	// what needs attention, most serious first
+	add := func(a Attention) { v.Attention = append(v.Attention, a) }
+	if c.unsaved != "" {
+		add(Attention{K: "bad", T: "The simulator could not save what was changed",
+			D: "The changes are live, but they will be lost if the simulator restarts. The machine it runs on may be out of disk space; once there is room, the next change saves everything.", Label: "See what was changed", Href: "/home/history"})
+	}
+	if f := c.failure; f != nil {
+		add(Attention{K: "bad", T: "A change failed at " + timeToken(f.At), D: f.What + " Nothing was changed.", Label: "Try again", Act: "retry"})
+	}
+	for _, t := range tools {
+		if t.Since == nil {
+			continue
+		}
+		switch t.State {
+		case ToolRemoved:
+			add(Attention{K: "bad", T: fmt.Sprintf("The tool at %s can no longer sign in", t.Addr),
+				D: fmt.Sprintf("Its account, %s, was removed at %s. Give the tool another account, or add that user again.", t.User, timeToken(*t.Since)), Label: "Go to Users", Href: "/users"})
+		case ToolCert:
+			add(Attention{K: "bad", T: fmt.Sprintf("The tool at %s has not reconnected since the certificate was replaced", t.Addr),
+				D: fmt.Sprintf("It was signed out at %s and will stay away until it is told to trust the new certificate.", timeToken(*t.Since)), Label: "See the certificate", Href: "/security"})
+		case ToolSignedOut:
+			add(Attention{K: "bad", T: fmt.Sprintf("The tool at %s is not signed in any more", t.Addr),
+				D: fmt.Sprintf("Its requests have been refused since %s because its sign-in ended. A tool normally signs in again by itself; if this one does not, restart its collection.", timeToken(*t.Since)), Label: "See what it asks for", Href: "/requests?show=denied"})
+		case ToolDenied:
+			add(Attention{K: "bad", T: fmt.Sprintf("The tool at %s is being refused when it signs in", t.Addr),
+				D: fmt.Sprintf("Its last sign-in was refused at %s. Check the username and password it uses.", timeToken(*t.Since)), Label: "Go to Users", Href: "/users"})
 		}
 	}
-	sort.Strings(s.Auth.Users)
-	s.Auth.Mode = "any user name and password are accepted"
-	if len(s.Auth.Users) > 0 {
-		s.Auth.Mode = fmt.Sprintf("restricted to %d user(s)", len(s.Auth.Users))
+	if u := counts["unknown"]; u > 0 {
+		it, verb := "them", "are"
+		if u == 1 {
+			it, verb = "it", "is"
+		}
+		d := "The tool that asked carried on collecting without " + it + "."
+		license := false
+		for _, a := range asks {
+			if a.St != "unknown" {
+				continue
+			}
+			if strings.HasPrefix(a.Short, "The tool asked for nothing") {
+				d = "A tool asked for nothing more after one of them, so it may depend on the answer."
+			}
+			license = license || a.T == kindLicense
+		}
+		if license {
+			d += " One is the license, which would stop a different tool: the vCenter adapter built into VCF Operations."
+		}
+		add(Attention{K: "bad", T: fmt.Sprintf("%s of request %s not being answered", plural(u, "kind"), verb), D: d, Label: "See them", Href: "/requests?show=unknown"})
 	}
-	s.TLS = "self-signed, kept in the data directory"
-	if r.sc.TLS.CertFile != "" {
-		s.TLS = "provided certificate"
+	conds := c.conditionViews()
+	for _, cond := range conds {
+		if cond.Starts != nil {
+			continue
+		}
+		title := "A fault is switched on"
+		if cond.Kind == scenario.CondSlow {
+			title = "Slowness is switched on"
+		}
+		add(Attention{K: "warn", T: title, D: cond.Text, Label: "Turn it off", Act: "condOff", ID: cond.ID})
+		v.Faults++
 	}
-	s.Process.RSSBytes, s.Process.Cores, s.Process.Goroutines = rss(), cpuCores(now), runtime.NumGoroutine()
-	s.Activity = c.Log.Summarize(now)
-	s.LastErr = c.lastErr
-	s.Events = c.events(s.Activity)
-	return s
-}
-
-func latencyLine(l scenario.Latency) string {
-	var parts []string
-	if l.PerfQuery != nil && (l.PerfQuery.FixedMs > 0 || l.PerfQuery.JitterMs > 0) {
-		parts = append(parts, fmtDelay(l.PerfQuery)+" on perf queries")
+	for _, a := range asks {
+		if a.St != "denied" || !strings.HasPrefix(a.Who, "someone else") || !strings.HasPrefix(a.T, "Sign-in") {
+			continue
+		}
+		from := strings.TrimPrefix(a.Who, "someone else, at ")
+		aside := ""
+		if live > 0 {
+			aside = " (not the connected tool)"
+		}
+		as := ""
+		if a.User != "" {
+			as = ", as " + a.User
+		}
+		what := "a wrong password"
+		switch a.Short {
+		case "The user was removed":
+			what = "to sign in as a removed user"
+		case "There is no such user":
+			what = "to sign in as a user that does not exist"
+		}
+		title := fmt.Sprintf("Someone else tried %s %s", what, plural(a.N, "time"))
+		tail := ""
+		if len(tools) == 0 {
+			// nothing has signed in yet, so this may well be the person's own tool
+			title = fmt.Sprintf("Something tried %s %s", what, plural(a.N, "time"))
+			tail = " If it is your tool, check the username and password it uses."
+		}
+		add(Attention{K: "warn", T: title,
+			D: fmt.Sprintf("From %s%s%s, last at %s.%s", from, aside, as, timeToken(a.Last), tail), Label: "See it", Href: "/requests?show=denied"})
 	}
-	if len(l.Families) > 0 {
-		parts = append(parts, fmt.Sprintf("%d family override(s)", len(l.Families)))
+	capture := c.captureView()
+	if capture.Full {
+		since := ""
+		if capture.FullSince != nil {
+			since = "Since " + timeToken(*capture.FullSince) + ". "
+		}
+		add(Attention{K: "info", T: "Every request is being captured in full", D: since + "Turn it off when you have what you need.", Label: "Go to Requests", Href: "/requests"})
 	}
-	if l.SDK != nil && (l.SDK.FixedMs > 0 || l.SDK.JitterMs > 0) {
-		parts = append(parts, fmtDelay(l.SDK)+" on /sdk")
-	}
-	if len(parts) == 0 {
-		return "none added"
-	}
-	return strings.Join(parts, " · ")
-}
-
-func (c *Controller) events(a activity.Summary) []Event {
-	var out []Event
-	for i := len(c.timeline) - 1; i >= 0 && len(out) < 4; i-- {
-		t := c.timeline[i]
-		out = append(out, Event{At: t.At, Text: plainTimelineText(t.Text), Detail: fmt.Sprintf("%s · history %s · identities %s", t.Area, t.History, t.Identities)})
-	}
-	for _, f := range a.Cycle.Findings {
-		if f.Severity == "warn" || f.Severity == "bad" || f.Severity == "info" {
-			out = append(out, Event{At: a.Cycle.End, Text: f.Title, Detail: f.Severity})
+	v.Connect.Cert = "made"
+	if cert := c.certificateView(); cert != nil {
+		v.Connect.Cert, v.Connect.Issuer = cert.Kind, cert.Issuer
+		if cert.Kind == "own" && cert.SelfSigned {
+			v.Connect.Issuer = ""
+		}
+		renew, href := "Renew it", "/security/new-certificate"
+		if cert.Kind == "managed" {
+			renew, href = "See the certificate", "/security"
+		}
+		switch {
+		case cert.Days < 0:
+			add(Attention{K: "bad", T: "The certificate has run out", D: "Tools refuse to connect until it is replaced.", Label: renew, Href: href})
+		case cert.Days < 30:
+			add(Attention{K: "warn", T: fmt.Sprintf("The certificate runs out in %s", plural(cert.Days, "day")), D: "Tools will refuse to connect after that.", Label: renew, Href: href})
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
-	return out
+
+	// what to give a tool: an account no tool is using, the first one else
+	snapshot := c.auth.Snapshot()
+	v.Connect.AnyLogin = snapshot.AnyLogin
+	users := snapshot.Users()
+	sort.SliceStable(users, func(i, j int) bool { return users[i].Name == DefaultUsername && users[j].Name != DefaultUsername })
+	inUse := map[string]string{}
+	for _, t := range tools {
+		if t.Connected() {
+			inUse[t.User] = t.Addr
+		}
+	}
+	if len(users) > 0 {
+		pick := users[0]
+		for _, u := range users {
+			if _, busy := inUse[u.Name]; !busy {
+				pick = u
+				break
+			}
+		}
+		v.Connect.Username = pick.Name
+		switch {
+		case snapshot.AnyLogin:
+			v.Connect.Password = "any"
+		case inUse[pick.Name] != "":
+			v.Connect.Password, v.Connect.InUseBy = "inuse", inUse[pick.Name]
+		case pick.Origin != "":
+			v.Connect.Password = pick.Origin
+		default:
+			v.Connect.Password = "installer"
+		}
+	} else if snapshot.AnyLogin {
+		v.Connect.Password = "any"
+	}
+
+	v.Unanswered, v.Capturing = counts["unknown"], capture.Full
+	v.HistoryCount = len(c.timeline)
+	for i := len(c.timeline) - 1; i >= 0 && len(v.Recent) < 3; i-- {
+		v.Recent = append(v.Recent, c.timeline[i])
+	}
+	if v.Recent == nil {
+		v.Recent = []TimelineEntry{}
+	}
+	return v
 }
 
-var legacyBuiltVersion = regexp.MustCompile(`^Topology v[0-9]+ built:`)
-var legacyFailedVersion = regexp.MustCompile(`^Apply failed: v[0-9]+ still serving$`)
-
-func plainTimelineText(text string) string {
-	text = legacyBuiltVersion.ReplaceAllString(text, "Topology built:")
-	return legacyFailedVersion.ReplaceAllString(text, "Apply failed; previous settings are still serving")
-}
-
-// Timeline returns the applied changes, newest first.
-func (c *Controller) Timeline() []TimelineEntry {
+// History returns everything that was changed, newest first.
+func (c *Controller) History() []TimelineEntry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := make([]TimelineEntry, len(c.timeline))
 	for i, t := range c.timeline {
-		t.Text = plainTimelineText(t.Text)
 		out[len(c.timeline)-1-i] = t
 	}
 	return out
 }
 
+// CheckAddress tries the address tools are given, from the simulator's own
+// machine, and says in a sentence what happened. ok is true only when the
+// simulator answered there.
+func (c *Controller) CheckAddress() (ok bool, text string) {
+	address := c.Address()
+	u, err := url.Parse(address)
+	if err != nil || u.Host == "" {
+		return false, "The address is not one the simulator can try. Whoever installed it has to correct the address setting."
+	}
+	hostport := u.Host
+	if u.Port() == "" {
+		hostport = net.JoinHostPort(u.Hostname(), "443")
+	}
+	answered, reached, ours := c.probe(hostport)
+	switch {
+	case answered && ours:
+		return true, "Yes. The simulator answered at this address a moment ago."
+	case answered:
+		return false, "Something answered at this address, but it showed a different certificate from this simulator's. The address may point at another machine, or at something in front of the simulator that has its own certificate."
+	case reached && c.paused.Load():
+		return false, "The address is right, but the simulator is paused, so it refused the connection."
+	case reached:
+		return false, "The address reached the simulator, but it did not answer. Try again in a moment."
+	}
+	// not reachable by its public name: is the simulator answering at all?
+	if len(c.opts.APIAddrs) > 0 {
+		_, port, _ := net.SplitHostPort(c.opts.APIAddrs[0])
+		if local, localReached, _ := c.probe(net.JoinHostPort("127.0.0.1", port)); local || localReached {
+			return false, fmt.Sprintf("The simulator is running, but it could not reach itself at %s. Check that the name is right. A tool on another machine may still reach it if that machine knows the name.", address)
+		}
+	}
+	return false, "The simulator did not answer at this address, even from its own machine."
+}
+
+// probe asks hostport for a small document the simulated vCenter always
+// serves. answered: it was served. reached: a connection was made. ours:
+// the certificate shown is this simulator's.
+func (c *Controller) probe(hostport string) (answered, reached, ours bool) {
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	// The check is of the simulator's own listener, whose certificate is
+	// usually self-signed: it is compared with the one in use instead of
+	// being verified against the system's authorities.
+	conn, err := tls.DialWithDialer(dialer, "tcp", hostport, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec // see above
+	if err != nil {
+		return false, false, false
+	}
+	defer conn.Close()
+	reached = true
+	if c.opts.Certificate != nil {
+		if peers := conn.ConnectionState().PeerCertificates; len(peers) > 0 {
+			sum := sha256.Sum256(peers[0].Raw)
+			ours = hex.EncodeToString(sum[:]) == c.opts.Certificate.Info().Fingerprint
+		}
+	} else {
+		ours = true
+	}
+	_ = conn.SetDeadline(time.Now().Add(4 * time.Second))
+	host, _, _ := net.SplitHostPort(hostport)
+	fmt.Fprintf(conn, "GET /sdk/vimServiceVersions.xml HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\nConnection: close\r\n\r\n", host, checkAgent)
+	line, err := bufio.NewReader(conn).ReadString('\n')
+	return err == nil && strings.Contains(line, " 200"), reached, ours
+}
+
 // ---------------------------------------------------------------------------
-// topology
+// Clusters
 
-// TreeCluster is one cluster row.
-type TreeCluster struct {
-	Key          string `json:"key"`
-	Architecture string `json:"architecture"`
-	Name         string `json:"name"`
-	Datacenter   string `json:"datacenter"`
-	Hosts        int    `json:"hosts"`
-	HostsBefore  int    `json:"hostsBefore"` // -1 when the cluster is new
-	VMsPerHost   int    `json:"vmsPerHost"`
-	Devices      int    `json:"devices"` // NVMe per host
-	State        string `json:"state"`   // "" | pending | new | removed
-	Override     bool   `json:"override"`
-	Regenerate   bool   `json:"regenerate"`
-	SeedReset    bool   `json:"seedReset"`
-	Warnings     int    `json:"warnings"`
-	Entities     int    `json:"entities"`
+// ClusterRow is one cluster in the list.
+type ClusterRow struct {
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	DC      string `json:"dc"`
+	Hosts   int    `json:"hosts"`
+	VMs     int    `json:"vms"`
+	VSAN    string `json:"vsan"`
+	Version string `json:"version"`
 }
 
-// TreeDC groups clusters.
-type TreeDC struct {
-	Name     string        `json:"name"`
-	Clusters []TreeCluster `json:"clusters"`
-	Hosts    int           `json:"hosts"`
+// ClustersView is the Clusters screen.
+type ClustersView struct {
+	Rows        []ClusterRow `json:"rows"`
+	Datacenters []string     `json:"datacenters"`
+	Hosts       int          `json:"hosts"`
+	VMs         int          `json:"vms"`
 }
 
-// Tree is the cluster tree: the draft's clusters when a draft is pending,
-// each flagged against what is applied.
-type Tree struct {
-	Pending     Pending  `json:"pending"`
-	Datacenters []TreeDC `json:"datacenters"`
-	Clusters    int      `json:"clusters"`
-	Hosts       int      `json:"hosts"`
-	Overridden  int      `json:"overridden"`
-	PendingN    int      `json:"pendingClusters"`
-	WarningsN   int      `json:"warningClusters"`
-	Version     int      `json:"version"`
-	Seed        string   `json:"seed"`
-}
-
-func (c *Controller) viewDraft() *Draft {
-	if c.draft != nil {
-		return c.draft
-	}
-	if c.scheduled != nil {
-		return c.scheduled.Draft
-	}
-	return nil
-}
-
-// Tree returns the cluster tree.
-func (c *Controller) Tree() *Tree {
+// Clusters lists the clusters.
+func (c *Controller) Clusters() ClustersView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r := c.applied()
-	topo, sc := r.topo, r.sc
-	d := c.viewDraft()
-	var proj *Projection
-	if d != nil {
-		topo, _ = c.previewTopology(d)
-		sc = d.Scenario
+	v := ClustersView{Rows: []ClusterRow{}, Datacenters: []string{}}
+	for _, dc := range r.topo.Datacenters {
+		v.Datacenters = append(v.Datacenters, dc.Name)
 	}
-	proj = Project(c.cat, topo)
-	old := map[string]*topology.Cluster{}
 	for _, cl := range r.topo.Clusters() {
-		old[cl.Key] = cl
-	}
-	regen := map[string]bool{}
-	if d != nil {
-		for _, k := range d.Regenerate {
-			regen[k] = true
+		label, mixed := versionLabel(cl)
+		if mixed {
+			label = "Mixed: " + label
 		}
+		v.Rows = append(v.Rows, ClusterRow{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, Hosts: len(cl.Hosts), VMs: len(cl.VMs),
+			VSAN: vsanName(cl.Spec.Architecture), Version: label})
+		v.Hosts += len(cl.Hosts)
+		v.VMs += len(cl.VMs)
 	}
-	t := &Tree{Pending: c.pending(), Version: r.version, Seed: sc.Seed}
-	seen := map[string]bool{}
-	for _, dc := range topo.Datacenters {
-		td := TreeDC{Name: dc.Name}
-		for _, cl := range dc.Clusters {
-			seen[cl.Key] = true
-			tc := treeCluster(cl, old[cl.Key], sc, regen[cl.Key])
-			tc.Entities = proj.PerCluster[cl.Key].Entities
-			tc.Warnings = len(clusterChecks(cl, tc.Entities))
-			td.Clusters = append(td.Clusters, tc)
-			td.Hosts += tc.Hosts
-		}
-		t.Datacenters = append(t.Datacenters, td)
-	}
-	// removed clusters stay visible until applied
-	if d != nil {
-		for _, cl := range r.topo.Clusters() {
-			if seen[cl.Key] {
-				continue
-			}
-			for i := range t.Datacenters {
-				if t.Datacenters[i].Name == cl.Datacenter.Name {
-					t.Datacenters[i].Clusters = append(t.Datacenters[i].Clusters, TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name,
-						Hosts: 0, HostsBefore: len(cl.Hosts), State: "removed"})
-					sort.Slice(t.Datacenters[i].Clusters, func(a, b int) bool { return t.Datacenters[i].Clusters[a].Name < t.Datacenters[i].Clusters[b].Name })
-				}
-			}
-		}
-	}
-	for _, dc := range t.Datacenters {
-		for _, cl := range dc.Clusters {
-			if cl.State != "removed" {
-				t.Clusters++
-			}
-			t.Hosts += cl.Hosts
-			if cl.Override {
-				t.Overridden++
-			}
-			if cl.State != "" {
-				t.PendingN++
-			}
-			if cl.Warnings > 0 {
-				t.WarningsN++
-			}
-		}
-	}
-	return t
-}
-
-func storageForCluster(cl *topology.Cluster) (nfs []scenario.NFSDatastore, iscsi []scenario.ISCSIStorage) {
-	if cl == nil {
-		return nil, nil
-	}
-	for _, n := range cl.Datacenter.NFS {
-		if len(n.Spec.Clusters) > 0 && !slices.Contains(n.Spec.Clusters, cl.Key) {
-			continue
-		}
-		x := n.Spec
-		x.Clusters = nil
-		x.InaccessibleHosts = nil
-		for _, h := range n.Spec.InaccessibleHosts {
-			if strings.HasPrefix(h, cl.Key+"/") {
-				x.InaccessibleHosts = append(x.InaccessibleHosts, h)
-			}
-		}
-		nfs = append(nfs, x)
-	}
-	for _, st := range cl.Datacenter.ISCSI {
-		if st.Spec.Cluster == cl.Key {
-			iscsi = append(iscsi, st.Spec)
-		}
-	}
-	return
-}
-func clusterStorageChanged(a, b *topology.Cluster) bool {
-	an, ai := storageForCluster(a)
-	bn, bi := storageForCluster(b)
-	return !reflect.DeepEqual(an, bn) || !reflect.DeepEqual(ai, bi)
-}
-
-func treeCluster(cl, old *topology.Cluster, sc *scenario.Scenario, regen bool) TreeCluster {
-	tc := TreeCluster{Key: cl.Key, Name: cl.Name, Datacenter: cl.Datacenter.Name, Architecture: cl.Spec.Architecture, Hosts: len(cl.Hosts), HostsBefore: -1,
-		VMsPerHost: scenario.Int(cl.Spec.VMs.PerHost), Devices: cl.Spec.Host.ClaimedDevices, Regenerate: regen}
-	_, tc.Override = sc.Override(cl.Key)
-	tc.SeedReset = sc.SeedEpoch(cl.Key) > 0
-	switch {
-	case old == nil:
-		tc.State = "new"
-	default:
-		tc.HostsBefore = len(old.Hosts)
-		if fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed || clusterStorageChanged(old, cl) {
-			tc.State = "pending"
-		}
-	}
-	return tc
-}
-
-// clusterChecks are the consistency checks of one cluster.
-func clusterChecks(cl *topology.Cluster, entities int) []Warning {
-	var w []Warning
-	if cl.Spec.Architecture != "osa" && !cl.Dedup {
-		w = append(w, Warning{"warn", "Dedup is off", "The *-esa-dedup-* kinds answer empty for this cluster; the collector still queries them."})
-	}
-	if cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
-		w = append(w, Warning{"warn", "Stats primary is offline", "Performance queries return a missing-primary fault until it is online."})
-	}
-	if entities > 6000 {
-		w = append(w, Warning{"warn", "Large cluster", fmt.Sprintf("%s performance entities from this cluster alone.", num(entities))})
-	}
-	return w
+	return v
 }
 
 // HostRow is one host of a cluster.
 type HostRow struct {
-	Name     string `json:"name"`
-	MoRef    string `json:"moref"`
-	NodeUUID string `json:"nodeUuid"`
-	NVMe     int    `json:"nvme"`
-	LCPU     int    `json:"lcpu"`
-	VMs      int    `json:"vms"`
-	Identity string `json:"identity"` // unchanged | new | removed
-}
-
-// DatastoreRow is one datastore of a cluster.
-const sharedStoragePerf = "queried: capacity and used space, I/O counters read zero"
-
-type DatastoreRow struct {
 	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Backing string `json:"backing"`
-	Mounted int    `json:"mounted"`
-	Perf    string `json:"perfService"`
-	State   string `json:"state,omitempty"`
+	Version string `json:"version"`
+	VMs     int    `json:"vms"`
+	Disks   string `json:"disks"`
+	// ID is the internal id tools use for the host.
+	ID string `json:"id"`
 }
 
-// FieldSource says where a cluster's value comes from.
-type FieldSource struct {
-	Field  string `json:"field"`
-	Source string `json:"source"` // default | varied | override
+// ClusterStorage is one datastore a cluster uses.
+type ClusterStorage struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
 }
 
-// ClusterView is the editor's data for one cluster.
-type ClusterView struct {
-	Key        string                    `json:"key"`
-	Name       string                    `json:"name"`
-	Datacenter string                    `json:"datacenter"`
-	State      string                    `json:"state"`
-	Applied    *scenario.ClusterSpec     `json:"applied"` // nil for a new cluster
-	Spec       scenario.ClusterSpec      `json:"spec"`    // effective, in the draft
-	Override   *scenario.ClusterOverride `json:"override"`
-	Sources    []FieldSource             `json:"sources"`
-	MoRef      string                    `json:"moref"`
-	VsanUUID   string                    `json:"vsanUuid"`
-	Serial     int                       `json:"serial"`
-	Hosts      []HostRow                 `json:"hosts"`
-	HostsOld   int                       `json:"hostsApplied"`
-	VMs        int                       `json:"vms"`
-	Datastores []DatastoreRow            `json:"datastores"`
-	Load       Load                      `json:"load"`    // this cluster, selected scope
-	LoadOld    Load                      `json:"loadOld"` // applied
-	Entities   int                       `json:"entities"`
-	Checks     []Warning                 `json:"checks"`
-	Regenerate bool                      `json:"regenerate"`
-	SeedEpoch  int                       `json:"seedEpoch"`
-	VDS        string                    `json:"vds"`
-	PortGroups int                       `json:"portgroups"`
+// ClusterDetail is one cluster's page.
+type ClusterDetail struct {
+	Key     string           `json:"key"`
+	Name    string           `json:"name"`
+	DC      string           `json:"dc"`
+	VSAN    string           `json:"vsan"`
+	Version string           `json:"version"`
+	VMs     int              `json:"vms"`
+	Hosts   []HostRow        `json:"hosts"`
+	Local   int              `json:"local"` // local disks per host
+	Storage []ClusterStorage `json:"storage"`
+	// ID and VsanID are the internal ids tools use for the cluster.
+	ID     string `json:"id"`
+	VsanID string `json:"vsanId"`
+	// Only: this is the last cluster, which cannot be removed. CanShrink:
+	// it has more hosts than vSAN's minimum, so some can be removed.
+	Only      bool `json:"only"`
+	CanShrink bool `json:"canShrink"`
+	CanGrow   bool `json:"canGrow"`
 }
 
-// Cluster returns the editor view of one cluster.
-func (c *Controller) Cluster(key string) (*ClusterView, error) {
+// Cluster returns one cluster's page.
+func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r := c.applied()
-	d := c.viewDraft()
-	topo, sc := r.topo, r.sc
-	if d != nil {
-		topo, _ = c.previewTopology(d)
-		sc = d.Scenario
-	}
-	var cl, old *topology.Cluster
-	for _, x := range topo.Clusters() {
-		if x.Key == key {
-			cl = x
-		}
-	}
-	for _, x := range r.topo.Clusters() {
-		if x.Key == key {
-			old = x
-		}
-	}
-	if cl == nil && old == nil {
-		return nil, invalid("unknown cluster %q", key)
-	}
-	v := &ClusterView{Key: key, Hosts: []HostRow{}, Datastores: []DatastoreRow{}, Checks: []Warning{}, Sources: []FieldSource{}}
+	cl := c.findCluster(key)
 	if cl == nil {
-		// deleted in the draft: show it as it is applied
-		cl, v.State = old, "removed"
+		return nil, noCluster(key)
 	}
-	v.Name, v.Datacenter, v.Spec, v.Serial, v.VsanUUID = cl.Name, cl.Datacenter.Name, cl.Spec, cl.Serial, ""
-	if old != nil {
-		spec := old.Spec
-		v.Applied, v.HostsOld = &spec, len(old.Hosts)
-		v.VsanUUID = old.VsanUUID
-		for _, ref := range r.sim.Clusters {
-			if ref.Cluster == old {
-				v.MoRef = ref.Ref.Value
-			}
-		}
+	label, mixed := versionLabel(cl)
+	if mixed {
+		label = "Mixed: " + label
 	}
-	if v.State == "" {
-		switch {
-		case old == nil:
-			v.State = "new"
-		case fmt.Sprint(specFields(old.Spec)) != fmt.Sprint(specFields(cl.Spec)) || old.Serial != cl.Serial || old.TelemetrySeed != cl.TelemetrySeed || clusterStorageChanged(old, cl):
-			v.State = "pending"
-		}
-	}
-	if o, ok := sc.Override(key); ok {
-		ov := scenario.ClusterOverride{Key: key, SeedEpoch: sc.SeedEpoch(key), ClusterSpec: o}
-		v.Override = &ov
-	}
-	v.SeedEpoch = sc.SeedEpoch(key)
-	if d != nil {
-		v.Regenerate = contains(d.Regenerate, key)
-	}
-	v.Sources = sources(sc, key)
-	oldSerial := map[string]int{}
-	if old != nil {
-		for _, h := range old.Hosts {
-			oldSerial[h.Key] = h.Serial
-		}
-	}
-	var hostRefs []string
-	if old != nil {
-		for _, ref := range r.sim.Clusters {
-			if ref.Cluster == old {
-				for _, h := range ref.Hosts {
-					hostRefs = append(hostRefs, h.Value)
-				}
-			}
+	v := &ClusterDetail{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, VSAN: vsanName(cl.Spec.Architecture), Version: label, VMs: len(cl.VMs),
+		Hosts: []HostRow{}, Storage: []ClusterStorage{}, Local: scenario.Int(cl.Spec.Host.LocalDevices), VsanID: cl.VsanUUID,
+		Only: len(r.topo.Clusters()) == 1, CanShrink: len(cl.Hosts) > scenario.MinHosts, CanGrow: len(cl.Hosts) < maxHosts}
+	var refs []string
+	if cr := r.sim.Cluster(key); cr != nil {
+		v.ID = cr.Ref.Value
+		for _, h := range cr.Hosts {
+			refs = append(refs, h.Value)
 		}
 	}
 	vmsOn := map[int]int{}
@@ -550,314 +534,35 @@ func (c *Controller) Cluster(key string) (*ClusterView, error) {
 		vmsOn[vm.Host]++
 	}
 	for _, h := range cl.Hosts {
-		nv := 0
-		for _, dv := range h.Devices {
-			if dv.Claimed {
-				nv++
-			}
-		}
-		row := HostRow{Name: h.Name, NodeUUID: h.NodeUUID, NVMe: nv, LCPU: h.Threads, VMs: vmsOn[h.Index], Identity: "new"}
-		if s, ok := oldSerial[h.Key]; ok && s == h.Serial {
-			row.Identity = "unchanged"
-			if h.Index < len(hostRefs) && old != nil {
-				row.MoRef = hostRefs[h.Index]
-			}
-		}
-		if v.State == "removed" {
-			row.Identity = "removed"
-		}
-		v.Hosts = append(v.Hosts, row)
-	}
-	if old != nil && v.State != "removed" {
-		for _, h := range old.Hosts {
-			if _, ok := findHost(cl, h.Key, h.Serial); !ok {
-				nv, vms := 0, 0
-				for _, dv := range h.Devices {
-					if dv.Claimed {
-						nv++
-					}
-				}
-				for _, vm := range old.VMs {
-					if vm.Host == h.Index {
-						vms++
-					}
-				}
-				row := HostRow{Name: h.Name, NodeUUID: h.NodeUUID, Identity: "removed", LCPU: h.Threads, NVMe: nv, VMs: vms}
-				if h.Index < len(hostRefs) {
-					row.MoRef = hostRefs[h.Index]
-				}
-				v.Hosts = append(v.Hosts, row)
-			}
-		}
-	}
-	v.VMs = len(cl.VMs)
-	proj := Project(c.cat, topo)
-	if v.State == "removed" {
-		proj = Project(c.cat, r.topo) // a deleted cluster is shown as it is applied
-	}
-	v.Entities = proj.PerCluster[key].Entities
-	v.Load = clusterLoad(c.cat, cl, c.scope)
-	if old != nil {
-		v.LoadOld = clusterLoad(c.cat, old, c.scope)
-	}
-	local := 0
-	for _, h := range cl.Hosts {
-		for _, dv := range h.Devices {
-			if !dv.Claimed {
+		claimed, local := 0, 0
+		for _, d := range h.Devices {
+			if d.Claimed {
+				claimed++
+			} else {
 				local++
 			}
 		}
+		row := HostRow{Name: shortHost(h.Name), Version: "ESX " + scenario.VersionLabel(h.Version), VMs: vmsOn[h.Index], Disks: fmt.Sprintf("%d vSAN, %d local", claimed, local)}
+		if h.Index < len(refs) {
+			row.ID = refs[h.Index]
+		}
+		v.Hosts = append(v.Hosts, row)
 	}
-	claimed := cl.Spec.Host.ClaimedDevices
-	vsanType := "vSAN ESA"
-	if cl.Spec.Architecture == "osa" {
-		vsanType = "vSAN OSA"
-	}
-	v.Datastores = append(v.Datastores, DatastoreRow{Name: cl.Datastore, Type: vsanType, Backing: fmt.Sprintf("%d NVMe / host", claimed),
-		Mounted: len(cl.Hosts), Perf: "queried"})
-	if local > 0 {
-		v.Datastores = append(v.Datastores, DatastoreRow{Name: "local VMFS", Type: "VMFS · local", Backing: fmt.Sprintf("%d / host", scenario.Int(cl.Spec.Host.LocalDevices)),
-			Mounted: local, Perf: "inventory only"})
-	}
-	for _, nfs := range cl.Datacenter.NFS {
-		if len(nfs.Spec.Clusters) > 0 && !slices.Contains(nfs.Spec.Clusters, cl.Key) {
+	for _, s := range stores(r.sc) {
+		uses := false
+		for _, k := range s.Clusters {
+			uses = uses || k == key
+		}
+		if !uses {
 			continue
 		}
-		bad := 0
-		for _, h := range cl.Hosts {
-			if slices.Contains(nfs.Spec.InaccessibleHosts, h.Key) {
-				bad++
-			}
+		detail := fmt.Sprintf("%s, %s", kindName(s), sizeText(s.Capacity))
+		if s.All {
+			detail += ", shared with every cluster in " + s.DC
+		} else if len(s.Clusters) > 1 {
+			detail += ", shared with " + plural(len(s.Clusters)-1, "other cluster")
 		}
-		state := "Accessible"
-		if bad > 0 {
-			if bad == 1 {
-				state = "1 host mount inaccessible"
-			} else {
-				state = fmt.Sprintf("%d host mounts inaccessible", bad)
-			}
-		}
-		v.Datastores = append(v.Datastores, DatastoreRow{Name: nfs.Spec.Name, Type: "NFS", Backing: nfs.Spec.RemoteHost + ":" + nfs.Spec.RemotePath, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
+		v.Storage = append(v.Storage, ClusterStorage{ID: s.ID, Name: s.Name, Detail: detail})
 	}
-	for _, st := range cl.Datacenter.ISCSI {
-		if st.Spec.Cluster != cl.Key {
-			continue
-		}
-		for _, lun := range st.LUNs {
-			bad, standby := 0, 0
-			for _, h := range cl.Hosts {
-				if !lun.Spec.Reachable(st.Spec.Adapters, h.Key) {
-					bad++
-				}
-				for _, a := range st.Spec.Adapters {
-					if state, _ := lun.Spec.PathState(a.Name, h.Key); state == "standby" {
-						standby++
-						break
-					}
-				}
-			}
-			state := "Accessible"
-			if bad > 0 {
-				if bad == 1 {
-					state = "1 host has no working path"
-				} else {
-					state = fmt.Sprintf("%d hosts have no working path", bad)
-				}
-			} else if standby > 0 {
-				if standby == 1 {
-					state = "1 host has a standby path"
-				} else {
-					state = fmt.Sprintf("%d hosts have a standby path", standby)
-				}
-			}
-			v.Datastores = append(v.Datastores, DatastoreRow{Name: lun.Spec.Name, Type: "VMFS · iSCSI", Backing: lun.Spec.Target, Mounted: len(cl.Hosts), Perf: sharedStoragePerf, State: state})
-		}
-	}
-	v.VDS, v.PortGroups = cl.VDS(), len(topology.Portgroups)
-	v.Checks = append(v.Checks,
-		Warning{"ok", "uplinks", fmt.Sprintf("%s uplinks cover %d hosts × %d pNICs", cl.VDS(), len(cl.Hosts), cl.Spec.Host.VsanPnics)},
-		Warning{"ok", "placement", fmt.Sprintf("%d VMs placed on %d hosts", len(cl.VMs), len(cl.Hosts))})
-	v.Checks = append(v.Checks, clusterChecks(cl, v.Entities)...)
 	return v, nil
-}
-
-func findHost(cl *topology.Cluster, key string, serial int) (*topology.Host, bool) {
-	for _, h := range cl.Hosts {
-		if h.Key == key && h.Serial == serial {
-			return h, true
-		}
-	}
-	return nil, false
-}
-
-func clusterLoad(cat *catalog.Catalog, cl *topology.Cluster, scope string) Load {
-	t := &topology.Topology{Datacenters: []*topology.Datacenter{{Clusters: []*topology.Cluster{cl}}}}
-	return Project(cat, t).Selected(scope)
-}
-
-// sources says, for each editable field, whether the value is the default,
-// drawn from the scenario's vary section, or an explicit override.
-func sources(sc *scenario.Scenario, key string) []FieldSource {
-	o, has := sc.Override(key)
-	src := func(field string, overridden, varied bool) FieldSource {
-		switch {
-		case has && overridden:
-			return FieldSource{field, "override"}
-		case varied:
-			return FieldSource{field, "varied"}
-		}
-		return FieldSource{field, "default"}
-	}
-	v := sc.Vary
-	return []FieldSource{
-		src("architecture", o.Architecture != "", false),
-		src("statsPrimary", o.StatsPrimary != nil, false),
-		src("hosts", o.Hosts != 0, len(v.Hosts) > 0),
-		src("vmsPerHost", o.VMs.PerHost != nil, v.VMsPerHost != nil),
-		src("disksPerVM", o.VMs.DisksPerVM != 0, false),
-		src("claimedDevices", o.Host.ClaimedDevices != 0, len(v.ClaimedDevices) > 0),
-		src("localDevices", o.Host.LocalDevices != nil, false),
-		src("threads", o.Host.Threads != 0, len(v.Threads) > 0),
-		src("domWorlds", o.Host.DomWorlds != nil, v.DomWorlds != nil),
-		src("vsanPnics", o.Host.VsanPnics != 0, false),
-		src("dedup", o.Dedup != nil, false),
-		src("compression", o.Compression != nil, false),
-	}
-}
-
-// ---------------------------------------------------------------------------
-// catalog and compatibility
-
-// FamilyInfo describes one entity kind.
-type FamilyInfo struct {
-	Family    string `json:"family"`
-	Behaviour string `json:"behaviour"`
-	Dashboard bool   `json:"dashboard"`
-	Labels    int    `json:"labels"`
-}
-
-// Families lists the entity kinds the service advertises.
-func (c *Controller) Families() []FamilyInfo {
-	var out []FamilyInfo
-	for n, f := range c.cat.Families {
-		out = append(out, FamilyInfo{n, string(f.Behaviour), dashboardKinds[n], len(f.Labels)})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Family < out[j].Family })
-	return out
-}
-
-// Method is one row of the compatibility matrix.
-type Method struct {
-	Surface string `json:"surface"`
-	Object  string `json:"object"`
-	Method  string `json:"method"`
-	Basis   string `json:"basis"`  // how the answer is shaped
-	Status  string `json:"status"` // verified | partial | unverified
-	Note    string `json:"note"`
-	Calls   int    `json:"callsSeen"`
-	Faults  int    `json:"faultsSeen"`
-}
-
-// Compat is the compatibility screen's data.
-type Compat struct {
-	Methods  []Method       `json:"methods"`
-	Unlisted []Method       `json:"unlisted"` // seen in traffic, not in the matrix
-	Kinds    map[string]int `json:"kinds"`    // catalog behaviours
-	OSAKinds map[string]int `json:"osaKinds"` // primary-online wildcard outcomes
-	Profile  string         `json:"profile"`
-	Verified string         `json:"verifiedBy"`
-	Cycle    activity.Cycle `json:"lastCycle"`
-	Pending  []string       `json:"unverified"`
-}
-
-var matrix = []Method{
-	{"vsanHealth", "VsanPerformanceManager", "VsanPerfQueryPerf", "live capture", "verified", "138 captured queries and 20 edge cases replayed; values are synthetic inside each label's live envelope.", 0, 0},
-	{"vsanHealth", "VsanPerformanceManager", "VsanPerfQueryNodeInformation", "live capture", "verified", "Captured request and response replayed.", 0, 0},
-	{"vsanHealth", "VsanPerformanceManager", "VsanPerfGetSupportedEntityTypes", "live capture", "verified", "The advertised catalog is the captured one, verbatim.", 0, 0},
-	{"vsanHealth", "VsanVcClusterConfigSystem", "VsanClusterGetConfig", "live capture", "verified", "Captured request and response replayed.", 0, 0},
-	{"vsanHealth", "VimClusterVsanVcDiskManagementSystem", "QueryVsanManagedDisks", "live capture", "verified", "Ten captured per-host responses replayed.", 0, 0},
-	{"vsanHealth", "VsanVcClusterHealthSystem", "VsanQueryVcClusterHealthSummary", "live capture", "partial", "ESA HCL information and OSA status, disk, object, network, limits and health-check groups are modeled; some detailed results remain incomplete.", 0, 0},
-	{"api", "vCenter inventory", "GET inventory", "live capture", "partial", "Inventory lists and cluster and datastore detail share SOAP identities; some VM details remain incomplete.", 0, 0},
-	{"sdk", "SessionManager", "Login", "vcsim", "partial", "Accepts any user, or only the scenario's users. Token and certificate logins are refused when users are configured.", 0, 0},
-	{"sdk", "SessionManager", "Logout", "vcsim", "partial", "Faults after logout match the captured shape.", 0, 0},
-	{"sdk", "ServiceInstance", "RetrieveServiceContent", "vcsim + capture", "verified", "About block is the captured 9.1.1 identity.", 0, 0},
-	{"sdk", "ViewManager", "CreateContainerView", "vcsim", "partial", "Stock vcsim behaviour.", 0, 0},
-	{"sdk", "PropertyCollector", "RetrievePropertiesEx", "vcsim + capture", "partial", "Cluster, host, datastore, VM and vDS properties are shaped after the trimmed management-vCenter capture.", 0, 0},
-	{"sdk", "PropertyCollector", "ContinueRetrievePropertiesEx", "vcsim", "partial", "Stock vcsim behaviour.", 0, 0},
-	{"sdk", "(document)", "GET sdk/vimServiceVersions.xml", "live capture", "verified", "Served verbatim from the capture.", 0, 0},
-	{"sdk", "(document)", "GET sdk/vsanServiceVersions.xml", "live capture", "verified", "Served verbatim from the capture.", 0, 0},
-}
-
-// Compatibility returns the matrix with the counts the log has seen.
-func (c *Controller) Compatibility() *Compat {
-	sum := c.Log.Summarize(c.now())
-	seen := map[string]activity.MethodStat{}
-	for _, m := range sum.Methods {
-		seen[m.Surface+"/"+m.Method] = m
-	}
-	cv := &Compat{Kinds: map[string]int{}, OSAKinds: map[string]int{}, Profile: c.cat.About.FullName, Verified: "fixtures/live/9.1.1, replayed by go test", Cycle: sum.Cycle,
-		Methods: []Method{}, Unlisted: []Method{}, Pending: []string{
-			"Behaviour on a real vCenter 9.1.1 other than the captured one",
-			"The adapter's use of every /sdk property (verified against the trimmed capture only)",
-			"vSAN OSA beyond a single-disk-group, three-host cluster: per-VM and virtual-disk performance, multiple disk groups per host, stretched clusters and OSA deduplication",
-			"iSCSI inventory and path faults are plausible but not verified against a lab iSCSI host; Fibre Channel and file service are not emulated",
-			"/sdk/vim.wsdl is not served: a complete sanitized capture is unavailable",
-			"The VCF Operations ingestion path (Phase 3)",
-		}}
-	listed := map[string]bool{}
-	for _, m := range matrix {
-		name := m.Method
-		if strings.HasPrefix(name, "GET ") {
-			name = "GET " + strings.TrimPrefix(name, "GET ")
-		}
-		listed[m.Surface+"/"+name] = true
-		if s, ok := seen[m.Surface+"/"+name]; ok {
-			m.Calls, m.Faults = s.Calls, s.Injected+s.Unexpected
-		}
-		cv.Methods = append(cv.Methods, m)
-	}
-	for k, s := range seen {
-		if !listed[k] {
-			cv.Unlisted = append(cv.Unlisted, Method{Surface: s.Surface, Method: s.Method, Status: "unverified", Basis: "vcsim", Calls: s.Calls, Faults: s.Injected + s.Unexpected,
-				Note: "Seen in traffic; not in the verified matrix."})
-		}
-	}
-	sort.Slice(cv.Unlisted, func(i, j int) bool { return cv.Unlisted[i].Calls > cv.Unlisted[j].Calls })
-	for _, f := range c.cat.Families {
-		cv.Kinds[string(f.Behaviour)]++
-	}
-	osa := &topology.Cluster{Spec: scenario.ClusterSpec{Architecture: "osa"}}
-	for _, name := range vsanhealth.PerfFamilyNames(c.cat, osa) {
-		if f, ok := vsanhealth.EffectiveFamily(c.cat, osa, name); ok {
-			cv.OSAKinds[string(f.Behaviour)]++
-		}
-	}
-	return cv
-}
-
-// Banner is the start-up summary, one line per item.
-func (c *Controller) Banner(took time.Duration) []string {
-	r := c.applied()
-	cl, h, v, d := r.topo.Counts()
-	out := []string{
-		fmt.Sprintf("vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s", r.topo.VCenterVersion.Version, r.topo.InstanceUUID, r.sc.Seed, c.reg.Len(), took.Round(time.Millisecond)),
-		fmt.Sprintf("%d clusters, %d hosts, %d vms, %d devices", cl, h, v, d),
-	}
-	for _, ref := range r.sim.Clusters {
-		k := ref.Cluster
-		out = append(out, fmt.Sprintf("%s (%s) vsan uuid=%s hosts=%d vms=%d dedup=%v", k.Key, ref.Ref.Value, k.VsanUUID, len(k.Hosts), len(k.VMs), k.Dedup))
-	}
-	return out
-}
-
-// LoginUsers lists the accepted user names (empty: anyone).
-func (c *Controller) LoginUsers() []string {
-	if c.auth.Snapshot().AnyLogin {
-		return nil
-	}
-	var out []string
-	for _, user := range c.auth.Users() {
-		out = append(out, user.Name)
-	}
-	return out
 }

@@ -24,7 +24,7 @@ func EffectiveFamily(c *catalog.Catalog, cl *topology.Cluster, family string) (c
 	} else if known && f.Behaviour == catalog.Data && !cl.Dedup && strings.Contains(family, "-esa-dedup-") {
 		f.Behaviour = catalog.Empty
 	}
-	if cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+	if !cl.PrimaryOnline() {
 		f.Behaviour, known = catalog.Behaviour("not-found"), true
 	}
 	return f, known

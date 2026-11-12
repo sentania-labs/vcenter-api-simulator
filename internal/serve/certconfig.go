@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -22,6 +23,48 @@ type CertificateInfo struct {
 	Fingerprint string    `json:"fingerprint"`
 	Expires     time.Time `json:"expires"`
 	Managed     bool      `json:"managed"`
+	// Issuer is who signed the certificate; SelfSigned is true when it
+	// signed itself, as the certificates the simulator makes do.
+	Issuer     string `json:"issuer"`
+	SelfSigned bool   `json:"selfSigned"`
+}
+
+func describe(leaf *x509.Certificate) CertificateInfo {
+	names := append([]string{}, leaf.DNSNames...)
+	for _, ip := range leaf.IPAddresses {
+		names = append(names, ip.String())
+	}
+	if len(names) == 0 && leaf.Subject.CommonName != "" {
+		names = append(names, leaf.Subject.CommonName)
+	}
+	hash := sha256.Sum256(leaf.Raw)
+	issuer := leaf.Issuer.CommonName
+	if issuer == "" && len(leaf.Issuer.Organization) > 0 {
+		issuer = leaf.Issuer.Organization[0]
+	}
+	return CertificateInfo{Names: names, Fingerprint: hex.EncodeToString(hash[:]), Expires: leaf.NotAfter.UTC(),
+		Issuer: issuer, SelfSigned: string(leaf.RawIssuer) == string(leaf.RawSubject)}
+}
+
+// Inspect reads a certificate, and its key when one is given, without
+// using either: what the certificate is valid for, who issued it, when it
+// runs out, and whether the key belongs to it. keyGiven false leaves
+// keyMatches false.
+func Inspect(certPEM, keyPEM []byte) (info CertificateInfo, keyMatches bool, err error) {
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return CertificateInfo{}, false, errors.New("not a certificate")
+	}
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return CertificateInfo{}, false, errors.New("not a certificate")
+	}
+	info = describe(leaf)
+	if len(keyPEM) > 0 {
+		_, pairErr := tls.X509KeyPair(certPEM, keyPEM)
+		keyMatches = pairErr == nil
+	}
+	return info, keyMatches, nil
 }
 
 func (c *Certificate) MarkManaged() { c.mu.Lock(); defer c.mu.Unlock(); c.managed = true }
@@ -30,13 +73,9 @@ func (c *Certificate) Info() CertificateInfo {
 	c.mu.Lock()
 	managed := c.managed
 	c.mu.Unlock()
-	leaf := cert.Leaf
-	names := append([]string{}, leaf.DNSNames...)
-	for _, ip := range leaf.IPAddresses {
-		names = append(names, ip.String())
-	}
-	hash := sha256.Sum256(leaf.Raw)
-	return CertificateInfo{Names: names, Fingerprint: hex.EncodeToString(hash[:]), Expires: leaf.NotAfter.UTC(), Managed: managed}
+	info := describe(cert.Leaf)
+	info.Managed = managed
+	return info
 }
 
 type certificateState struct {

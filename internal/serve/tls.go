@@ -158,6 +158,10 @@ func (c *Certificate) modTimes() (certMod, keyMod time.Time, err error) {
 	return ci.ModTime(), ki.ModTime(), nil
 }
 
+// SelfSignedName is the subject of every certificate the simulator makes
+// for itself.
+const SelfSignedName = "vcenter-api-simulator"
+
 // selfSigned makes a ten-year self-signed server certificate for names.
 func selfSigned(names []string) (certPEM, keyPEM []byte, err error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -170,7 +174,7 @@ func selfSigned(names []string) (certPEM, keyPEM []byte, err error) {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "vcenter-api-simulator", Organization: []string{"vcenter-api-simulator"}},
+		Subject:      pkix.Name{CommonName: SelfSignedName, Organization: []string{SelfSignedName}},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().AddDate(10, 0, 0),
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

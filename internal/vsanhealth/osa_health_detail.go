@@ -35,7 +35,7 @@ func (s *ClusterHealthSystem) osaHealthDetail(ctx *simulator.Context, sum *vsan.
 	sum.ClomdLiveness = &vsan.VsanClusterClomdLivenessResult{}
 	sum.EncryptionHealth = &vsan.VsanClusterEncryptionHealthSummary{OverallHealth: "green", ConfigHealth: "green", KmsHealth: "green", AesniHealth: "green", VcKmsResult: &vsan.VsanVcKmipServersHealth{Health: "green"}}
 	perf := &PerfManager{env: s.env}
-	primary := cl.Spec.StatsPrimary == nil || *cl.Spec.StatsPrimary
+	primary := cl.PrimaryOnline()
 	sum.PerfsvcHealth = &vsan.VsanPerfsvcHealthResult{}
 	if primary {
 		sum.PerfsvcHealth.StatsObjectConsistent = vim.NewBool(true)
@@ -118,7 +118,7 @@ func (s *ClusterHealthSystem) osaHealthDetail(ctx *simulator.Context, sum *vsan.
 					group.GroupTests[i].TestHealth = "info"
 				}
 			}
-			if g.GroupID == "com.vmware.vsan.health.test.perfsvc" && cl.Spec.StatsPrimary != nil && !*cl.Spec.StatsPrimary {
+			if g.GroupID == "com.vmware.vsan.health.test.perfsvc" && !cl.PrimaryOnline() {
 				group.GroupHealth = "yellow"
 				for i := range group.GroupTests {
 					if group.GroupTests[i].TestId == "com.vmware.vsan.health.test.masterexist" {

@@ -2,10 +2,10 @@ package control
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
@@ -54,9 +54,8 @@ func reconcileStorage(s *scenario.Scenario, previous *scenario.Scenario) (int, e
 		return 0, err
 	}
 	clusters := map[string]int{}
-	r := registry.InMemory(base.Seed)
 	for _, key := range base.ClusterKeys() {
-		clusters[key] = base.Resolve(key, scenario.ClusterSpec{Hosts: base.Vary.DrawHosts(scenario.DrawSource(r.Sub(key)))}).Hosts
+		clusters[key] = base.HostNumbers(key)
 	}
 	existing := storageReferences(nil)
 	if previous != nil {
@@ -85,7 +84,7 @@ func reconcileStorage(s *scenario.Scenario, previous *scenario.Scenario) (int, e
 		if !ok {
 			return "", false
 		}
-		return cluster, clusters[cluster] >= n
+		return cluster, clusters[cluster] >= n && !base.RemovedHosts(cluster)[n]
 	}
 	removed := 0
 	for di := range s.Datacenters {
@@ -110,7 +109,7 @@ func reconcileStorage(s *scenario.Scenario, previous *scenario.Scenario) (int, e
 			var hosts []string
 			for _, h := range n.InaccessibleHosts {
 				cluster, exists := hostCluster(h, dc.Name)
-				inScope := !scoped || contains(scopes, cluster)
+				inScope := !scoped || slices.Contains(scopes, cluster)
 				if cluster != "" && (!exists || !inScope) && mayRemove(prefix+"/host/"+h) {
 					removed++
 					continue

@@ -1,52 +1,71 @@
 // Package activity records what the simulator's clients ask of it: one entry
-// per /sdk or /vsanHealth request, redacted (no headers, cookies, bodies or
-// credentials are kept), in a bounded ring, with the aggregates the control
-// console draws: requests per minute, per-method and per-family totals, the
-// duration distribution, bytes, faults and the diagnosis of a collection
-// that returned no metrics.
+// per request to the simulated vCenter, redacted (no headers, cookies or
+// credentials are kept), in a bounded ring, and says of each one why it was
+// answered the way it was. The console's Requests screen, Home and the tool
+// list are all drawn from this log.
 package activity
 
 import (
 	"bytes"
+	"html"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Results of a call.
+// Reasons: why a request was answered the way it was. Exactly one applies
+// to every call, and "unknown" alone means the simulator has no answer.
 const (
-	ResultOK       = "ok"
-	ResultInjected = "injected" // a fault the scenario asked for
-	ResultFault    = "fault"    // any other SOAP fault or HTTP error
-	ResultRefused  = "refused"  // the service is paused; the connection was dropped
-	ResultDenied   = "denied"   // refused as not authenticated: a wrong login, or no session
+	ReasonAnswered = "answered" // a full answer
+	ReasonEmpty    = "empty"    // answered "there are none", as a real vCenter does here
+	ReasonRefused  = "refused"  // refused on purpose, as a real vCenter refuses it too
+	ReasonFault    = "fault"    // failed because of a fault the operator switched on
+	ReasonPaused   = "paused"   // the operator paused the simulator; the connection was dropped
+	ReasonUnknown  = "unknown"  // the simulator does not know how to answer this
+	ReasonDenied   = "denied"   // a sign-in was refused, or the request was not signed in
+)
+
+// Surfaces: which part of the simulated vCenter a request reached.
+const (
+	SurfaceSDK   = "sdk"
+	SurfaceVsan  = "vsanHealth"
+	SurfaceREST  = "rest"
+	SurfaceOther = "other"
 )
 
 // Call is one recorded request. Nothing in it identifies a credential.
 type Call struct {
-	Seq        uint64    `json:"seq"`
-	Time       time.Time `json:"time"`
-	Surface    string    `json:"surface"` // sdk | vsanHealth
-	Method     string    `json:"method"`
-	Family     string    `json:"family,omitempty"`
-	Cluster    string    `json:"cluster,omitempty"`
-	Client     string    `json:"client"`
-	DurationMs float64   `json:"durationMs"`
-	Bytes      int64     `json:"bytes"`
-	Status     int       `json:"status"`
-	Result     string    `json:"result"`
-	Fault      string    `json:"fault,omitempty"`
-	Message    string    `json:"message,omitempty"`
+	Seq     uint64    `json:"seq"`
+	Time    time.Time `json:"time"`
+	Surface string    `json:"surface"`
+	// Method is the name tools use for the request: the SOAP operation, or
+	// the HTTP method and path.
+	Method  string `json:"method"`
+	Family  string `json:"family,omitempty"`
+	Cluster string `json:"cluster,omitempty"`
+	// Client is the address the request came from; Agent what the tool
+	// calls itself (its User-Agent); User the account it is signed in as,
+	// or the account a sign-in named.
+	Client     string  `json:"client"`
+	Agent      string  `json:"agent,omitempty"`
+	User       string  `json:"user,omitempty"`
+	DurationMs float64 `json:"durationMs"`
+	Bytes      int64   `json:"bytes"`
+	Status     int     `json:"status"`
+	Reason     string  `json:"reason"`
+	Fault      string  `json:"fault,omitempty"`
+	Message    string  `json:"message,omitempty"`
+	// Cause is the id of the switched-on condition that made the request
+	// fail, when Reason is "fault".
+	Cause int `json:"cause,omitempty"`
 	// Entities and Empty count the entities a VsanPerfQueryPerf answer
 	// carried and how many of them had no samples.
 	Entities int `json:"entities,omitempty"`
 	Empty    int `json:"empty,omitempty"`
-	// Body is the request body of a /vsanHealth call (never /sdk, whose
-	// Login carries a password), kept for the detail view and cut at
-	// MaxBody bytes. It holds no cookie or header.
+	// Body is the redacted request body of a SOAP call, kept for the detail
+	// view and cut at MaxBody bytes. Sign-in requests keep none.
 	Body string `json:"body,omitempty"`
 }
 
@@ -55,19 +74,13 @@ const MaxBody = 2048
 
 // Log is the bounded request log.
 type Log struct {
-	// EmptyKind says whether an entity family is one the service answers
-	// empty on this cluster type; set once by the owner, read by Summarize.
-	EmptyKind func(family string) bool
-
 	mu    sync.Mutex
 	ring  []Call
 	next  int
 	full  bool
 	seq   uint64
 	since time.Time
-
-	total, injected, faults, refused, denied uint64
-	bytes                                    uint64
+	total uint64
 }
 
 // DefaultSize is how many calls the console keeps: about five collection
@@ -94,22 +107,11 @@ func (l *Log) Add(c Call) Call {
 		l.next, l.full = 0, true
 	}
 	l.total++
-	l.bytes += uint64(c.Bytes)
-	switch c.Result {
-	case ResultInjected:
-		l.injected++
-	case ResultFault:
-		l.faults++
-	case ResultRefused:
-		l.refused++
-	case ResultDenied:
-		l.denied++
-	}
 	return c
 }
 
-// all returns the held calls, oldest first.
-func (l *Log) all() []Call {
+// All returns the held calls, oldest first.
+func (l *Log) All() []Call {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if !l.full {
@@ -121,43 +123,25 @@ func (l *Log) all() []Call {
 	return out
 }
 
-// Filter selects calls; empty fields match everything.
-type Filter struct {
-	Surface, Method, Family, Cluster, Result string
-	AfterSeq                                 uint64 // only calls newer than this
-	Limit                                    int
+// Since returns the held calls at or after t, oldest first.
+func (l *Log) Since(t time.Time) []Call {
+	// The ring is in the order requests finished, and each is stamped with
+	// when it started, so a slow one can sit behind quicker later ones.
+	var out []Call
+	for _, c := range l.All() {
+		if !c.Time.Before(t) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // Brief returns the call without its body, for list views.
 func (c Call) Brief() Call { c.Body = ""; return c }
 
-// Query returns matching calls, newest first, without request bodies.
-func (l *Log) Query(f Filter) []Call {
-	calls := l.all()
-	if f.Limit <= 0 {
-		f.Limit = 200
-	}
-	var out []Call
-	for i := len(calls) - 1; i >= 0 && len(out) < f.Limit; i-- {
-		c := calls[i]
-		switch {
-		case f.AfterSeq != 0 && c.Seq <= f.AfterSeq:
-			return out
-		case f.Surface != "" && c.Surface != f.Surface,
-			f.Method != "" && c.Method != f.Method,
-			f.Family != "" && c.Family != f.Family,
-			f.Cluster != "" && c.Cluster != f.Cluster,
-			f.Result != "" && c.Result != f.Result:
-			continue
-		}
-		out = append(out, c.Brief())
-	}
-	return out
-}
-
 // Get returns one call by sequence number.
 func (l *Log) Get(seq uint64) (Call, bool) {
-	for _, c := range l.all() {
+	for _, c := range l.All() {
 		if c.Seq == seq {
 			return c, true
 		}
@@ -169,11 +153,6 @@ func (l *Log) Get(seq uint64) (Call, bool) {
 type Totals struct {
 	Since    time.Time `json:"since"`
 	Requests uint64    `json:"requests"`
-	Injected uint64    `json:"injected"`
-	Faults   uint64    `json:"faults"`
-	Refused  uint64    `json:"refused"`
-	Denied   uint64    `json:"denied"`
-	Bytes    uint64    `json:"bytes"`
 	Held     int       `json:"held"` // calls currently in the ring
 }
 
@@ -185,8 +164,130 @@ func (l *Log) Totals() Totals {
 	if l.full {
 		held = len(l.ring)
 	}
-	return Totals{Since: l.since, Requests: l.total, Injected: l.injected, Faults: l.faults,
-		Refused: l.refused, Denied: l.denied, Bytes: l.bytes, Held: held}
+	return Totals{Since: l.since, Requests: l.total, Held: held}
+}
+
+// ---------------------------------------------------------------------------
+// classification: why a request was answered the way it was
+
+// Facts are what the simulator knows about one answered request.
+type Facts struct {
+	Surface    string
+	HTTPMethod string
+	Path       string
+	// Method is the SOAP operation, when the request was one.
+	Method string
+	Status int
+	// FaultType is the SOAP fault's type, when the answer was a fault.
+	FaultType string
+	Faulted   bool
+	// Injected: a fault the operator switched on produced the answer (or
+	// withheld it). PerfOff: the operator switched the performance service
+	// of the request's cluster off.
+	Injected, PerfOff bool
+	// Paused: the simulator was paused, so the connection was dropped.
+	Paused bool
+	// ObjectType is the type of the managed object the SOAP call was sent to.
+	ObjectType      string
+	Entities, Empty int
+}
+
+// inventoryTypes are managed objects that come and go with the inventory.
+// A request to one that no longer exists is refused by a real vCenter in the
+// same way, so it is not a gap in the simulator.
+var inventoryTypes = map[string]bool{
+	"ClusterComputeResource": true, "ComputeResource": true, "HostSystem": true, "VirtualMachine": true,
+	"Datastore": true, "Datacenter": true, "Folder": true, "Network": true, "ResourcePool": true,
+	"DistributedVirtualSwitch": true, "VmwareDistributedVirtualSwitch": true, "DistributedVirtualPortgroup": true,
+	"ContainerView": true, "ListView": true, "InventoryView": true, "PropertyFilter": true, "Task": true,
+	"HostDatastoreSystem": true, "HostNetworkSystem": true, "HostStorageSystem": true, "HostVsanSystem": true,
+	"HostVsanInternalSystem": true, "HostConfigManager": true, "HttpNfcLease": true, "PropertyCollector": true,
+	"EventHistoryCollector": true, "TaskHistoryCollector": true,
+}
+
+// deliberatePaths are requests the simulator turns away exactly as a real
+// vCenter does: they were captured that way.
+var deliberatePaths = map[string]bool{
+	"/sdk": true, "/sdk/": true, "/vsanHealth": true, "/vsanHealth/": true, "/vsanHealth/vsanServiceVersions.xml": true,
+}
+
+// Classify says why a request was answered the way it was. The Requests
+// screen's headline is counted from this, so the one rule that matters is
+// that "unknown" is returned only for a request the simulator truly has no
+// answer for: never for a refused sign-in, a deliberate refusal, or a fault
+// the operator switched on.
+func Classify(f Facts) string {
+	switch {
+	case f.Paused:
+		return ReasonPaused
+	case f.Injected:
+		return ReasonFault
+	case f.PerfOff && f.Faulted && f.FaultType == "NotFound":
+		return ReasonFault
+	case f.FaultType == "NotAuthenticated" || f.FaultType == "InvalidLogin":
+		return ReasonDenied
+	case f.Surface == SurfaceREST && f.Status == http.StatusUnauthorized:
+		return ReasonDenied
+	}
+	if !f.Faulted && f.Status < 400 {
+		if f.Method == "VsanPerfQueryPerf" && f.Empty >= f.Entities {
+			return ReasonEmpty
+		}
+		return ReasonAnswered
+	}
+	if f.Faulted {
+		switch f.Surface {
+		case SurfaceVsan:
+			return classifyVsanFault(f)
+		default:
+			return classifySDKFault(f)
+		}
+	}
+	// an HTTP error without a SOAP fault
+	switch {
+	case deliberatePaths[f.Path] && f.HTTPMethod == http.MethodGet:
+		return ReasonRefused
+	case f.Status == http.StatusNotFound || f.Status == http.StatusMethodNotAllowed || f.Status == http.StatusNotImplemented:
+		return ReasonUnknown
+	case f.Surface == SurfaceREST && f.Status < 500:
+		// a filter the tool sent that a real vCenter rejects as well
+		return ReasonRefused
+	case f.Surface == SurfaceREST:
+		// the read-only REST surface answers a few paths with the error a
+		// real vCenter gives a read-only session; it has no other 5xx
+		return ReasonRefused
+	}
+	return ReasonUnknown
+}
+
+func classifyVsanFault(f Facts) string {
+	switch f.FaultType {
+	case "InvalidArgument", "NotSupported", "NotFound":
+		// A performance query of a kind a real vCenter refuses or does not
+		// know, a time range it rejects, or another method's bad argument:
+		// each was captured from a real vCenter answering the same way.
+		return ReasonRefused
+	}
+	// ManagedObjectNotFound here is a vSAN managed object the simulator does
+	// not model, and any other fault was not one a rule asked for.
+	return ReasonUnknown
+}
+
+func classifySDKFault(f Facts) string {
+	switch f.FaultType {
+	case "NoPermission":
+		return ReasonRefused
+	case "ManagedObjectNotFound":
+		if inventoryTypes[f.ObjectType] {
+			return ReasonRefused
+		}
+		return ReasonUnknown
+	case "MethodNotFound", "InvalidRequest", "NotImplemented", "NotSupported", "InvalidProperty", "InvalidType", "":
+		return ReasonUnknown
+	}
+	// Any other typed fault is vCenter's own answer to a request it
+	// understood: a bad argument, an object in the wrong state.
+	return ReasonRefused
 }
 
 // ---------------------------------------------------------------------------
@@ -285,498 +386,26 @@ func SDKMethod(body []byte) string {
 	return ""
 }
 
-// ---------------------------------------------------------------------------
-// aggregates
+// ObjectType reads the type of the managed object a SOAP request is sent to
+// (its _this element), or "".
+var thisTypeRe = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?_this[^>]*\btype="([A-Za-z0-9_]+)"`)
 
-// Summary is what the console draws from the log.
-type Summary struct {
-	Now      time.Time    `json:"now"`
-	Totals   Totals       `json:"totals"`
-	Minutes  []Minute     `json:"minutes"` // the last 60, oldest first
-	Rate     float64      `json:"ratePerSec"`
-	P95Ms    float64      `json:"p95Ms"`
-	Faults   FaultSummary `json:"faults"`
-	Methods  []MethodStat `json:"methods"`
-	Families []FamilyStat `json:"families"`
-	Duration []Bucket     `json:"duration"`
-	Cycle    Cycle        `json:"lastCycle"`
-	Clusters []string     `json:"clusters"`
+// ObjectType returns the _this type of a SOAP body.
+func ObjectType(body []byte) string {
+	if m := thisTypeRe.FindSubmatch(body); m != nil {
+		return string(m[1])
+	}
+	return ""
 }
 
-// Minute is one bar of requests per minute.
-type Minute struct {
-	T          time.Time `json:"t"`
-	Requests   int       `json:"requests"`
-	Injected   int       `json:"injected"`
-	Unexpected int       `json:"unexpected"`
-	Bytes      int64     `json:"bytes"`
-}
+// loginUserRe reads the account a Login request names. The password element
+// next to it is never read.
+var loginUserRe = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?userName[^>]*>([^<]{1,256})</`)
 
-// FaultSummary splits the faults of the last hour.
-type FaultSummary struct {
-	Denied     int     `json:"denied"`
-	Injected   int     `json:"injected"`
-	Unexpected int     `json:"unexpected"`
-	Empty      int     `json:"empty"`
-	Percent    float64 `json:"percent"`
-}
-
-// MethodStat aggregates one operation.
-type MethodStat struct {
-	Surface    string  `json:"surface"`
-	Method     string  `json:"method"`
-	Calls      int     `json:"calls"`
-	P50Ms      float64 `json:"p50Ms"`
-	P95Ms      float64 `json:"p95Ms"`
-	Injected   int     `json:"injected"`
-	Unexpected int     `json:"unexpected"`
-	Denied     int     `json:"denied"`
-	Bytes      int64   `json:"bytes"`
-}
-
-// FamilyStat aggregates the perf queries of one entity family.
-type FamilyStat struct {
-	Family     string  `json:"family"`
-	Calls      int     `json:"calls"`
-	Entities   int     `json:"entities"`
-	Empty      int     `json:"empty"`
-	P95Ms      float64 `json:"p95Ms"`
-	Injected   int     `json:"injected"`
-	Unexpected int     `json:"unexpected"`
-	Bytes      int64   `json:"bytes"`
-}
-
-// Bucket is one bar of the duration distribution.
-type Bucket struct {
-	Label  string  `json:"label"`
-	UpToMs float64 `json:"upToMs"` // 0 for the open last bucket
-	Count  int     `json:"count"`
-}
-
-var bounds = []float64{10, 50, 100, 250, 500, 1000, 5000}
-
-// Cycle is the most recent collection burst: calls with gaps under a minute.
-type Cycle struct {
-	Start    time.Time `json:"start"`
-	End      time.Time `json:"end"`
-	Calls    int       `json:"calls"`
-	Client   string    `json:"client"`
-	Steps    []Step    `json:"steps"`
-	Findings []Finding `json:"findings"`
-	Series   int       `json:"entitiesWithData"`
-	Empty    int       `json:"emptyEntities"`
-}
-
-// Step is one stage of a collection as the pack runs it.
-type Step struct {
-	Name       string  `json:"name"`
-	Calls      int     `json:"calls"`
-	P95Ms      float64 `json:"p95Ms"`
-	Injected   int     `json:"injected"`
-	Unexpected int     `json:"unexpected"`
-	Denied     int     `json:"denied"`
-	Empty      int     `json:"empty"`
-	// Series counts the entities that carried samples (perf queries only).
-	Series int `json:"series"`
-}
-
-// Finding is one line of the "why did this collection return nothing"
-// diagnosis.
-type Finding struct {
-	Severity string `json:"severity"` // bad | warn | info | ok
-	Title    string `json:"title"`
-	Detail   string `json:"detail"`
-}
-
-// Summarize computes the aggregates at time now.
-func (l *Log) Summarize(now time.Time) Summary {
-	calls := l.all()
-	s := Summary{Now: now, Totals: l.Totals(), Clusters: []string{}, Methods: []MethodStat{}, Families: []FamilyStat{}}
-	hour := now.Add(-time.Hour)
-	minutes := map[time.Time]*Minute{}
-	for i := 59; i >= 0; i-- {
-		t := now.Truncate(time.Minute).Add(-time.Duration(i) * time.Minute)
-		minutes[t] = &Minute{T: t}
-		s.Minutes = append(s.Minutes, Minute{})
+// LoginUser returns the account name a SOAP Login body carries, or "".
+func LoginUser(body []byte) string {
+	if m := loginUserRe.FindSubmatch(body); m != nil {
+		return strings.TrimSpace(html.UnescapeString(string(m[1])))
 	}
-	type key struct{ surface, method string }
-	ms := map[key]*MethodStat{}
-	mdur := map[key][]float64{}
-	fs := map[string]*FamilyStat{}
-	fdur := map[string][]float64{}
-	clusters := map[string]bool{}
-	hist := make([]int, len(bounds)+1)
-	var alldur []float64
-	recent5 := 0
-	for _, c := range calls {
-		if c.Cluster != "" {
-			clusters[c.Cluster] = true
-		}
-		if c.Time.Before(hour) {
-			continue
-		}
-		if m, ok := minutes[c.Time.Truncate(time.Minute)]; ok {
-			m.Requests++
-			m.Bytes += c.Bytes
-			switch c.Result {
-			case ResultInjected:
-				m.Injected++
-			case ResultFault:
-				m.Unexpected++
-			}
-		}
-		if now.Sub(c.Time) < 5*time.Minute {
-			recent5++
-		}
-		switch c.Result {
-		case ResultInjected:
-			s.Faults.Injected++
-		case ResultFault:
-			s.Faults.Unexpected++
-		case ResultDenied:
-			s.Faults.Denied++
-		}
-		s.Faults.Empty += c.Empty
-		alldur = append(alldur, c.DurationMs)
-		hist[bucketOf(c.DurationMs)]++
-		k := key{c.Surface, c.Method}
-		st := ms[k]
-		if st == nil {
-			st = &MethodStat{Surface: c.Surface, Method: c.Method}
-			ms[k] = st
-		}
-		st.Calls++
-		st.Bytes += c.Bytes
-		mdur[k] = append(mdur[k], c.DurationMs)
-		switch c.Result {
-		case ResultInjected:
-			st.Injected++
-		case ResultFault:
-			st.Unexpected++
-		case ResultDenied:
-			st.Denied++
-		}
-		if c.Family != "" {
-			f := fs[c.Family]
-			if f == nil {
-				f = &FamilyStat{Family: c.Family}
-				fs[c.Family] = f
-			}
-			f.Calls++
-			f.Entities += c.Entities
-			f.Empty += c.Empty
-			f.Bytes += c.Bytes
-			fdur[c.Family] = append(fdur[c.Family], c.DurationMs)
-			switch c.Result {
-			case ResultInjected:
-				f.Injected++
-			case ResultFault:
-				f.Unexpected++
-			}
-		}
-	}
-	for i := range s.Minutes {
-		t := now.Truncate(time.Minute).Add(-time.Duration(59-i) * time.Minute)
-		s.Minutes[i] = *minutes[t]
-	}
-	s.Rate = float64(recent5) / 300
-	s.P95Ms = percentile(alldur, 0.95)
-	if n := len(alldur); n > 0 {
-		s.Faults.Percent = 100 * float64(s.Faults.Injected+s.Faults.Unexpected+s.Faults.Denied) / float64(n)
-	}
-	for k, v := range ms {
-		v.P50Ms, v.P95Ms = percentile(mdur[k], 0.5), percentile(mdur[k], 0.95)
-		s.Methods = append(s.Methods, *v)
-	}
-	sort.Slice(s.Methods, func(i, j int) bool {
-		if s.Methods[i].Calls != s.Methods[j].Calls {
-			return s.Methods[i].Calls > s.Methods[j].Calls
-		}
-		return s.Methods[i].Method < s.Methods[j].Method
-	})
-	for k, v := range fs {
-		v.P95Ms = percentile(fdur[k], 0.95)
-		s.Families = append(s.Families, *v)
-	}
-	sort.Slice(s.Families, func(i, j int) bool {
-		if s.Families[i].Entities != s.Families[j].Entities {
-			return s.Families[i].Entities > s.Families[j].Entities
-		}
-		return s.Families[i].Family < s.Families[j].Family
-	})
-	for i, n := range hist {
-		b := Bucket{Count: n}
-		if i < len(bounds) {
-			b.UpToMs = bounds[i]
-			b.Label = "≤ " + trimMs(bounds[i])
-		} else {
-			b.Label = "> " + trimMs(bounds[len(bounds)-1])
-		}
-		s.Duration = append(s.Duration, b)
-	}
-	for c := range clusters {
-		s.Clusters = append(s.Clusters, c)
-	}
-	sort.Strings(s.Clusters)
-	s.Cycle = lastCycle(calls, l.EmptyKind)
-	return s
-}
-
-func trimMs(v float64) string {
-	if v >= 1000 {
-		return itoa(int(v/1000)) + " s"
-	}
-	return itoa(int(v)) + " ms"
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
-}
-
-func bucketOf(ms float64) int {
-	for i, b := range bounds {
-		if ms <= b {
-			return i
-		}
-	}
-	return len(bounds)
-}
-
-func percentile(v []float64, p float64) float64 {
-	if len(v) == 0 {
-		return 0
-	}
-	s := append([]float64(nil), v...)
-	sort.Float64s(s)
-	i := int(float64(len(s)-1) * p)
-	return s[i]
-}
-
-// cycleGap separates two collection cycles.
-const cycleGap = 30 * time.Second
-
-// stepOf names the collection stage a call belongs to.
-// isPrelude is how a collection starts: the service content, then a login.
-func isPrelude(c Call) bool { return c.Method == "RetrieveServiceContent" || isLogin(c) }
-
-func isLogin(c Call) bool { return c.Method == "Login" || c.Method == "LoginByToken" }
-
-func stepOf(c Call) string {
-	switch c.Method {
-	case "Login", "RetrieveServiceContent", "RetrieveContent", "Logout", "LoginByToken":
-		return "Login · RetrieveContent"
-	case "VsanPerfQueryPerf", "VsanPerfQueryNodeInformation", "VsanPerfGetSupportedEntityTypes",
-		"VsanClusterGetConfig", "QueryVsanManagedDisks", "VsanQueryVcClusterHealthSummary":
-		return c.Method
-	}
-	if c.Surface == "sdk" {
-		return "Inventory · container views"
-	}
-	return c.Method
-}
-
-var stepOrder = map[string]int{
-	"Login · RetrieveContent": 0, "Inventory · container views": 1,
-	"VsanPerfGetSupportedEntityTypes": 2, "VsanClusterGetConfig": 3, "VsanPerfQueryNodeInformation": 4,
-	"QueryVsanManagedDisks": 5, "VsanQueryVcClusterHealthSummary": 6, "VsanPerfQueryPerf": 7,
-}
-
-func lastCycle(calls []Call, emptyKind func(string) bool) Cycle {
-	var cy Cycle
-	if len(calls) == 0 {
-		return cy
-	}
-	end := len(calls) - 1
-	start := end
-	for start > 0 && calls[start].Time.Sub(calls[start-1].Time) <= cycleGap {
-		// a login right after performance queries starts the next collection
-		if isPrelude(calls[start]) && calls[start-1].Method == "VsanPerfQueryPerf" {
-			break
-		}
-		start--
-	}
-	cyc := calls[start : end+1]
-	cy.Start, cy.End, cy.Calls = cyc[0].Time, cyc[len(cyc)-1].Time, len(cyc)
-	clients := map[string]int{}
-	type agg struct {
-		Step
-		dur []float64
-	}
-	steps := map[string]*agg{}
-	loginFail, loginOK := 0, 0
-	perfCalls, perfInjected, perfUnexpected, unauth := 0, 0, 0, 0
-	faultedFamilies := map[string]bool{}
-	emptyFamilies := map[string]bool{}
-	anyData := map[string]bool{}
-	for _, c := range cyc {
-		clients[c.Client]++
-		name := stepOf(c)
-		a := steps[name]
-		if a == nil {
-			a = &agg{Step: Step{Name: name}}
-			steps[name] = a
-		}
-		a.Calls++
-		a.dur = append(a.dur, c.DurationMs)
-		a.Empty += c.Empty
-		if c.Method == "VsanPerfQueryPerf" {
-			a.Series += c.Entities - c.Empty
-		}
-		switch c.Result {
-		case ResultInjected:
-			a.Injected++
-		case ResultFault:
-			a.Unexpected++
-		case ResultDenied:
-			a.Denied++
-		}
-		if isLogin(c) {
-			if c.Result == ResultOK {
-				loginOK++
-			} else {
-				loginFail++
-			}
-		}
-		if c.Method == "VsanPerfQueryPerf" {
-			perfCalls++
-			cy.Series += c.Entities - c.Empty
-			cy.Empty += c.Empty
-			switch c.Result {
-			case ResultInjected:
-				perfInjected++
-				faultedFamilies[c.Family] = true
-			case ResultDenied:
-				unauth++
-			case ResultFault:
-				perfUnexpected++
-			}
-			if c.Result == ResultOK {
-				if c.Entities-c.Empty > 0 {
-					anyData[c.Family] = true
-				} else if c.Entities > 0 {
-					emptyFamilies[c.Family] = true
-				}
-			}
-		}
-	}
-	var onlyEmpty []string
-	for f := range emptyFamilies {
-		if !anyData[f] {
-			onlyEmpty = append(onlyEmpty, f)
-		}
-	}
-	sort.Strings(onlyEmpty)
-	provisional := len(onlyEmpty) > 0 && emptyKind != nil
-	for _, f := range onlyEmpty {
-		if provisional && !emptyKind(f) {
-			provisional = false
-		}
-	}
-	best := 0
-	for c, n := range clients {
-		if n > best {
-			cy.Client, best = c, n
-		}
-	}
-	for _, a := range steps {
-		a.P95Ms = percentile(a.dur, 0.95)
-		cy.Steps = append(cy.Steps, a.Step)
-	}
-	sort.Slice(cy.Steps, func(i, j int) bool {
-		oi, ok1 := stepOrder[cy.Steps[i].Name]
-		oj, ok2 := stepOrder[cy.Steps[j].Name]
-		if !ok1 {
-			oi = 99
-		}
-		if !ok2 {
-			oj = 99
-		}
-		if oi != oj {
-			return oi < oj
-		}
-		return cy.Steps[i].Name < cy.Steps[j].Name
-	})
-	cy.Findings = diagnose(loginOK, loginFail, perfCalls, perfInjected, perfUnexpected, unauth, cy.Series, cy.Empty, faultedFamilies, onlyEmpty, provisional)
-	return cy
-}
-
-func diagnose(loginOK, loginFail, perfCalls, injected, unexpected, unauth, withData, empty int, faulted map[string]bool, onlyEmpty []string, provisional bool) []Finding {
-	var out []Finding
-	switch {
-	case loginFail > 0 && loginOK == 0:
-		out = append(out, Finding{"bad", "Authentication failed",
-			"Every login in the last cycle was refused (" + itoa(loginFail) + "). The collector never reached an inventory, so it asked for no metrics. Check the user the MP adapter is configured with against the scenario's auth users."})
-	case loginFail > 0:
-		out = append(out, Finding{"warn", "Some logins were refused", itoa(loginFail) + " of " + itoa(loginFail+loginOK) + " logins failed in the last cycle."})
-	case loginOK > 0:
-		out = append(out, Finding{"ok", "Authentication succeeded", itoa(loginOK) + " login(s) accepted in the last cycle."})
-	}
-	if perfCalls == 0 && loginOK > 0 {
-		out = append(out, Finding{"bad", "Authenticated, but no performance queries followed",
-			"The collector logged in and never called VsanPerfQueryPerf. It found no vSAN cluster in the inventory, or its adapter instance is not set to collect performance metrics."})
-	}
-	if injected > 0 {
-		names := make([]string, 0, len(faulted))
-		for f := range faulted {
-			names = append(names, f)
-		}
-		sort.Strings(names)
-		list := ""
-		for i, n := range names {
-			if i == 5 {
-				list += ", …"
-				break
-			}
-			if i > 0 {
-				list += ", "
-			}
-			list += n
-		}
-		out = append(out, Finding{"warn", itoa(injected) + " performance queries answered with an injected fault",
-			"Scenario fault rules caused these (" + list + "). The pack reports SystemError as a collection problem and treats InvalidArgument and NotSupported as 'kind absent'."})
-	}
-	if unexpected > 0 {
-		out = append(out, Finding{"bad", itoa(unexpected) + " performance queries failed without an injected rule",
-			"These faults did not come from a scenario rule. Open the request log filtered to Result = unexpected."})
-	}
-	if unauth > 0 {
-		out = append(out, Finding{"bad", itoa(unauth) + " performance queries were refused as not authenticated",
-			"They carried no valid session, so no rule or family was consulted. Fix the login first; everything below is a consequence."})
-	}
-	if perfCalls > 0 && withData == 0 && injected == 0 && unexpected == 0 && unauth == 0 {
-		list := strings.Join(onlyEmpty[:min(len(onlyEmpty), 6)], ", ")
-		if provisional {
-			out = append(out, Finding{"bad", "Every performance query returned empty",
-				"The collector asked only for " + list + ". The live service answers these provisional kinds (OSA, iSCSI target, PMem, file service) empty on an ESA cluster, so authentication was fine and there was nothing to collect. Point the adapter instance at the kinds an ESA cluster serves, or at a scope that includes them."})
-		} else {
-			out = append(out, Finding{"bad", "Every performance query returned empty",
-				"The simulator answered, but no entity had samples" + func() string {
-					if list != "" {
-						return " (families: " + list + ")"
-					}
-					return ""
-				}() + ". The cluster may have no hosts for the queried families."})
-		}
-	}
-	if empty > 0 && withData > 0 {
-		out = append(out, Finding{"info", itoa(empty) + " entities returned empty by design",
-			"Provisional kinds (OSA, iSCSI, PMem, file service) answer empty on an ESA cluster, as the live service does."})
-	}
-	if withData > 0 {
-		out = append(out, Finding{"ok", itoa(withData) + " entities returned samples", "Metrics were served in the last cycle."})
-	}
-	if len(out) == 0 {
-		out = append(out, Finding{"info", "No collector traffic", "Nothing has called the simulator yet."})
-	}
-	return out
+	return ""
 }

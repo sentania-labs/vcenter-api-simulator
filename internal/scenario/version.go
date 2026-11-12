@@ -175,3 +175,61 @@ func (s *Scenario) validateVersions() error {
 	}
 	return nil
 }
+
+// VersionLabel is the release as a person says it: "8.0 Update 3", "9.0",
+// "9.1.1", or the number itself for a release that is not a preset.
+func VersionLabel(v Version) string {
+	switch v.Version {
+	case "8.0.3":
+		return "8.0 Update 3"
+	case "9.0.0":
+		return "9.0"
+	case "":
+		return v.Preset
+	}
+	return v.Version
+}
+
+// VersionChoice turns what the console offers (a preset id such as "8.0u3",
+// or a typed number such as "9.2.0") into a Version for the scenario. A
+// typed number that is one of the presets becomes that preset. For any
+// other number the build, API version and product name are derived: they
+// are plausible strings, not ones a real release carries.
+func VersionChoice(product, choice string) (Version, error) {
+	presets := vcVersions
+	if product == "esx" {
+		presets = esxVersions
+	}
+	if _, ok := presets[choice]; ok {
+		return Version{Preset: choice}, nil
+	}
+	n, err := versionNumbers(choice)
+	if err != nil || len(n) > 3 {
+		return Version{}, fmt.Errorf("%q is not a version number like 9.2.0", choice)
+	}
+	for len(n) < 3 {
+		n = append(n, 0)
+	}
+	number := fmt.Sprintf("%d.%d.%d", n[0], n[1], n[2])
+	for id, p := range presets {
+		if p.Version == number {
+			return Version{Preset: id}, nil
+		}
+	}
+	build := 24000000 + (n[0]-8)*1500000 + n[1]*120000 + n[2]*11000 + 515
+	if build < 1000000 {
+		build = 1000000 + n[0]*1000 + n[1]*100 + n[2]
+	}
+	v := Version{Version: number, APIVersion: number + ".0"}
+	if product == "esx" {
+		v.Build = strconv.Itoa(build - 6)
+		v.FullName = "VMware ESXi " + number + " build-" + v.Build
+	} else {
+		v.Build = strconv.Itoa(build)
+		v.FullName = "VMware vCenter Server " + number + " build-" + v.Build
+	}
+	return v, nil
+}
+
+// ResolveESX returns the full host version a scenario Version names.
+func ResolveESX(v Version) (Version, error) { return resolveVersion(v, esxVersions, "") }

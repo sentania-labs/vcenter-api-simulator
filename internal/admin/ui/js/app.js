@@ -1,434 +1,335 @@
-// The console shell: header, tabs, pending-change banner, router, polling,
-// confirm modal, toasts. Screens are modules with this shape:
+// The console shell: header, the eight tabs, the bars shown on every screen
+// (paused, a change failed, scheduled), the green "Done." line, dialogs,
+// routing and polling. Screens are plain objects:
 //
-//   export default {
-//     id, title,
-//     async load(ctx)            -> data       (fetch what the screen needs)
-//     render(ctx, data)          -> html       (a string built with lib.html)
-//     actions: { 'topo.name'(ctx, el, ev, data) }  keyed by the FULL attribute value
-//                                               of data-act / data-chg / data-inp
-//     keys?(ctx, ev, data)                      (keydown on the page)
-//     pollMs?                                   (reload data on this interval)
-//   }
-import { api, polling, ApiError, html, raw, join, esc, badge, banner, int, hms, hm, bytes, scheduledMessage } from './lib.js';
-import overview from './overview.js';
-import topology from './topology.js';
-import telemetry from './telemetry.js';
-import activity from './activity.js';
-import compat from './compat.js';
-import settings from './settings.js';
+//   { title, tab, load(ctx) -> data, render(ctx, data) -> html, actions: { name(ctx, el) }, poll }
+//
+// One request, /api/home, tells the shell everything it shows on every
+// screen, so the header, the tabs and Home can never disagree.
+import { api, polling, html, raw, join, esc, badge, btn, lbtn, rich, plain, plural, timeText, newPassword } from './lib.js';
+import home from './home.js';
+import clusters from './clusters.js';
+import storage from './storage.js';
+import versions from './versions.js';
+import users from './users.js';
+import security from './security.js';
+import faults from './faults.js';
+import requests from './requests.js';
 
-const screens = { overview, topology, telemetry, activity, compat, settings };
-const TABS = [['overview', 'Overview'], ['topology', 'Topology'], ['telemetry', 'Telemetry'], ['activity', 'API Activity'], ['compat', 'Compatibility'], ['settings', 'Simulator settings']];
+const TABS = [['home', 'Home'], ['clusters', 'Clusters'], ['storage', 'Storage'], ['versions', 'Versions'], null, ['users', 'Users'], ['security', 'Security'], null, ['faults', 'Slowness and faults'], ['requests', 'Requests']];
+const MODULES = { home, clusters, cluster: clusters, storage, versions, users, security, faults, requests };
+// addresses of the console before the redesign still land somewhere sensible
+const OLD = { overview: 'home', topology: 'clusters', telemetry: 'faults', activity: 'requests', 'api-activity': 'requests', api: 'requests', compat: 'requests/supported', compatibility: 'requests/supported', settings: 'security' };
 
 export const ctx = {
-  state: null, route: { name: 'overview', parts: [], query: new URLSearchParams() }, data: null, loadError: null,
+  home: null, homeError: null, route: { path: '/home', parts: ['home'], query: {} }, screen: null, data: null, loadError: null,
+  F: {}, page: {}, flash: null, marks: [], retry: null, menu: false, setup: { pw: '', show: false },
   api,
-  go(hash) { if (location.hash === hash) navigate(); else location.hash = hash; },
-  async reload() { await loadScreen(); renderPage(); },
-  async refreshState() { await loadState(); renderShell(); },
-  async refresh() { await Promise.all([loadState(), loadScreen()]); renderShell(); renderPage(); },
-  rerender() { renderPage(); },
-  toast, confirm: confirmModal, modal: openModal, closeModal,
-  async run(fn, okMsg) {
-    try { const r = await fn(); if (okMsg) toast(okMsg, 'ok'); return r; }
-    catch (e) { toast(e.message || String(e), 'bad'); return undefined; }
+  go(path) { const h = '#' + path; if (location.hash === h) navigate(); else location.hash = h; },
+  rerender() { render(); },
+  async reload() { await Promise.all([loadHome(), loadScreen()]); render(); },
+  // say shows a green (or warning) line at the top of the current screen
+  say(tone, text) { ctx.flash = { tone, text, route: ctx.route.path }; scrollTop = true; },
+  mark(type, id) { const m = ctx.marks.find((x) => x.type === type && x.id === id); return m ? m.tag : ''; },
+  dialog, confirm, closeDialog,
+  async copy(text, what) {
+    try {
+      await navigator.clipboard.writeText(text);
+      ctx.say('ok', `**Copied.** ${what} is on your clipboard.`);
+    } catch (e) {
+      ctx.say('warn', `**Not copied.** This browser would not let the console copy for you. Select ${what.toLowerCase()} and copy it yourself.`);
+    }
+    render();
+  },
+  // act runs something that happens at once and shows what it did
+  async act(fn, after) {
+    try {
+      const r = await fn();
+      if (r && r.done) ctx.say(r.tone || 'ok', r.done);
+      if (after) after(r);
+    } catch (e) { ctx.say('bad', `**That did not work.** ${e.message}`); }
+    await ctx.reload();
   },
 };
 
-let screen = overview;
-let clockOffset = 0;
-let lastStateJSON = '';
-let lastDataJSON = '';
-let renderedOnce = false;
+let scrollTop = false;
+let lastHTML = '';
 
-// ---- data -------------------------------------------------------------------
-async function loadState() {
-  try {
-    const st = await api('/state');
-    clockOffset = Date.parse(st.clock.now) - Date.now();
-    ctx.state = st;
-    ctx.stateError = null;
-  } catch (e) {
-    ctx.stateError = e;
-  }
+// ---- data ---------------------------------------------------------------------
+async function loadHome() {
+  try { ctx.home = await api('/home'); ctx.homeError = null; } catch (e) { ctx.homeError = e; }
 }
 async function loadScreen() {
-  try { ctx.data = await screen.load(ctx); ctx.loadError = null; }
-  catch (e) { ctx.loadError = e; }
+  const s = ctx.screen;
+  if (!s || !s.load || (ctx.home && ctx.home.accountNeeded)) return;
+  try { const d = await s.load(ctx); if (s === ctx.screen) { ctx.data = d; ctx.loadError = null; } }
+  catch (e) { if (s === ctx.screen) ctx.loadError = e; }
 }
 
-// ---- routing ----------------------------------------------------------------
+// ---- routing ------------------------------------------------------------------
 function parseHash() {
-  const h = location.hash.replace(/^#\/?/, '');
+  let h = location.hash.replace(/^#\/?/, '');
   const [path, q] = h.split('?');
-  const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
-  const alias = { compatibility: 'compat', 'api-activity': 'activity', api: 'activity' };
-  if (alias[parts[0]]) parts[0] = alias[parts[0]];
-  const name = screens[parts[0]] ? parts.shift() : 'overview';
-  return { name, parts, query: new URLSearchParams(q || '') };
+  let parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  if (OLD[parts[0]]) parts = OLD[parts[0]].split('/');
+  if (!MODULES[parts[0]]) parts = ['home'];
+  return { path: '/' + parts.join('/') + (q ? '?' + q : ''), parts, query: Object.fromEntries(new URLSearchParams(q || '')) };
 }
 async function navigate() {
-  ctx.route = parseHash();
-  screen = screens[ctx.route.name];
-  document.title = `${screen.title} · vCenter API Simulator`;
-  lastDataJSON = '';
-  await Promise.all([ctx.state ? null : loadState(), loadScreen()]);
-  renderShell();
-  renderPage(true);
-  window.scrollTo(0, 0);
+  const next = parseHash();
+  const changed = next.path !== ctx.route.path || !ctx.screen;
+  ctx.route = next;
+  if (changed) {
+    ctx.F = {};
+    if (ctx.flash && ctx.flash.route !== next.path.split('?')[0] && ctx.flash.route !== next.path) { ctx.flash = null; }
+    if (!ctx.flash) ctx.marks = [];
+    ctx.menu = false;
+  }
+  ctx.screen = MODULES[next.parts[0]].screen(next.parts, next.query, ctx);
+  ctx.data = null; ctx.loadError = null;
+  document.title = `${ctx.screen.title} · vCenter Simulator`;
+  if (changed) scrollTop = true;
+  render();
+  await Promise.all([loadHome(), loadScreen()]);
+  render();
+  if (changed && next.query.show) { const el = document.getElementById('reqlist'); if (el) el.scrollIntoView({ block: 'nearest' }); }
 }
 window.addEventListener('hashchange', navigate);
+window.addEventListener('resize', () => render());
 
-// ---- shell ------------------------------------------------------------------
-function pausedBanner() {
-  const st = ctx.state;
-  if (!st || st.running) return '';
-  return banner('warn', html`<b>The API is paused.</b> Connections to /sdk and /vsanHealth are refused, so a collection now fails. Topology, history and seeds are untouched.`,
-    html`<button type="button" class="lat-btn act" data-act="app.pause">Resume serving…</button>`);
+// ---- shell --------------------------------------------------------------------
+const tabOf = (p0) => (p0 === 'cluster' ? 'clusters' : p0);
+function tabBadge(k) {
+  const h = ctx.home;
+  if (!h) return '';
+  if (k === 'requests') return html`${h.unanswered ? badge('bad', `${h.unanswered} not answered`) : ''}${h.capturing ? html` ${badge('accent', 'Capturing all')}` : ''}`;
+  if (k === 'faults') return h.faults ? badge('warn', `${h.faults} on`) : '';
+  return '';
 }
-function failedBanner() {
-  const st = ctx.state;
-  if (!st || !st.lastError) return '';
-  return banner('bad', html`<b>An apply failed.</b> ${st.lastError}`, html`<button type="button" class="lat-btn act" data-act="app.dismissError">Dismiss</button>`);
+const dark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+
+function header() {
+  const h = ctx.home, paused = h && !h.running, n = h ? h.attention.length : 0;
+  return html`<header class="lat-header m-hdr">
+    <a class="m-brand" href="#/home"><span class="desk">vCenter </span>Simulator</a>
+    ${h ? html`<span class="m-status ${paused ? 'paused' : ''}"><i></i>${paused ? 'Paused' : 'Running'}</span>
+    <span class="m-addr">Address for your tool: <code>${h.address}</code></span>` : html`<span class="m-addr">${ctx.homeError ? ctx.homeError.message : 'Loading…'}</span>`}
+    <span class="m-sp"></span>
+    <span class="desk m-row">${h && !paused ? btn('Pause…', 'pause') : ''}${btn(dark() ? 'Light theme' : 'Dark theme', 'theme', 'lat-btn--ghost')}${btn('Sign out', 'signout', 'lat-btn--ghost')}</span>
+    <button type="button" class="lat-btn m-menu-btn" data-act="menu" ${n ? raw(`aria-label="Menu, ${n} ${n === 1 ? 'thing needs' : 'things need'} attention"`) : ''}>Menu${n ? html` <span class="lat-badge lat-badge--bad">${n} to check</span>` : ''}</button>
+  </header>
+  <nav class="lat-tabs m-tabs" aria-label="Sections">${TABS.map((t) => (t ? html`<a class="lat-tab ${tabOf(ctx.route.parts[0]) === t[0] ? 'is-on' : ''}" href="#/${t[0]}" ${tabOf(ctx.route.parts[0]) === t[0] ? raw('aria-current="page"') : ''}>${t[1]} ${tabBadge(t[0])}</a>` : html`<span class="sep"></span>`))}</nav>`;
 }
-function pendingBanner() {
-  return html`${failedBanner()}${pausedBanner()}${pendingOnly()}`;
+
+function bars() {
+  const h = ctx.home;
+  if (!h) return '';
+  const out = [];
+  const onHome = ctx.route.parts[0] === 'home' && !ctx.route.parts[1];
+  if (!h.running) out.push(html`<div class="m-topbar warn" role="status"><span><b>The simulator is paused.</b> It refuses every connection until you resume. Nothing has been lost.</span><span class="acts">${btn('Resume', 'resume', 'lat-btn--primary')}</span></div>`);
+  if (h.failure) out.push(html`<div class="m-topbar bad" role="alert"><span><b>${h.failure.what}</b> ${h.failure.why} ${h.failure.fix}</span><span class="acts">${btn('Try again', 'retry', 'lat-btn--primary')}${btn('Hide this', 'dismissFailure')}</span></div>`);
+  const s = h.scheduled;
+  if (s.length === 1 && !onHome) out.push(html`<div class="m-topbar info" role="status"><span><b>Scheduled for ${timeText(s[0].at)}:</b> ${s[0].text}. Nothing has changed yet.</span><span class="acts">${btn('Do it now', 'schedNow', '', { id: s[0].id })}${btn('Cancel it', 'schedCancel', '', { id: s[0].id })}</span></div>`);
+  else if (s.length > 1 && !onHome) out.push(html`<div class="m-topbar info" role="status"><span><b>${s.length} changes are scheduled.</b> The next is at ${timeText(s[0].at)}: ${s[0].text.charAt(0).toLowerCase() + s[0].text.slice(1)}. Nothing has changed yet.</span><span class="acts">${lbtn('See them all on Home', '/home')}</span></div>`);
+  return join(out);
 }
-function pendingOnly() {
-  const st = ctx.state;
-  if (!st) return '';
-  const p = st.pending || {};
-  // the review, generator and telemetry screens carry their own apply controls
-  const onReview = (ctx.route.name === 'topology' && ['review', 'generator'].includes(ctx.route.parts[0])) || ctx.route.name === 'telemetry';
-  if (p.scheduled) {
-    return banner('info', scheduledMessage(p),
-      html`<button type="button" class="lat-btn act" data-act="app.cancelScheduled">Cancel schedule</button>`);
+
+function flashLine() {
+  const f = ctx.flash;
+  if (!f) return '';
+  return html`<div class="lat-banner lat-banner--${f.tone === 'warn' ? 'warn' : f.tone === 'bad' ? 'bad' : f.tone === 'info' ? 'info' : 'ok'} m-flash" role="status"><span>${rich(f.text)}</span>${btn('Hide', 'dismissFlash', 'lat-btn--ghost x')}</div>`;
+}
+
+function body() {
+  const s = ctx.screen;
+  if (ctx.loadError && !ctx.data) {
+    const back = s.back || ['Go to Home', '/home'];
+    return html`<div class="m-page">${flashLine()}<div class="m-empty"><h3>${ctx.loadError.message}</h3>${lbtn(back[0], back[1], 'lat-btn--primary')}</div></div>`;
   }
-  if (!p.exists || onReview) return '';
-  const bits = [];
-  if (p.topologyChanges) bits.push(`${int(p.topologyChanges)} unapplied topology change${p.topologyChanges === 1 ? '' : 's'}`);
-  if (p.telemetryChanges) bits.push(`${int(p.telemetryChanges)} unapplied telemetry change${p.telemetryChanges === 1 ? '' : 's'}`);
-  if (p.settingsChanges) bits.push(`${int(p.settingsChanges)} unapplied settings change${p.settingsChanges === 1 ? '' : 's'}`);
-  const text = bits.join(' and ') || 'An unapplied change';
-  return banner('warn', html`<b>${text}</b> · The current settings remain active until you apply the changes.`,
-    html`<button type="button" class="lat-btn act" data-act="app.review">Review change</button>`);
+  if (s.load && !ctx.data) return html`<div class="m-page"><div class="m-loading" role="status">Loading…</div></div>`;
+  let out;
+  try { out = String(s.render(ctx, ctx.data)); }
+  catch (e) { console.error(e); return html`<div class="m-page"><div class="m-empty"><h3>This screen could not be drawn</h3><p>Reload the page. If it keeps happening, tell the simulator's maintainers what you were doing.</p></div></div>`; }
+  const flash = String(flashLine());
+  if (flash) out = out.replace('<div class="m-page">', () => '<div class="m-page">' + flash);
+  return raw(out);
 }
 
-// the header's clock ticks on its own timer; it must not make the header
-// look changed every poll, or the header would be rebuilt under the pointer
-const CLOCK = '·clock·';
-function hdr() {
-  const st = ctx.state;
-  if (!st) return html`<header class="lat-header"><span class="app-name">vCenter API Simulator</span><span class="subtle">${ctx.stateError ? 'cannot reach the admin API: ' + ctx.stateError.message : 'loading…'}</span></header>`;
-  const port = (st.API && st.API[0] ? st.API[0].split(':').pop() : '443');
-  const host = st.endpoint || 'localhost';
-  const loop = /^(127\.|localhost|\[::1\])/.test(st.admin || '');
-  const paused = !st.running;
-  return html`<header class="lat-header">
-    <span class="app-name">vCenter API Simulator</span><span class="lat-ver" style="white-space:nowrap">${st.version}</span>
-    <span class="hdr-sep"></span>
-    <span class="hdr-kv"><span class="k">API endpoint</span><span class="v">${host}:${port}</span></span>
-    <span class="hdr-kv"><span class="k">Version profile</span><span class="v">vCenter ${st.profile.version} · build ${st.profile.build}</span></span>
-    <span class="hdr-kv"><span class="k">Admin UI</span><span class="v">${loop ? 'private' : 'network'} · ${st.admin}</span></span>
-    <span class="hdr-kv"><span class="k">Sim clock (UTC)</span><span class="v" id="hdr-clock">${CLOCK}</span></span>
-    <span class="hdr-spacer"></span>
-    <span class="hdr-kv" style="align-items:flex-end"><span class="k">API service</span><span>${badge(paused ? 'paused' : 'running', paused ? 'warn' : 'ok')} <span class="subtle" style="font-size:11.5px">since ${hms(st.since)}</span></span></span>
-    <span class="hdr-actions"><button type="button" class="lat-btn" data-act="app.pause">${paused ? 'Resume serving…' : 'Pause serving…'}</button><button type="button" class="lat-btn" data-act="app.logout">Sign out</button></span>
-  </header>`;
+// first-run step 2: the password tools will sign in with
+function setupAccount() {
+  const F = ctx.setup, bad = F.err;
+  return html`<div class="m-auth"><form class="lat-card" data-submit="setupAccount"><div><p class="m-small">vCenter Simulator · Step 2 of 2</p><h1>Choose the password your tools will sign in with</h1></div>
+    <p class="m-muted">Tools sign in to the simulated vCenter with a username and password, as they would to a real one. The first account is ready; it only needs a password.</p>
+    <dl class="m-kv"><dt>Username</dt><dd><code>administrator@vsphere.local</code></dd></dl>
+    <div class="m-field ${bad ? 'has-err' : ''}"><label for="f-setup-pw">Password for that account</label>
+      <div class="m-inline"><input class="lat-input" style="width:220px" type="${F.show ? 'text' : 'password'}" id="f-setup-pw" data-setup="pw" value="${F.pw}" autocomplete="new-password">${btn('Make one for me', 'setupGen')}${F.pw && F.show ? btn('Copy', 'setupCopy') : ''}</div>
+      <label class="m-check"><input type="checkbox" data-setup="show" ${F.show ? raw('checked') : ''}> <span>Show the password</span></label>
+      ${bad ? html`<span class="lat-hint lat-hint--bad" role="alert">${bad}</span>` : html`<span class="lat-hint">At least 8 characters. ${F.copied ? html`<b>Copied.</b> ` : ''}You will give it to your tool in a moment, so copy it or remember it.</span>`}</div>
+    <div class="m-go"><button type="submit" class="lat-btn lat-btn--primary">Save and open the console</button></div>
+    <p class="m-small">You can add more users, or change this password, later on the Users screen.</p></form></div>`;
 }
 
-function tabs() {
-  const st = ctx.state;
-  const badges = {};
-  if (st) {
-    const p = st.pending || {};
-    const word = p.scheduled ? 'scheduled' : 'pending';
-    if (p.exists && p.topologyChanges) badges.topology = badge(`${p.topologyChanges} ${word}`, 'warn');
-    if (p.exists && p.telemetryChanges) badges.telemetry = badge(`${p.telemetryChanges} ${word}`, 'warn');
-    if (p.exists && p.settingsChanges) badges.settings = badge(`${p.settingsChanges} ${word}`, 'warn');
-    const f = st.activity.faults;
-    if (f.unexpected) badges.activity = badge(`${int(f.unexpected)} unexpected`, 'bad');
-    else if (f.denied) badges.activity = badge(`${int(f.denied)} denied`, 'bad');
-    else if (f.injected) badges.activity = badge(`${int(f.injected)} injected`, 'warn');
-    else if (st.activity.lastCycle.calls && st.activity.lastCycle.entitiesWithData === 0 && st.activity.lastCycle.steps.some((s) => s.name === 'VsanPerfQueryPerf')) badges.activity = badge('0 series', 'bad');
+function render() {
+  const app = document.getElementById('app');
+  let out;
+  if (ctx.home && ctx.home.accountNeeded) out = String(setupAccount());
+  else if (!ctx.screen) return;
+  else out = String(html`${header()}${bars()}<main>${body()}</main>`);
+  if (out !== lastHTML && !pointerDown) {
+    lastHTML = out;
+    const act = document.activeElement;
+    const keep = act && act.id && app.contains(act) ? { id: act.id, s: act.selectionStart, e: act.selectionEnd } : null;
+    const scrolls = [...app.querySelectorAll('[data-scroll]')].map((e) => [e.dataset.scroll, e.scrollTop]);
+    const y = window.scrollY;
+    app.innerHTML = out;
+    for (const [k, top] of scrolls) { const e = app.querySelector(`[data-scroll="${CSS.escape(k)}"]`); if (e) e.scrollTop = top; }
+    if (keep) { const el = document.getElementById(keep.id); if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(keep.s, keep.e); } catch (e) { /* not a text box */ } } }
+    window.scrollTo(0, scrollTop ? 0 : y);
   }
-  const t = st ? html`<kbd>?</kbd> shortcuts` : '';
-  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  return html`<div class="lat-tabs" role="tablist">${TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected="${ctx.route.name === id}" class="lat-tab${ctx.route.name === id ? ' is-on' : ''}" data-act="app.tab" data-arg="${id}">${label}${badges[id] || ''}</button>`)}</div>
-    <span class="tab-meta">${t}<button type="button" class="lat-btn lat-btn--ghost lat-btn--sm theme-btn" data-act="app.theme" aria-label="Switch to ${dark ? 'light' : 'dark'} theme">${dark ? 'Light' : 'Dark'} theme</button></span>`;
+  scrollTop = false;
+  const ov = document.getElementById('overlay');
+  if (ctx.menu && !current) { ov.hidden = false; ov.innerHTML = String(menu()); } else if (!current) { ov.hidden = true; ov.innerHTML = ''; }
 }
 
-function renderShell() {
-  const root = document.getElementById('shell');
-  if (!root.firstChild) {
-    root.innerHTML = '<div id="hdr"></div><nav class="tabbar" id="tabs" aria-label="Sections"></nav><div id="banner" class="page" style="padding-bottom:0"></div><main class="page" id="page"></main>';
-  }
-  const parts = { hdr: hdr(), tabs: tabs(), banner: pendingBanner() };
-  const key = JSON.stringify(Object.values(parts).map(String));
-  const shown = ctx.state ? key : 'x';
-  if (pointerDown) return; // never rebuild under a click in progress
-  if (shown !== lastStateJSON) {
-    lastStateJSON = shown;
-    for (const [id, v] of Object.entries(parts)) setHTML(document.getElementById(id), String(v).replace(CLOCK, clockText()));
-    const bn = document.getElementById('banner');
-    bn.style.display = String(parts.banner) ? '' : 'none';
-  }
+function menu() {
+  const h = ctx.home, cur = tabOf(ctx.route.parts[0]), n = h ? h.attention.length : 0;
+  return html`<div class="m-dlg" role="dialog" aria-label="Menu"><div class="m-menu">${TABS.filter(Boolean).map((t) => html`<a href="#/${t[0]}" class="${cur === t[0] ? 'is-on' : ''}">${t[1]} <span>${t[0] === 'home' && n ? badge('bad', plural(n, 'thing') + ' to check') : tabBadge(t[0])}</span></a>`)}<hr>
+    <a href="#" data-act="${h && !h.running ? 'resume' : 'pause'}">${h && !h.running ? 'Resume the simulator' : 'Pause the simulator…'}</a><a href="#" data-act="theme">${dark() ? 'Light theme' : 'Dark theme'}</a><a href="#" data-act="signout">Sign out</a></div>
+    <div class="m-row">${btn('Close', 'closeMenu')}</div></div>`;
 }
 
-function setHTML(el, s) {
-  const focus = captureFocus();
-  el.innerHTML = s;
-  restoreFocus(focus);
+// ---- dialogs --------------------------------------------------------------------
+let current = null; // the open dialog's resolver
+function dialog({ title, body, ok, cancel, danger, wide }) {
+  return new Promise((resolve) => {
+    const ov = document.getElementById('overlay');
+    const back = document.activeElement;
+    ctx.menu = false;
+    current = (v) => { current = null; ov.hidden = true; ov.innerHTML = ''; if (back && document.contains(back)) back.focus(); resolve(v); };
+    ov.hidden = false;
+    ov.innerHTML = String(html`<div class="m-dlg" role="dialog" aria-modal="true" aria-label="${title}" ${wide ? raw('style="max-width:640px"') : ''}><h2>${title}</h2>${body}
+      <div class="m-row">${ok ? html`${btn(cancel || 'Cancel', 'dlgCancel')}${btn(ok, 'dlgOk', danger ? 'lat-btn--danger' : 'lat-btn--primary')}` : btn('Close', 'dlgCancel', 'lat-btn--primary')}</div></div>`);
+    const first = ov.querySelector('[data-act=dlgCancel]');
+    if (first) first.focus();
+  });
 }
+function confirm(o) { return dialog(o); }
+function closeDialog(v = false) { if (current) current(v); }
 
-function domPath(el) {
-  const path = [];
-  for (let n = el; n && n.id !== 'page' && n.id !== 'shell' && n.parentElement; n = n.parentElement) {
-    path.unshift(`${n.tagName}:${[...n.parentElement.children].indexOf(n)}`);
-  }
-  return `${el.closest('#page') ? 'page' : 'shell'}>` + path.join('>');
-}
-function captureFocus() {
-  const a = document.activeElement;
-  if (!a || a === document.body || !a.dataset) return null;
-  const k = a.dataset.k || a.dataset.act && `${a.dataset.act}|${a.dataset.arg}`;
-  if (!k) {
-    if (!a.closest('#page, #shell')) return null;
-    return { k: domPath(a), sel: null, end: null, attr: 'path' };
-  }
-  return { k, sel: a.selectionStart, end: a.selectionEnd, attr: a.dataset.k ? 'data-k' : 'act' };
-}
-function restoreFocus(f) {
-  if (!f) return;
-  let el;
-  if (f.attr === 'path') {
-    const [root, ...rest] = f.k.split('>');
-    let n = document.getElementById(root === 'page' ? 'page' : 'shell');
-    for (const step of rest) {
-      if (!n) break;
-      const [tag, idx] = step.split(':');
-      const c = n.children[Number(idx)];
-      n = c && c.tagName === tag ? c : null;
-    }
-    el = n && n.focus ? n : null;
-  } else if (f.attr === 'data-k') el = document.querySelector(`[data-k="${CSS.escape(f.k)}"]`);
-  else { const [act, arg] = f.k.split('|'); el = [...document.querySelectorAll('[data-act]')].find((e) => e.dataset.act === act && (e.dataset.arg || '') === (arg || '')); }
-  if (el) { el.focus({ preventScroll: true }); try { if (f.sel != null) el.setSelectionRange(f.sel, f.end); } catch (e) { /* not a text field */ } }
-}
+// ---- things every screen can do -----------------------------------------------------
+const common = {
+  dlgOk() { closeDialog(true); },
+  dlgCancel() { closeDialog(false); },
+  menu() { ctx.menu = true; render(); },
+  closeMenu() { ctx.menu = false; render(); },
+  dismissFlash() { ctx.flash = null; render(); },
+  theme() {
+    const next = dark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('vcs-theme', next); } catch (e) { /* private mode */ }
+    ctx.menu = false; render();
+  },
+  async signout() { try { await api('/auth/logout', { method: 'POST' }); } finally { location.assign('/login?out=1'); } },
+  async pause() {
+    ctx.menu = false; render();
+    const yes = await confirm({ title: 'Pause the simulator?', ok: 'Pause', body: html`<p>While paused it refuses every connection, so a tool that tries to collect will report that it cannot reach vCenter.</p><p>Nothing is lost. When you resume, every cluster, host and VM is exactly as it was.</p>` });
+    if (!yes) return;
+    await ctx.act(async () => { await api('/pause', { body: { paused: true } }); return { done: '**Paused.** The simulator is refusing connections until you resume.' }; });
+  },
+  async resume() {
+    ctx.menu = false;
+    await ctx.act(async () => { await api('/pause', { body: { paused: false } }); return { done: '**Running again.** Tools can connect.' }; });
+  },
+  async dismissFailure() { try { await api('/failure/dismiss', { method: 'POST' }); } catch (e) { /* the next poll shows the truth */ } await ctx.reload(); },
+  async retry() {
+    const f = ctx.home && ctx.home.failure;
+    if (!f) return;
+    ctx.retry = f.kind ? { kind: f.kind, params: f.params } : null;
+    try { await api('/failure/dismiss', { method: 'POST' }); } catch (e) { /* the next poll shows the truth */ }
+    ctx.go(f.route + (f.kind ? '?retry=1' : ''));
+  },
+  async schedNow(c, el) {
+    await ctx.act(async () => {
+      const r = await api(`/scheduled/${el.dataset.id}/now`, { method: 'POST' });
+      if (r.failed) return { done: '' };
+      ctx.marks = r.outcome.marks || [];
+      return { done: `**${r.outcome.lead || 'Done.'}** ${r.outcome.done}`, tone: r.outcome.tone };
+    });
+  },
+  async schedCancel(c, el) {
+    const s = ctx.home.scheduled.find((x) => String(x.id) === el.dataset.id);
+    if (!s) return;
+    const yes = await confirm({ title: 'Cancel this scheduled change?', ok: 'Cancel the change', cancel: 'Keep it', body: html`<p><b>${s.text}</b>, scheduled for ${timeText(s.at)}.</p><p>It will not happen. Nothing else is affected.</p>` });
+    if (yes) await ctx.act(() => api(`/scheduled/${s.id}`, { method: 'DELETE' }));
+  },
+  async condOff(c, el) { await ctx.act(() => api(`/faults/${el.dataset.id}`, { method: 'DELETE' })); },
+  page(c, el) { ctx.page[el.dataset.k] = (ctx.page[el.dataset.k] || 0) + Number(el.dataset.d); render(); },
+  copy(c, el) { ctx.copy(el.dataset.text, el.dataset.what); },
+  setupGen() { ctx.setup.pw = newPassword(); ctx.setup.show = true; ctx.setup.copied = false; ctx.setup.err = ''; render(); },
+  async setupCopy() { try { await navigator.clipboard.writeText(ctx.setup.pw); ctx.setup.copied = true; } catch (e) { ctx.setup.err = 'This browser would not let the console copy for you. Select the password and copy it yourself.'; } render(); },
+  async setupAccount() {
+    const pw = ctx.setup.pw || '';
+    if (pw.length < 8) { ctx.setup.err = pw ? `That is ${pw.length} characters. Use at least 8, or press "Make one for me".` : 'Type a password of at least 8 characters, or press "Make one for me".'; render(); return; }
+    try {
+      await api('/setup/account', { body: { password: pw } });
+      ctx.setup = { pw: '', show: false };
+      ctx.flash = { tone: 'ok', text: '**All set.** The simulator is running. Follow the three steps below to connect your first tool.', route: '/home' };
+      location.hash = '#/home';
+      await navigate();
+    } catch (e) { ctx.setup.err = e.message; render(); }
+  },
+};
 
+// ---- events ---------------------------------------------------------------------
 // a press that has not been released yet: a re-render now would swap the
 // element under the pointer and the click would be lost
 let pointerDown = false;
 document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
 for (const t of ['pointerup', 'pointercancel', 'dragend']) document.addEventListener(t, () => { pointerDown = false; }, true);
 
-function renderPage(force) {
-  const page = document.getElementById('page');
-  if (!page) return;
-  if (pointerDown && !force) return;
-  let out;
-  if (ctx.loadError && !ctx.data) {
-    out = html`<div class="lat-banner lat-banner--bad" role="alert"><b>${screen.title} could not load.</b> ${ctx.loadError.message}</div>`;
-  } else if (!ctx.data) {
-    out = html`<div class="empty">Loading…</div>`;
-  } else {
-    try { out = screen.render(ctx, ctx.data); }
-    catch (e) { console.error(e); out = html`<div class="lat-banner lat-banner--bad" role="alert"><b>${screen.title} failed to draw.</b> ${e.message}</div>`; }
-  }
-  const s = String(out);
-  if (!force && s === lastDataJSON) return;
-  lastDataJSON = s;
-  const y = window.scrollY;
-  const scrolls = [...page.querySelectorAll('[data-scroll]')].map((e) => [e.dataset.scroll, e.scrollTop]);
-  setHTML(page, s);
-  for (const [k, top] of scrolls) { const e = page.querySelector(`[data-scroll="${k}"]`); if (e) e.scrollTop = top; }
-  if (!force) window.scrollTo(0, y);
-  for (const f of page.querySelectorAll('input:not([name]):not([id]), select:not([name]):not([id]), textarea:not([name]):not([id])')) f.name = f.dataset.k || f.dataset.field || 'field';
-  if (screen.mounted) screen.mounted(ctx, ctx.data, page);
-}
-
-// ---- events -----------------------------------------------------------------
-const appActions = {
-  tab(c, el) { c.go('#/' + el.dataset.arg); },
-  async logout() { try { await api('/auth/logout', { method: 'POST' }); } finally { location.assign('/login'); } },
-  review() { ctx.go('#/topology/review'); },
-  async cancelScheduled() { await ctx.run(() => api('/apply/cancel', { method: 'POST' }), 'Schedule cancelled; the change is a draft again.'); await ctx.refresh(); },
-  async dismissError() { await ctx.run(() => api('/error/dismiss', { method: 'POST' })); await ctx.refreshState(); },
-  theme() {
-    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('vcs-theme', next); } catch (e) { /* private mode */ }
-    lastStateJSON = '';
-    renderShell(); renderPage(true);
-  },
-  async pause() {
-    const st = ctx.state;
-    if (!st) return;
-    if (st.running) {
-      const ok = await confirmModal({
-        title: 'Pause serving the API?',
-        body: html`<ul>
-          <li>Connections to <span class="mono">/sdk</span> and <span class="mono">/vsanHealth</span> are refused. A collection that starts now <b>fails</b>; it does not read empty data.</li>
-          <li>Topology, history and seeds are untouched. Resume brings every identity back as it was.</li>
-          <li>Requests already running finish; the request log keeps counting refused attempts.</li></ul>`,
-        confirmLabel: 'Pause serving', danger: true,
-      });
-      if (!ok) return;
-      await ctx.run(() => api('/pause', { body: { paused: true } }), 'Serving paused.');
-    } else {
-      // resuming is harmless: no confirm
-      await ctx.run(() => api('/pause', { body: { paused: false } }), 'Serving resumed.');
-    }
-    await ctx.refresh();
-  },
-};
-
+function handler(name) { return (ctx.screen && ctx.screen.actions && ctx.screen.actions[name]) || common[name]; }
 document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-act]');
-  if (!el || el.disabled) return;
-  const name = el.dataset.act;
-  const [scope, fn] = name.includes('.') ? name.split('.') : [null, name];
-  const handler = scope === 'app' ? appActions[fn] : screen.actions && screen.actions[name];
-  if (handler) { ev.preventDefault(); handler(ctx, el, ev, ctx.data); }
+  if (!el) { if (ev.target.id === 'overlay') { if (current) closeDialog(false); else if (ctx.menu) { ctx.menu = false; render(); } } return; }
+  if (el.disabled) return;
+  const fn = handler(el.dataset.act);
+  if (!fn) return;
+  if (el.tagName === 'A' || el.tagName === 'BUTTON') ev.preventDefault();
+  pointerDown = false;
+  fn(ctx, el, ev);
 });
-for (const type of ['change', 'input']) {
-  document.addEventListener(type, (ev) => {
-    const attr = type === 'change' ? 'chg' : 'inp';
-    const el = ev.target.closest(`[data-${attr}]`);
-    if (!el) return;
-    const h = screen.actions && screen.actions[el.dataset[attr]];
-    if (h) h(ctx, el, ev, ctx.data);
-  });
-}
+document.addEventListener('input', (ev) => {
+  const el = ev.target;
+  if (el.dataset.setup) { ctx.setup[el.dataset.setup] = el.type === 'checkbox' ? el.checked : el.value; ctx.setup.err = ''; if (el.type === 'checkbox') render(); return; }
+  if (ctx.screen && ctx.screen.input) ctx.screen.input(ctx, el, ev);
+});
+document.addEventListener('change', (ev) => { if (ctx.screen && ctx.screen.change) ctx.screen.change(ctx, ev.target, ev); });
+document.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const name = ev.target.dataset.submit;
+  if (name) { const fn = handler(name); if (fn) fn(ctx, ev.target, ev); return; }
+  const b = ev.target.querySelector('.m-go [data-act]');
+  if (b) b.click();
+});
 document.addEventListener('keydown', (ev) => {
-  const t = ev.target;
-  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT');
-  if (document.getElementById('modal-root').firstChild) return;
-  if (ev.key === '?' && !typing) { ev.preventDefault(); showShortcuts(); return; }
-  if (!typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
-    if (pendingG && ev.key.length === 1) {
-      const dest = { o: 'overview', t: 'topology', e: 'telemetry', a: 'activity', c: 'compat' }[ev.key];
-      pendingG = false;
-      if (dest) { ev.preventDefault(); ctx.go('#/' + dest); return; }
-    }
-    if (ev.key === 'g') { pendingG = true; setTimeout(() => { pendingG = false; }, 1200); return; }
-  }
-  if (screen.keys) screen.keys(ctx, ev, ctx.data, typing);
-});
-let pendingG = false;
-
-function showShortcuts() {
-  const rows = [['?', 'This list'], ['g o / g t / g e / g a / g c', 'Go to Overview, Topology, Telemetry, API Activity, Compatibility'], ['/', 'Focus the filter on the current screen'],
-    ['j / k, Enter', 'Move and open in the request log'], ['Esc', 'Close a dialog; every confirm starts on Cancel']];
-  openModal(html`<div class="modal-back" data-modal-back><div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"><h2>Keyboard shortcuts</h2>
-    <table class="lat-table"><tbody>${rows.map(([k, d]) => html`<tr><td class="mono ink">${k}</td><td class="wrap">${d}</td></tr>`)}</tbody></table>
-    <div class="row end"><button type="button" class="lat-btn" data-modal-close autofocus>Close</button></div></div></div>`);
-}
-
-// ---- modal and toast ----------------------------------------------------------
-let modalReturn = null;
-let modalFocus = null;
-function openModal(content) {
-  const root = document.getElementById('modal-root');
-  modalReturn = document.activeElement;
-  modalFocus = captureFocus();
-  root.innerHTML = String(content);
-  const first = root.querySelector('[data-modal-initial]') || root.querySelector('[autofocus]') || root.querySelector('button, input, select');
-  if (first) first.focus();
-}
-function closeModal() {
-  const root = document.getElementById('modal-root');
-  root.innerHTML = '';
-  if (modalReturn && document.contains(modalReturn)) modalReturn.focus();
-  else {
-    restoreFocus(modalFocus);
-    if (document.activeElement === document.body || !document.activeElement) {
-      // the trigger is gone (its action rebuilt the screen): land on the page, not on <body>
-      const page = document.getElementById('page');
-      if (page) { page.setAttribute('tabindex', '-1'); page.focus({ preventScroll: true }); }
-    }
-  }
-  modalReturn = null;
-  modalFocus = null;
-}
-document.getElementById('modal-root').addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') { ev.stopPropagation(); document.getElementById('modal-root').querySelector('[data-modal-close]')?.click(); }
-  if (ev.key === 'Tab') {
-    const f = [...document.getElementById('modal-root').querySelectorAll('button:not([disabled]), input, select, textarea, a[href]')];
-    if (!f.length) return;
-    const i = f.indexOf(document.activeElement);
-    if (ev.shiftKey && i <= 0) { ev.preventDefault(); f[f.length - 1].focus(); }
-    else if (!ev.shiftKey && i === f.length - 1) { ev.preventDefault(); f[0].focus(); }
-  }
-});
-document.getElementById('modal-root').addEventListener('click', (ev) => {
-  if (ev.target.closest('[data-modal-close]') || ev.target.matches('[data-modal-back]')) closeModal();
+  if (ev.key !== 'Escape') return;
+  if (current) closeDialog(false); else if (ctx.menu) { ctx.menu = false; render(); }
 });
 
-// confirmModal opens a confirm card that starts on Cancel. With `typed`, the
-// confirm button stays disabled until the operator types that text.
-function confirmModal({ title, body, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false, typed = '', wide = false }) {
-  return new Promise((resolve) => {
-    const id = 'cf' + Math.random().toString(36).slice(2, 7);
-    openModal(html`<div class="modal-back" data-modal-back><div class="modal${wide ? ' modal-wide' : ''}" role="alertdialog" aria-modal="true" aria-labelledby="${id}-t">
-      <h2 id="${id}-t">${title}</h2>${body}
-      ${typed ? html`<label class="lat-label" for="${id}-in">Type ${typed} to enable ${confirmLabel.split(' ')[0]}</label><input class="lat-input" id="${id}-in" autocomplete="off" spellcheck="false" data-typed="${typed}">` : ''}
-      <div class="row end"><button type="button" class="lat-btn" data-modal-close data-modal-initial>${cancelLabel}</button>
-      <button type="button" class="lat-btn ${danger ? 'lat-btn--danger' : 'lat-btn--primary'}" data-confirm ${typed ? 'disabled' : ''}>${confirmLabel}</button></div></div></div>`);
-    const root = document.getElementById('modal-root');
-    const ok = root.querySelector('[data-confirm]');
-    const input = root.querySelector('[data-typed]');
-    if (input) input.addEventListener('input', () => { ok.disabled = input.value.trim() !== typed; });
-    const done = (v) => { root.removeEventListener('click', onClick, true); closeModal(); resolve(v); };
-    const onClick = (ev) => {
-      if (ev.target.closest('[data-confirm]') && !ok.disabled) { ev.stopPropagation(); done(true); }
-      else if (ev.target.closest('[data-modal-close]') || ev.target.matches('[data-modal-back]')) { ev.stopPropagation(); done(false); }
-    };
-    root.addEventListener('click', onClick, true);
-  });
-}
-
-function toast(msg, kind = 'ok') {
-  const box = document.getElementById('toast');
-  const el = document.createElement('div');
-  el.innerHTML = String(banner(kind === 'bad' ? 'bad' : kind === 'warn' ? 'warn' : 'ok', html`${msg}`));
-  const node = el.firstChild;
-  box.appendChild(node);
-  setTimeout(() => node.remove(), kind === 'bad' ? 9000 : 4500);
-}
-
-// ---- clock + poll ---------------------------------------------------------------
-function clockText() {
-  const now = new Date(Date.now() + clockOffset).toISOString();
-  const bucket = new Date(Math.floor((Date.now() + clockOffset) / 300000) * 300000).toISOString();
-  return `${hms(now)} · bucket ${hm(bucket)}`;
-}
-setInterval(() => {
-  const el = document.getElementById('hdr-clock');
-  if (el && ctx.state) el.textContent = clockText();
-}, 1000);
-
-function editing() {
+// ---- polling --------------------------------------------------------------------
+function typing() {
   const a = document.activeElement;
-  const page = document.getElementById('page');
-  return a && page && page.contains(a) && a !== page && ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'A', 'TR'].includes(a.tagName);
+  return a && document.getElementById('app').contains(a) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(a.tagName);
 }
-let tick = 0;
 setInterval(async () => {
-  tick++;
-  if (document.hidden) return;
+  if (document.hidden || !ctx.screen) return;
   polling.active = true;
   try {
-    await loadState();
-    renderShell();
-    const every = screen.pollMs ? Math.max(1, Math.round(screen.pollMs / 2000)) : 0;
-    if (every && tick % every === 0 && !editing() && !document.getElementById('modal-root').firstChild) {
-      await loadScreen();
-      renderPage();
-    }
+    await loadHome();
+    if (ctx.screen.poll && !typing() && !current) await loadScreen();
+    render();
   } finally { polling.active = false; }
-}, 2000);
+}, 4000);
 
 navigate();
-export { appActions };
+export { esc, plain };

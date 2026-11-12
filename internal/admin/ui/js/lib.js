@@ -1,6 +1,7 @@
-// Shared helpers for the console: safe HTML templating, formatting, the
-// admin API client. No framework; screens return HTML strings built with
-// the `html` tag, which escapes every interpolation unless it is `raw()`.
+// Shared helpers for the console: safe HTML templating, the admin API
+// client, and the words the console uses for times and counts. No
+// framework; screens return HTML built with the `html` tag, which escapes
+// every interpolation unless it is `raw()`.
 
 class Safe { constructor(s) { this.s = s; } toString() { return this.s; } }
 export const raw = (s) => new Safe(String(s));
@@ -21,55 +22,120 @@ export function html(strings, ...vals) {
 }
 export const join = (list, sep = '') => raw(list.map(part).join(sep));
 
-// ---- formatting ---------------------------------------------------------
+// ---- words ----------------------------------------------------------------
 const nf = new Intl.NumberFormat('en-US');
-export const int = (n) => nf.format(Math.round(n ?? 0));
-export const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + int(Math.abs(n));
-export function pct(n, d = 1) { return (n ?? 0).toFixed(d) + ' %'; }
-export function bytes(n) {
-  n = n ?? 0;
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return (i === 0 ? int(n) : n >= 100 ? n.toFixed(0) : n.toFixed(1)) + ' ' + u[i];
-}
-export function ms(n) {
-  n = n ?? 0;
-  if (n >= 10000) return (n / 1000).toFixed(1) + ' s';
-  if (n >= 100) return int(n) + ' ms';
-  if (n >= 10) return n.toFixed(0) + ' ms';
-  return n.toFixed(1) + ' ms';
-}
-const p2 = (n) => String(n).padStart(2, '0');
-export function localTime(iso) { if (!iso) return '—'; return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(iso)); }
-export function scheduledMessage(p) {
-  const what = p.topologyChanges ? 'A topology change' : 'A change';
-  return html`<b>${what} is scheduled for <span title="${p.at}">${localTime(p.at)}</span>.</b> Changes are locked until then.`;
-}
-export function hms(iso) { if (!iso) return '—'; const d = new Date(iso); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}Z`; }
-export function hm(iso) { if (!iso) return '—'; const d = new Date(iso); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`; }
-export function hmsms(iso) { const d = new Date(iso); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}.${String(d.getUTCMilliseconds()).padStart(3, '0')}`; }
-export function dateTime(iso) { if (!iso) return '—'; const d = new Date(iso); return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())} ${hm(iso)}Z`; }
-export function ago(iso, now = Date.now()) {
-  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 90) return s + ' s ago';
-  if (s < 5400) return Math.round(s / 60) + ' min ago';
-  return Math.round(s / 3600) + ' h ago';
-}
-export const plural = (n, one, many) => `${int(n)} ${n === 1 ? one : many || one + 's'}`;
+export const num = (n) => nf.format(Math.round(n ?? 0));
+export const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many || one + 's'}`;
+export const list = (a) => (a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+export const lower1 = (t) => t.charAt(0).toLowerCase() + t.slice(1);
 
-// ---- small components ----------------------------------------------------
-export const badge = (text, kind = '') => html`<span class="lat-badge${kind ? ' lat-badge--' + kind : ''}">${text}</span>`;
-export function tile(k, v, d, extra = '') {
-  return html`<div class="tile ${extra}"><div class="k">${k}</div><div class="v">${v}</div>${d ? html`<div class="d">${d}</div>` : ''}</div>`;
+const clock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+const clockSec = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const day = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+const longDay = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// timeText is a moment in the viewer's local time: "2:35 PM" today,
+// "12 Nov, 2:35 PM" on any other day.
+export function timeText(iso, now = new Date()) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return sameDay(d, now) ? clock.format(d) : `${day.format(d)}, ${clock.format(d)}`;
 }
-export function banner(kind, body, action = '') {
-  return html`<div class="lat-banner lat-banner--${kind}" role="${kind === 'bad' ? 'alert' : 'status'}">${action}${body}</div>`;
+export const timeSeconds = (iso) => clockSec.format(new Date(iso));
+export const dateText = (iso) => longDay.format(new Date(iso));
+
+// ago says how long ago something happened, the way a person would.
+export function ago(iso, now = new Date()) {
+  const d = new Date(iso);
+  const s = Math.max(0, Math.round((now.getTime() - d.getTime()) / 1000));
+  if (s < 45) return 'a moment ago';
+  if (s < 90) return '1 minute ago';
+  if (s < 3600) return `${Math.round(s / 60)} minutes ago`;
+  if (s < 5400) return '1 hour ago';
+  if (s < 86400) return `${Math.round(s / 3600)} hours ago`;
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  if (days <= 1) return 'yesterday';
+  return `${days} days ago`;
 }
-export function btn(label, act, arg = '', cls = '', extra = '') {
-  return html`<button type="button" class="lat-btn ${cls}" data-act="${act}" data-arg="${arg}" ${raw(extra)}>${label}</button>`;
+
+// rich turns a sentence from the simulator into HTML. The simulator marks
+// bold with **two stars** and a moment with {{time:...}}, which is shown in
+// the viewer's local time. Everything else is escaped.
+export function rich(text) {
+  return raw(esc(text)
+    .replace(/\{\{time:([^}]+)\}\}/g, (_, iso) => esc(timeText(iso)))
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>'));
 }
-export const familyBehaviourLabel = { data: 'data', empty: 'empty', 'invalid-argument': 'invalid arg', 'not-supported': 'not supported' };
+// plain is the same sentence without markup, for dialogs' titles and labels.
+export const plain = (text) => String(text ?? '').replace(/\{\{time:([^}]+)\}\}/g, (_, iso) => timeText(iso)).replace(/\*\*([^*]+)\*\*/g, '$1');
+
+// "Later today": the next five-minute mark, the two after it, then the next
+// half hour and 30, 60 and 120 minutes after that. Today only.
+export function laterMarks(now = new Date()) {
+  const t = now.getTime(), five = 300000, half = 1800000;
+  const first = Math.ceil((t + 60000) / five) * five;
+  const h = Math.ceil((first + 11 * 60000) / half) * half;
+  const marks = [first, first + five, first + 2 * five, h, h + half, h + 2 * half, h + 4 * half];
+  return marks.map((m) => new Date(m)).filter((d) => sameDay(d, now));
+}
+// endOfToday is the last moment of the viewer's day.
+export function endOfToday(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+}
+export function today(now = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
+
+// newPassword makes a password nobody has to think up: three groups of
+// letters and digits that are hard to mistake for one another.
+export function newPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  const pick = new Uint32Array(12);
+  crypto.getRandomValues(pick);
+  const chars = [...pick].map((n) => alphabet[n % alphabet.length]);
+  return `Sim-${chars.slice(0, 4).join('')}-${chars.slice(4, 8).join('')}-${chars.slice(8).join('')}`;
+}
+
+// ---- small building blocks ---------------------------------------------------
+export const badge = (kind, text) => html`<span class="lat-badge${kind ? ' lat-badge--' + kind : ''}">${text}</span>`;
+export const btn = (label, act, cls = '', data = {}) => html`<button type="button" class="lat-btn ${cls}" data-act="${act}" ${attrs(data)}>${label}</button>`;
+export const link = (label, href, cls = '') => html`<a class="${cls}" href="#${href}">${label}</a>`;
+export const lbtn = (label, href, cls = '') => html`<a class="lat-btn ${cls}" href="#${href}">${label}</a>`;
+export const card = (title, body, aside = '') => html`<section class="lat-card">${title ? html`<div class="m-card-h"><h2>${title}</h2>${aside ? html`<span class="aside">${aside}</span>` : ''}</div>` : ''}${body}</section>`;
+export const dot = (kind) => html`<span class="m-dot ${kind}" style="display:inline-block"></span>`;
+function attrs(data) {
+  return raw(Object.entries(data).filter(([, v]) => v !== false && v !== undefined && v !== null).map(([k, v]) => (v === true ? k : `${k === 'disabled' || k.startsWith('aria-') ? k : 'data-' + k}="${esc(v)}"`)).join(' '));
+}
+
+// table draws a list that turns into stacked cards at phone width. cols:
+// [{h, k, cls}], rows: objects keyed by k, with _cls for the row.
+export function table(cols, rows) {
+  return html`<table class="lat-table resp"><thead><tr>${cols.map((c) => html`<th class="${c.cls || ''}">${c.h}</th>`)}</tr></thead>
+    <tbody>${rows.map((r) => html`<tr class="${r._cls || ''}">${cols.map((c, i) => html`<td class="${c.cls || ''} ${i === 0 ? 'main' : ''}" data-l="${c.h}">${r[c.k] ?? ''}</td>`)}</tr>`)}</tbody></table>`;
+}
+
+// fit is how many rows of a list fit the window: the same number every
+// time at one window size, five on a phone.
+export function fit(offset, rowH = 44) {
+  if (window.innerWidth < 720) return 5;
+  return Math.max(5, Math.min(16, Math.floor((window.innerHeight - offset) / rowH)));
+}
+
+// pager: "1 to 12 of 100", Previous, Next. pageOf returns the rows of the
+// page a list is on. Both keep the page in ctx.page[key].
+export function pager(ctx, key, total, per) {
+  const pages = Math.ceil(total / per);
+  if (pages <= 1) return '';
+  const pg = Math.min(ctx.page[key] || 0, pages - 1);
+  return html`<div class="m-pager"><span>${pg * per + 1} to ${Math.min(total, (pg + 1) * per)} of ${num(total)}</span>${btn('Previous', 'page', '', { k: key, d: -1, disabled: pg === 0 })}${btn('Next', 'page', '', { k: key, d: 1, disabled: pg >= pages - 1 })}</div>`;
+}
+export function pageOf(ctx, key, rows, per) {
+  const pages = Math.max(1, Math.ceil(rows.length / per));
+  ctx.page[key] = Math.min(Math.max(0, ctx.page[key] || 0), pages - 1);
+  return rows.slice(ctx.page[key] * per, ctx.page[key] * per + per);
+}
 
 // ---- admin API ------------------------------------------------------------
 export class ApiError extends Error {
@@ -87,13 +153,11 @@ export async function api(path, opts = {}) {
     init.headers['Content-Type'] = 'application/json';
     init.body = '{}';
   }
-  const res = await fetch('/api' + path, init);
+  let res;
+  try { res = await fetch('/api' + path, init); } catch (e) { throw new ApiError(0, 'The console cannot reach the simulator. Check that it is still running, then try again.'); }
   let data = null;
   try { data = await res.json(); } catch (e) { /* empty body */ }
   if (res.status === 401) { location.assign('/login?expired=1'); throw new ApiError(401, 'Please sign in again.'); }
-  if (!res.ok) throw new ApiError(res.status, (data && data.error) || res.statusText);
+  if (!res.ok) throw new ApiError(res.status, (data && data.error) || 'The simulator could not do that. Try again.');
   return data;
 }
-
-// deep clone of plain JSON
-export const clone = (v) => JSON.parse(JSON.stringify(v));

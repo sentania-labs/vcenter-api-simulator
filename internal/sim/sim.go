@@ -72,6 +72,8 @@ type Options struct {
 	// Faults and Latency are the scenario's failure and latency knobs.
 	Faults  []scenario.Fault
 	Latency scenario.Latency
+	// Conditions are the console's slowness and faults.
+	Conditions []scenario.Condition
 }
 
 // ClusterRefs are the MoRefs vcsim assigned to one cluster's objects.
@@ -148,6 +150,7 @@ func New(opts Options) (*Simulator, error) {
 		s.Env.Now = opts.Now
 	}
 	s.Env.Knobs = vsanhealth.NewKnobs(opts.Faults, opts.Latency, s.Env.Now)
+	s.Env.Knobs.SetConditions(opts.Conditions)
 
 	m.Service.RegisterEndpoints = true
 	m.Service.Listen = &url.URL{Host: "127.0.0.1:0"}
@@ -842,6 +845,33 @@ func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
 	h.rest.mu.Unlock()
 	h.license.revoke(func(user string) bool { return affected["*"] || affected[user] })
 	return nil
+}
+
+// SessionUser names the account a request is signed in as: the user of its
+// SOAP session cookie, or of its REST session token. It is empty for a
+// request that carries neither, or whose session has ended.
+func (s *Simulator) SessionUser(r *http.Request) string {
+	h := s.Handler.(*handler)
+	if token := r.Header.Get("vmware-api-session-id"); token != "" {
+		h.rest.mu.Lock()
+		session, ok := h.rest.tokens[token]
+		h.rest.mu.Unlock()
+		if ok {
+			return session.user
+		}
+	}
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	if err != nil {
+		return ""
+	}
+	probe := &simulator.Session{Map: h.registry, Registry: simulator.NewRegistry()}
+	view := probe.Get(h.registry.SessionManager().Reference()).(*simulator.SessionManager)
+	for _, session := range view.SessionList {
+		if session.Key == cookie.Value {
+			return session.UserName
+		}
+	}
+	return ""
 }
 
 // SetSessionTimeout changes the idle timeout for both existing and new sessions.

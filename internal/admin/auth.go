@@ -14,16 +14,23 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/sentania/vcenter-api-simulator/internal/control"
 )
 
 var errClaimed = errors.New("console already claimed")
 var errCredentials = errors.New("incorrect password")
 var errRateLimited = errors.New("too many attempts")
+var errShort = errors.New("password too short")
 
 const (
 	idleTimeout     = 30 * time.Minute
 	sessionLifetime = 12 * time.Hour
 	pollHeader      = "X-Console-Poll"
+	sessionCookie   = "vcsim_console"
+	// minPassword is the shortest console password a person may choose. A
+	// password supplied by the deployment is taken as it is.
+	minPassword = 8
 )
 
 type consoleSession struct{ started, active time.Time }
@@ -37,6 +44,9 @@ type consoleAuth struct {
 	managed  bool
 	failures []time.Time
 	now      func() time.Time
+	// accountNeeded reports whether first-run set-up still has a second
+	// step: choosing the password tools sign in with.
+	accountNeeded func() bool
 }
 
 func newConsoleAuth(dir, seed string) (*consoleAuth, error) {
@@ -79,6 +89,48 @@ func (a *consoleAuth) replace(password string) error {
 		return err
 	}
 	return os.Rename(f.Name(), a.path)
+}
+
+// change replaces the console password with next once current is shown to
+// be right. The session that asked stays signed in; every other session
+// ends.
+func (a *consoleAuth) change(current, next, keep string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.managed {
+		return errors.New("the console password is set by the deployment")
+	}
+	if len([]rune(next)) < minPassword {
+		return errShort
+	}
+	now := a.now()
+	recent := a.failures[:0]
+	for _, t := range a.failures {
+		if now.Sub(t) < time.Minute {
+			recent = append(recent, t)
+		}
+	}
+	a.failures = recent
+	if len(recent) >= 5 {
+		return errRateLimited
+	}
+	hash, err := os.ReadFile(a.path)
+	if err != nil {
+		return err
+	}
+	if bcrypt.CompareHashAndPassword(hash, []byte(current)) != nil {
+		a.failures = append(a.failures, now)
+		return control.ErrWrongConsolePassword
+	}
+	if err := a.replace(next); err != nil {
+		return err
+	}
+	for token := range a.sessions {
+		if token != keep {
+			delete(a.sessions, token)
+		}
+	}
+	return nil
 }
 
 func (a *consoleAuth) claimed() (bool, error) {
@@ -192,11 +244,12 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 				return
 			}
 			authenticated := false
-			if cookie, err := r.Cookie("vcsim_console"); err == nil {
+			if cookie, err := r.Cookie(sessionCookie); err == nil {
 				authenticated = a.valid(cookie.Value, activity)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]bool{"claimed": claimed, "authenticated": authenticated, "managed": a.managed})
+			json.NewEncoder(w).Encode(map[string]bool{"claimed": claimed, "authenticated": authenticated, "managed": a.managed,
+				"accountNeeded": a.accountNeeded != nil && a.accountNeeded()})
 			return
 		}
 		if (path == "/api/auth/claim" || path == "/api/auth/login") && r.Method == http.MethodPost {
@@ -208,11 +261,15 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 				return
 			}
 			if path == "/api/auth/claim" {
-				if err := a.claim(input.Password); err != nil {
+				err := errShort
+				if len([]rune(input.Password)) >= minPassword {
+					err = a.claim(input.Password)
+				}
+				if err != nil {
 					status := http.StatusInternalServerError
 					if errors.Is(err, errClaimed) {
 						status = http.StatusConflict
-					} else if errors.Is(err, errCredentials) || errors.Is(err, bcrypt.ErrPasswordTooLong) {
+					} else if errors.Is(err, errCredentials) || errors.Is(err, errShort) || errors.Is(err, bcrypt.ErrPasswordTooLong) {
 						status = http.StatusBadRequest
 					}
 					http.Error(w, "unable to claim console", status)
@@ -228,13 +285,13 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 				http.Error(w, "unable to sign in", status)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: "vcsim_console", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil || forceSecure, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil || forceSecure, SameSite: http.SameSiteStrictMode})
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		cookie, err := r.Cookie("vcsim_console")
+		cookie, err := r.Cookie(sessionCookie)
 		authed := err == nil && a.valid(cookie.Value, activity)
-		if r.Method == http.MethodGet && (path == "/auth.js" || path == "/auth.css" || path == "/lattice/tokens.css" || path == "/lattice/lattice.css") {
+		if r.Method == http.MethodGet && (path == "/auth.js" || path == "/app.css" || path == "/lattice/tokens.css" || path == "/lattice/lattice.css") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -278,7 +335,7 @@ func (a *consoleAuth) protectConsole(next http.Handler, secureProxy ...bool) htt
 		}
 		if path == "/api/auth/logout" && r.Method == http.MethodPost {
 			a.logout(cookie.Value)
-			http.SetCookie(w, &http.Cookie{Name: "vcsim_console", Path: "/", HttpOnly: true, Secure: r.TLS != nil || forceSecure, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+			http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", HttpOnly: true, Secure: r.TLS != nil || forceSecure, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

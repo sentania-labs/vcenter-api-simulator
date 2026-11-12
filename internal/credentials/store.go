@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,12 +18,31 @@ import (
 type User struct {
 	Name string `json:"name"`
 	Role string `json:"role"`
+	// Origin says who chose the password: "setup" (the console's first-run
+	// step), "console" (the Users screen), or "" (the deployment).
+	Origin string `json:"origin,omitempty"`
 }
 type entry struct {
-	Hash  string `json:"hash,omitempty"`
-	Role  string `json:"role"`
-	plain string
+	Hash   string `json:"hash,omitempty"`
+	Role   string `json:"role"`
+	Origin string `json:"origin,omitempty"`
+	plain  string
 }
+
+// MinPassword is the shortest password the console accepts for a user.
+const MinPassword = 8
+
+// Before the console's first-run set-up existed, a simulator with no
+// supplied account accepted one published password for
+// administrator@vsphere.local, and saved it (hashed) the first time the
+// console changed any user. That password is retired: a saved account that
+// still has it is dropped when the file is read, so that set-up asks for a
+// new one. The string is kept only to recognise it.
+const (
+	retiredUser     = "administrator@vsphere.local"
+	retiredPassword = "VMware123!VMware123!"
+)
+
 type Snapshot struct {
 	AnyLogin bool `json:"anyLogin"`
 	users    map[string]entry
@@ -55,9 +75,16 @@ func New(dir, source string, baseline map[string]string, any bool, readonly []st
 		if err = json.Unmarshal(b, &state); err != nil {
 			return nil, fmt.Errorf("credentials: invalid saved users: %w", err)
 		}
-		if state.Source == source {
+		// Saved users win while the scenario file is the one they were saved
+		// under. When the deployment supplies no users at all the accounts
+		// are the console's own, and they survive an edit of the file.
+		if state.Source == source || (len(baseline) == 0 && !any) {
 			if state.Users == nil {
 				return nil, errors.New("credentials: invalid saved users")
+			}
+			if e, ok := state.Users[retiredUser]; ok && e.Hash != "" && bcrypt.CompareHashAndPassword([]byte(e.Hash), []byte(retiredPassword)) == nil {
+				delete(state.Users, retiredUser)
+				log.Printf("credentials: %s still had the retired default password, so it was removed; choose a new password in the console, or supply one with -username and -password", retiredUser)
 			}
 			s.current = Snapshot{AnyLogin: state.AnyLogin, users: state.Users}
 		}
@@ -105,7 +132,7 @@ func (s Snapshot) Copy() Snapshot { return clone(s) }
 func (s Snapshot) Users() []User {
 	out := make([]User, 0, len(s.users))
 	for n, e := range s.users {
-		out = append(out, User{Name: n, Role: e.Role})
+		out = append(out, User{Name: n, Role: e.Role, Origin: e.Origin})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -121,15 +148,46 @@ func (s *Snapshot) Put(name, password, role string) error {
 	if err != nil {
 		return errors.New("password must be at most 72 bytes")
 	}
-	s.users[name] = entry{Hash: string(hash), Role: role}
+	s.users[name] = entry{Hash: string(hash), Role: role, Origin: s.users[name].Origin}
 	return nil
+}
+
+// Has reports whether a user exists.
+func (s Snapshot) Has(name string) bool { _, ok := s.users[name]; return ok }
+
+// Role returns a user's role, or "".
+func (s Snapshot) Role(name string) string { return s.users[name].Role }
+
+// Len is the number of users.
+func (s Snapshot) Len() int { return len(s.users) }
+
+// SetRole changes what a user may do and keeps its password.
+func (s *Snapshot) SetRole(name, role string) error {
+	e, ok := s.users[name]
+	if !ok {
+		return errors.New("user not found")
+	}
+	if role != "administrator" && role != "read-only" {
+		return errors.New("role must be administrator or read-only")
+	}
+	e.Role = role
+	s.users[name] = e
+	return nil
+}
+
+// SetOrigin records who chose a user's password.
+func (s *Snapshot) SetOrigin(name, origin string) {
+	if e, ok := s.users[name]; ok {
+		e.Origin = origin
+		s.users[name] = e
+	}
 }
 func (s *Snapshot) Delete(name string) error {
 	if _, ok := s.users[name]; !ok {
 		return errors.New("user not found")
 	}
-	if !s.AnyLogin && len(s.users) == 1 {
-		return errors.New("Keep at least one vCenter user, or allow any username and password first.")
+	if len(s.users) == 1 {
+		return errors.New("This is the only user. Add another user first, then remove this one.")
 	}
 	delete(s.users, name)
 	return nil

@@ -1,3 +1,25 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · vCenter API Simulator</title><link rel="stylesheet" href="/lattice/tokens.css"><link rel="stylesheet" href="/lattice/lattice.css"><link rel="stylesheet" href="/auth.css"><script type="module" src="/auth.js"></script></head>
-<body><main class="auth-shell"><section class="lat-card auth-card"><p class="eyebrow">vCenter API Simulator</p><h1 id="title">Sign in</h1><p id="intro">Enter this console’s password.</p><form id="form"><label class="lat-label" for="password">Console password</label><input class="lat-input" id="password" name="password" type="password" autocomplete="current-password" required autofocus><div id="confirm-row" hidden><label class="lat-label" for="confirm">Confirm password</label><input class="lat-input" id="confirm" type="password" autocomplete="new-password"></div><p id="error" role="alert" hidden></p><button class="lat-btn lat-btn--primary" id="submit" type="submit">Sign in</button></form></section></main></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · vCenter Simulator</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/lattice/tokens.css">
+<link rel="stylesheet" href="/lattice/lattice.css">
+<link rel="stylesheet" href="/app.css">
+<script type="module" src="/auth.js"></script>
+</head>
+<body>
+<main class="m-auth"><form class="lat-card" id="form" novalidate>
+  <div><p class="m-small" id="step">vCenter Simulator</p><h1 id="title">Sign in to the console</h1></div>
+  <p class="m-muted" id="intro" hidden></p>
+  <div class="lat-banner lat-banner--ok" id="notice" role="status" hidden></div>
+  <div class="m-field" id="row-pw"><label for="password">Console password</label><input class="lat-input" id="password" name="password" type="password" autocomplete="current-password" autofocus><span class="lat-hint" id="hint-pw" hidden>At least 8 characters.</span><span class="lat-hint lat-hint--bad" id="err-pw" role="alert" hidden></span></div>
+  <div class="m-field" id="row-pw2" hidden><label for="confirm">Type it again</label><input class="lat-input" id="confirm" type="password" autocomplete="new-password"><span class="lat-hint lat-hint--bad" id="err-pw2" role="alert" hidden></span></div>
+  <div class="m-go"><button class="lat-btn lat-btn--primary" id="submit" type="submit">Sign in</button></div>
+  <p class="m-small" id="forgot">Forgotten it? For safety it cannot be reset from this page. It is reset on the machine the simulator runs on, by whoever installed it; the setup guide's "Reset the console password" step says how.</p>
+</form></main>
+<noscript>The console needs JavaScript.</noscript>
+</body>
+</html>

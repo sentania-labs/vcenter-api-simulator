@@ -1,5 +1,7 @@
 # UX Requirements — Lattice Operator Panel
 
+> **Superseded for the console's screens (2026-11-12).** The console was redesigned around the jobs a person does with it and rebuilt from an owner-approved design: eight tabs (Home, Clusters, Storage, Versions, Users, Security, Slowness and faults, Requests), one job per screen, no shared draft. The standing test for any console change is the walkthrough: a person who has never seen the code does each job, start to finish, in the running app, reading what is on the screen once, without opening collapsed sections, long scrolling, or guessing a value, and can tell afterwards that it worked. The sections proposed below describe the first console and are kept as the record of what it was asked to do. [docs/console/README.md](console/README.md) shows the current screens.
+
 ## Intent
 Operator controls a *single simulated vCenter service* and many clusters without manually editing YAML. A single instance must be intelligible at 1 cluster and 100+ clusters. This is an engineering test instrument, not a general vSphere management UI.
 

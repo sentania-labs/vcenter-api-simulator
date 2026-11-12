@@ -6,8 +6,9 @@ The synthetic [`storage.yaml`](../examples/scenarios/storage.yaml) scenario
 provides shared NFS and iSCSI VMFS datastores, an inaccessible NFS mount, an
 all-paths-down LUN on one host and a near-full datastore. Run the govc smoke
 with `tools/smoke/smoke.sh --scenario examples/scenarios/storage.yaml --storage`.
-For PowerCLI, start the simulator with that scenario and run
-`tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Storage`. Both check
+For PowerCLI, start the simulator with that scenario and an account
+(`VCSIM_USERNAME` and `VCSIM_PASSWORD`; it has no default password) and run
+`tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Storage -User <username> -Password <password>`. Both check
 datastore and host storage reads and the host fault; the PowerCLI smoke also
 uses `Get-Datastore`, `Get-ScsiLun`, and `Get-IScsiHbaTarget`. CI runs both
 client paths. These checks do not establish that a real storage system or an

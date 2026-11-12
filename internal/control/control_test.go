@@ -2,18 +2,16 @@ package control
 
 import (
 	"encoding/json"
-	"encoding/xml"
-	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,12 +33,43 @@ func tenClusters(t *testing.T) *scenario.Scenario {
 	return s
 }
 
-func newCtl(t *testing.T, sc *scenario.Scenario, dir, hash string) *Controller {
+// small is one four-host cluster with one user, which builds quickly.
+func small(t *testing.T) *scenario.Scenario {
+	t.Helper()
+	s := scenario.Phase1("small")
+	s.Auth.Users = []scenario.User{{Name: "administrator@vsphere.local", Password: "first-password"}}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// clock is a clock the test moves by hand.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *clock) now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
+func (c *clock) add(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
+func newCtlAt(t *testing.T, sc *scenario.Scenario, dir, hash string, now func() time.Time) *Controller {
 	t.Helper()
 	if dir == "" {
 		dir = t.TempDir()
 	}
-	c, err := New(Options{Scenario: sc, SourceHash: hash, DataDir: dir, Endpoint: "sim.test", Version: "test"})
+	cert, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "tls"), []string{"sim.test", "127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cert.EnableConsole(dir); err != nil {
+		t.Fatal(err)
+	}
+	c, err := New(Options{Scenario: sc, SourceHash: hash, DataDir: dir, Endpoint: "sim.test", Version: "test", Certificate: cert, Now: now, APIAddrs: []string{"127.0.0.1:8443"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,43 +77,115 @@ func newCtl(t *testing.T, sc *scenario.Scenario, dir, hash string) *Controller {
 	return c
 }
 
-// editable returns the applied scenario as the console edits it.
-func editable(t *testing.T, c *Controller) *scenario.Scenario {
-	t.Helper()
-	return clone(Strip(c.applied().sc))
+func newCtl(t *testing.T, sc *scenario.Scenario, dir, hash string) *Controller {
+	return newCtlAt(t, sc, dir, hash, nil)
 }
 
-func put(t *testing.T, c *Controller, sc *scenario.Scenario) DraftView {
-	t.Helper()
-	b, err := json.Marshal(Strip(sc))
+// A change that builds a new vCenter keeps the replaced one answering for a
+// while. Closing the controller inside that time still removes everything
+// both of them wrote to the temporary directory.
+func TestCloseLeavesNoTemporaryFilesBehind(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	c := newCtl(t, small(t), "", "t")
+	must(t, c, "add-hosts", map[string]string{"cluster": "dc-01/cluster-01"}, map[string]any{"n": 1})
+	during, err := os.ReadDir(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := c.SetDraft(b, "")
+	if len(during) == 0 {
+		t.Fatal("the simulated vCenter wrote nothing to the temporary directory, so this test proves nothing")
+	}
+	c.Close()
+	left, err := os.ReadDir(tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return v
-}
-
-func setHosts(sc *scenario.Scenario, key string, n int) {
-	for i := range sc.Clusters {
-		if sc.Clusters[i].Key == key {
-			sc.Clusters[i].Hosts = n
-			return
-		}
+	for _, e := range left {
+		t.Errorf("left behind after Close: %s", e.Name())
 	}
-	sc.Clusters = append(sc.Clusters, scenario.ClusterOverride{Key: key, ClusterSpec: scenario.ClusterSpec{Hosts: n}})
 }
 
-func nodeUUIDs(c *Controller) map[string]string {
+func params(t *testing.T, v map[string]any) json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// do presses a task's button with its form's own values, changed by set.
+func do(t *testing.T, c *Controller, kind string, q map[string]string, set map[string]any) *RunResult {
+	t.Helper()
+	form, err := c.TaskForm(kind, q, Caller{Host: "console.test:9090"})
+	if err != nil {
+		t.Fatalf("%s form: %v", kind, err)
+	}
+	for k, v := range set {
+		form.Values[k] = v
+	}
+	r, err := c.TaskRun(kind, params(t, form.Values), nil, true, Caller{Host: "console.test:9090"})
+	if err != nil {
+		t.Fatalf("%s: %v", kind, err)
+	}
+	return r
+}
+
+// must is do for a change that is expected to be made.
+func must(t *testing.T, c *Controller, kind string, q map[string]string, set map[string]any) *Outcome {
+	t.Helper()
+	r := do(t, c, kind, q, set)
+	if r.Outcome == nil {
+		t.Fatalf("%s was not made: errors %v, failed %v", kind, r.Errors, r.Failed)
+	}
+	return r.Outcome
+}
+
+func preview(t *testing.T, c *Controller, kind string, q map[string]string, set map[string]any) string {
+	t.Helper()
+	form, err := c.TaskForm(kind, q, Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range set {
+		form.Values[k] = v
+	}
+	p, err := c.TaskPreview(kind, params(t, form.Values), Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, it := range p.Sum {
+		lines = append(lines, it.T)
+	}
+	return strings.Join(lines, "\n") + p.Idle
+}
+
+func identities(c *Controller) map[string]string {
 	out := map[string]string{}
-	for _, cl := range c.applied().topo.Clusters() {
-		for _, h := range cl.Hosts {
-			out[h.Key] = h.NodeUUID
+	for _, r := range c.applied().sim.Clusters {
+		out[r.Cluster.Key] = r.Ref.Value + " " + r.Cluster.VsanUUID
+		for i, h := range r.Cluster.Hosts {
+			out[h.Key] = r.Hosts[i].Value + " " + h.NodeUUID
 		}
 	}
 	return out
+}
+
+func history(c *Controller) string {
+	var lines []string
+	for _, e := range c.History() {
+		lines = append(lines, e.Text)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func wantContains(t *testing.T, got, want string) {
+	t.Helper()
+	if !strings.Contains(got, want) {
+		t.Errorf("want %q in:\n%s", want, got)
+	}
 }
 
 // Project's analytic counts must equal what the Performance Service
@@ -117,502 +218,364 @@ func TestProjectionMatchesEntities(t *testing.T) {
 	if proj.Clusters != 10 || proj.All.Kinds != len(c.cat.Families) || proj.All.Calls != proj.All.Kinds*10 {
 		t.Errorf("unexpected totals: %+v", proj.All)
 	}
-	if proj.Dash.Kinds >= proj.All.Kinds || proj.Dash.Entities >= proj.All.Entities {
-		t.Errorf("dashboard scope should be smaller: %+v vs %+v", proj.Dash, proj.All)
-	}
 }
 
-func TestDraftApplyKeepsIdentities(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	before := nodeUUIDs(c)
-	oldSim := c.applied().sim
-
-	if v := c.DraftState(); v.Pending.Exists {
-		t.Fatal("a fresh controller has a pending draft")
-	}
-	sc := editable(t, c)
-	setHosts(sc, "dc-01/cluster-02", 10)
-	if v := put(t, c, sc); !v.Pending.Exists || v.Pending.Topology != 1 {
-		t.Fatalf("pending after edit: %+v", v.Pending)
-	}
-	rv, err := c.Review()
+// Every kind of vSAN performance data has one plain name of its own.
+func TestEveryFamilyHasAPlainName(t *testing.T) {
+	cat, err := catalog.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !rv.RebuildsVCenter || rv.Churn {
-		t.Errorf("a host addition rebuilds without churn: %+v", rv)
+	seen := map[string]string{}
+	for fam := range cat.Families {
+		name, ok := familyNames[fam]
+		if !ok {
+			t.Errorf("%s has no plain name", fam)
+			continue
+		}
+		if other, dup := seen[name]; dup {
+			t.Errorf("%s and %s share the name %q", fam, other, name)
+		}
+		seen[name] = fam
 	}
-	var hosts IdentityRow
-	for _, r := range rv.Identities {
-		if strings.HasPrefix(r.Label, "Host") {
-			hosts = r
+	for _, fam := range mainFamilies {
+		if _, ok := cat.Families[fam]; !ok {
+			t.Errorf("mainFamilies lists %s, which the catalog does not have", fam)
 		}
 	}
-	if hosts.Added != 4 || hosts.Removed != 0 || hosts.Kept != 80 {
-		t.Errorf("host identities: %+v", hosts)
+}
+
+// Adding clusters names them, says so beforehand, and leaves every existing
+// identity alone.
+func TestAddClusterNamesItAndKeepsIdentities(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	before := identities(c)
+	wantContains(t, preview(t, c, "add-cluster", nil, map[string]any{"count": 2}), "**2 clusters, cluster-02 to cluster-03**")
+	out := must(t, c, "add-cluster", nil, map[string]any{"count": 2, "hosts": 3, "vms": 2})
+	wantContains(t, out.Done, "2 clusters (cluster-02 to cluster-03) added to dc-01 with 3 hosts and 6 VMs each. They are live now.")
+	if len(out.Marks) != 2 || out.Marks[0].ID != "dc-01/cluster-02" || out.Marks[0].Tag != "New" {
+		t.Errorf("marks %+v", out.Marks)
 	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	r := c.applied()
-	if r.version != 2 || r.sim == oldSim {
-		t.Errorf("version %d, simulator replaced: %v", r.version, r.sim != oldSim)
-	}
-	after := nodeUUIDs(c)
-	for k, u := range before {
-		if after[k] != u {
-			t.Errorf("%s changed identity", k)
+	after := identities(c)
+	for key, id := range before {
+		if after[key] != id {
+			t.Errorf("%s changed identity: %q -> %q", key, id, after[key])
 		}
 	}
-	if len(after) != len(before)+4 {
-		t.Errorf("hosts %d -> %d, want +4", len(before), len(after))
+	if v := c.Clusters(); len(v.Rows) != 3 || v.Rows[2].Hosts != 3 || v.Rows[2].VMs != 6 {
+		t.Errorf("clusters %+v", v.Rows)
 	}
-	if v := c.DraftState(); v.Pending.Exists {
-		t.Error("draft survived the apply")
-	}
-	if tl := c.Timeline(); len(tl) < 2 || tl[0].Version != 2 {
-		t.Errorf("timeline: %+v", tl)
+	wantContains(t, history(c), "2 clusters (cluster-02 to cluster-03) added to dc-01")
+
+	// a new datacenter is named too
+	out = must(t, c, "add-cluster", nil, map[string]any{"dc": "new"})
+	wantContains(t, out.Done, "cluster-01 added to dc-02")
+	if _, err := c.Cluster("dc-02/cluster-01"); err != nil {
+		t.Error(err)
 	}
 }
 
-func TestTelemetryOnlyApplyKeepsTheVCenter(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	oldSim := c.applied().sim
-	sc := editable(t, c)
-	sc.Latency.PerfQuery = &scenario.Delay{FixedMs: 200, JitterMs: 20}
-	sc.Faults = []scenario.Fault{{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError}}
-	v := put(t, c, sc)
-	if v.Pending.Topology != 0 || v.Pending.Telemetry != 2 {
-		t.Fatalf("pending: %+v", v.Pending)
+func TestTaskErrorsArePlainAndChangeNothing(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	r := do(t, c, "add-cluster", nil, map[string]any{"hosts": 2, "vms": 500, "count": 0})
+	if r.Outcome != nil {
+		t.Fatal("an invalid change was made")
 	}
-	rv, _ := c.Review()
-	if rv.RebuildsVCenter || rv.SessionsDropped {
-		t.Errorf("telemetry-only review claims a rebuild: %+v", rv)
+	for field, want := range map[string]string{"hosts": "Enter a number of hosts from 3 to 64.", "vms": "Enter a number of VMs from 0 to 200.", "count": "Enter a number of clusters from 1 to 50."} {
+		if r.Errors[field] != want {
+			t.Errorf("%s: %q, want %q", field, r.Errors[field], want)
+		}
 	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
+	if len(c.Clusters().Rows) != 1 {
+		t.Error("the cluster list changed")
 	}
-	if c.applied().sim != oldSim {
-		t.Error("the vCenter was rebuilt for a telemetry-only change")
-	}
-	cl := c.applied().topo.Clusters()[0].Key
-	if c.applied().sim.Env.Knobs.FamilyFault("vsan-pnic-net", cl) == nil {
-		t.Error("fault rule not live after apply")
-	}
-	if d := c.applied().sim.Env.Knobs.SDKDelay(); d != nil {
-		t.Errorf("sdk delay %+v", d)
+	// a form box left empty is an error, not a zero
+	r = do(t, c, "add-cluster", nil, map[string]any{"vms": ""})
+	if r.Errors["vms"] == "" {
+		t.Error("an empty number was accepted")
 	}
 }
 
-func TestFailedCredentialApplyLeavesTelemetryUnchanged(t *testing.T) {
-	c := newCtl(t, scenario.Phase1("failed-credential-telemetry"), "", "t")
-	old := c.applied()
-	sc := editable(t, c)
-	sc.Latency.SDK = &scenario.Delay{FixedMs: 200}
-	sc.Faults = []scenario.Fault{{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError}}
-	put(t, c, sc)
-	if _, err := c.PutUser("test-reader", uuid.NewString(), "read-only"); err != nil {
-		t.Fatal(err)
+// Hosts are added at the end and removed by name; the names and identities
+// of the hosts that stay do not move, and a removed number is not reused.
+func TestAddAndRemoveHostsByName(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	key := "dc-01/cluster-01"
+	q := map[string]string{"cluster": key}
+	before := identities(c)
+	out := must(t, c, "add-hosts", q, map[string]any{"n": 2})
+	wantContains(t, out.Done, "cluster-01 now has 6 hosts.")
+	if len(out.Marks) != 2 || out.Marks[1].ID != key+"/esx06" {
+		t.Errorf("marks %+v", out.Marks)
 	}
-	// A directory at the destination makes credential persistence fail.
-	if err := os.Mkdir(filepath.Join(c.opts.DataDir, "vcenter-users.json"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Apply("now"); err == nil {
-		t.Fatal("expected credential persistence to fail")
-	}
-	if c.applied() != old || old.sim.Env.Knobs.SDKDelay() != nil {
-		t.Fatal("failed apply changed the running latency")
-	}
-	if old.sim.Env.Knobs.FamilyFault("vsan-pnic-net", old.topo.Clusters()[0].Key) != nil {
-		t.Fatal("failed apply changed the running fault rules")
-	}
-	if !newAPIClient(t, c).login(DefaultUsername, DefaultPassword) {
-		t.Fatal("failed apply changed credentials")
-	}
-}
-
-func TestCannotRemoveLastRequiredUser(t *testing.T) {
-	c := newCtl(t, scenario.Phase1("last-user"), "", "t")
-	if _, err := c.DeleteUser(DefaultUsername); err == nil || !strings.Contains(err.Error(), "Keep at least one vCenter user") {
-		t.Fatalf("last user removal: %v", err)
-	}
-	if c.DraftState().Pending.Exists {
-		t.Fatal("rejected removal created a draft")
-	}
-	if _, err := c.SetAnyLogin(true); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.DeleteUser(DefaultUsername); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.SetAnyLogin(false); err == nil || !strings.Contains(err.Error(), "Add a vCenter user") {
-		t.Fatalf("disabled any-login without users: %v", err)
-	}
-}
-
-func TestDeleteRegenerateResetSeed(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	before := nodeUUIDs(c)
-	telBefore := map[string]string{}
-	for _, cl := range c.applied().topo.Clusters() {
-		telBefore[cl.Key] = cl.TelemetrySeed
-	}
-	const del, regen, reset = "dc-01/cluster-05", "dc-01/cluster-06", "dc-01/cluster-07"
-	if _, err := c.DeleteCluster(del); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Regenerate(regen); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.ResetSeed(reset); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.DeleteCluster("dc-01/cluster-99"); err == nil {
-		t.Error("deleting an unknown cluster should fail")
-	}
-	rv, err := c.Review()
+	wantContains(t, preview(t, c, "remove-hosts", q, map[string]any{"pick": []string{"esx02", "esx05"}}), "Removes **esx02 and esx05**")
+	must(t, c, "remove-hosts", q, map[string]any{"pick": []string{"esx02", "esx05"}})
+	cl, err := c.Cluster(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !rv.Churn {
-		t.Error("delete and regenerate are identity changes")
+	var names []string
+	for _, h := range cl.Hosts {
+		names = append(names, h.Name)
 	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
+	if got := strings.Join(names, " "); got != "esx01 esx03 esx04 esx06" {
+		t.Fatalf("hosts %s", got)
 	}
-	after := nodeUUIDs(c)
-	for k, u := range before {
-		switch {
-		case strings.Contains(k, "/cluster-05/"):
-			if _, ok := after[k]; ok {
-				t.Errorf("%s survived the delete", k)
-			}
-		case strings.Contains(k, "/cluster-06/"):
-			if after[k] == u || after[k] == "" {
-				t.Errorf("%s kept its identity through Regenerate", k)
-			}
-		default:
-			if after[k] != u {
-				t.Errorf("%s changed identity (%s)", k, u)
-			}
+	after := identities(c)
+	for _, h := range []string{"esx01", "esx03", "esx04"} {
+		if before[key+"/"+h] != after[key+"/"+h] {
+			t.Errorf("%s changed identity", h)
 		}
 	}
-	for _, cl := range c.applied().topo.Clusters() {
-		if cl.Key == reset {
-			if cl.TelemetrySeed == telBefore[reset] {
-				t.Error("Reset cluster seed did not change the telemetry seed")
-			}
-		} else if cl.TelemetrySeed != telBefore[cl.Key] {
-			t.Errorf("%s telemetry seed changed", cl.Key)
-		}
+	// the next host added is esx07, not a reused esx02
+	must(t, c, "add-hosts", q, map[string]any{"n": 1})
+	cl, _ = c.Cluster(key)
+	if last := cl.Hosts[len(cl.Hosts)-1].Name; last != "esx07" {
+		t.Errorf("new host is %s, want esx07", last)
 	}
-	// the other clusters keep their numbers, and the deleted one stays out
-	if n := len(c.applied().topo.Clusters()); n != 9 {
-		t.Errorf("%d clusters, want 9", n)
-	}
-	if _, err := c.DeleteCluster(del); err == nil {
-		t.Error("deleting it twice should fail")
+	// vSAN needs three hosts
+	r := do(t, c, "remove-hosts", q, map[string]any{"pick": []string{"esx01", "esx03", "esx04"}})
+	if r.Outcome != nil || !strings.Contains(r.Errors["pick"], "At least 3 hosts have to stay") {
+		t.Errorf("removing down to two hosts: %+v", r)
 	}
 }
 
-func TestStateSurvivesRestart(t *testing.T) {
-	dir := t.TempDir()
-	sc := tenClusters(t)
-	c := newCtl(t, sc, dir, "file-v1")
-	e := editable(t, c)
-	setHosts(e, "dc-01/cluster-02", 10)
-	put(t, c, e)
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
+func TestRemoveClusterKeepsTheOthersAndTheLastOneStays(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	if _, err := c.RemoveCluster("dc-01/cluster-01"); err == nil || !strings.Contains(err.Error(), "only cluster") {
+		t.Fatalf("removing the only cluster: %v", err)
 	}
-	ids := nodeUUIDs(c)
-	c.Close()
-
-	// same scenario file: the console's edits come back with their identities
-	c2 := newCtl(t, tenClusters(t), dir, "file-v1")
-	if c2.applied().version != 2 {
-		t.Errorf("restored version %d, want 2", c2.applied().version)
-	}
-	for k, u := range ids {
-		if nodeUUIDs(c2)[k] != u {
-			t.Fatalf("%s changed identity across a restart", k)
-		}
-	}
-	c2.Close()
-
-	// an edited scenario file wins, and the version moves on
-	c3 := newCtl(t, tenClusters(t), dir, "file-v2")
-	if c3.applied().version != 3 {
-		t.Errorf("version after a file change: %d, want 3", c3.applied().version)
-	}
-	if n := len(nodeUUIDs(c3)); n != 80 {
-		t.Errorf("file wins: %d hosts, want the file's 80", n)
-	}
-}
-
-func TestScheduledApply(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	sc := editable(t, c)
-	setHosts(sc, "dc-01/cluster-02", 7)
-	put(t, c, sc)
-	res, err := c.Apply("boundary")
-	if err != nil || !res.Scheduled {
-		t.Fatalf("%+v %v", res, err)
-	}
-	if res.At.Second() != 0 || res.At.Minute()%5 != 0 || !res.At.After(c.now()) {
-		t.Errorf("boundary %v is not the next five-minute mark", res.At)
-	}
-	if p := c.DraftState().Pending; !p.Scheduled {
-		t.Errorf("pending: %+v", p)
-	}
-	if _, err := c.SetDraft([]byte(`{}`), ""); err == nil {
-		t.Error("editing while scheduled should be refused")
-	}
-	if _, err := c.CancelScheduled(); err != nil {
-		t.Fatal(err)
-	}
-	if p := c.DraftState().Pending; p.Scheduled || !p.Exists {
-		t.Errorf("after cancel: %+v", p)
-	}
-	if c.applied().version != 1 {
-		t.Error("a cancelled schedule applied")
-	}
-	if _, err := c.CancelScheduled(); !errors.Is(err, ErrNoDraft) {
-		t.Errorf("second cancel: %v", err)
-	}
-}
-
-func TestInvalidDraftIsRefusedAndAnEqualDraftVanishes(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	sc := editable(t, c)
-	setHosts(sc, "dc-01/cluster-02", 2)
-	b, _ := json.Marshal(Strip(sc))
-	if _, err := c.SetDraft(b, ""); err == nil {
-		t.Fatal("two hosts is not a vSAN cluster")
-	} else if _, ok := err.(*Invalid); !ok {
-		t.Errorf("want *Invalid, got %T", err)
-	}
-	b, _ = json.Marshal(map[string]any{"scenario": 1})
-	if _, err := c.SetDraft([]byte(`{"nope":1}`), ""); err == nil {
-		t.Error("unknown fields must be refused")
-	}
-	// editing back to the applied scenario removes the draft
-	put(t, c, editable(t, c))
-	if c.DraftState().Pending.Exists {
-		t.Error("a draft equal to the applied scenario should not be pending")
-	}
-	if _, err := c.Review(); !errors.Is(err, ErrNoDraft) {
-		t.Errorf("review without a draft: %v", err)
-	}
-}
-
-func TestGenerateAndPresets(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	pv, err := c.PreviewGenerate(GenParams{Datacenters: []scenario.Datacenter{{Name: "dc-east", Clusters: 30}, {Name: "dc-west", Clusters: 20}},
-		Hosts: 8, VMsPerHost: scenario.IntPtr(10), DisksPerVM: 2, ClaimedDevices: 2, Threads: 64, DomWorlds: scenario.IntPtr(80)})
+	must(t, c, "add-cluster", nil, map[string]any{"hosts": 3, "vms": 1})
+	before := identities(c)
+	done, err := c.RemoveCluster("dc-01/cluster-01")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pv.Projection.Clusters != 50 || pv.Projection.Hosts != 400 || pv.Selected.Calls != 69*50 {
-		t.Errorf("preview: clusters %d hosts %d calls %d", pv.Projection.Clusters, pv.Projection.Hosts, pv.Selected.Calls)
+	wantContains(t, done, "cluster-01 removed, with its 4 hosts.")
+	after := identities(c)
+	if len(after) >= len(before) {
+		t.Fatal("nothing was removed")
 	}
-	if len(pv.Warnings) == 0 {
-		t.Error("50 clusters should warn about fan-out")
+	for key, id := range after {
+		if before[key] != id {
+			t.Errorf("%s moved: %q -> %q", key, before[key], id)
+		}
 	}
-	if _, err := c.PreviewGenerate(GenParams{Datacenters: []scenario.Datacenter{{Name: "Bad Name", Clusters: 1}}}); err == nil {
-		t.Error("an invalid generator form must be refused")
-	}
+}
 
-	// a pending edit is named when a generated draft replaces it
-	e := editable(t, c)
-	setHosts(e, "dc-01/cluster-02", 9)
-	put(t, c, e)
-	v, err := c.Generate(GenParams{Seed: "gen-1", Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 3}}, Hosts: 4})
+func TestReplaceEverythingAsksFirstThenBuilds(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	form, err := c.TaskForm("replace-everything", nil, Caller{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(v.Discarded, "discarded") {
-		t.Errorf("discarded note: %q", v.Discarded)
-	}
-	rv, _ := c.Review()
-	if !rv.Churn || len(rv.Warnings) == 0 {
-		t.Errorf("a new seed replaces every identity: %+v", rv)
-	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	if n := len(c.applied().topo.Clusters()); n != 3 || c.applied().sc.Seed != "gen-1" {
-		t.Errorf("after generate: %d clusters, seed %q", n, c.applied().sc.Seed)
-	}
-
-	// presets: telemetry ones keep the topology, topology ones bring their own
-	if _, err := c.ApplyPreset("family-fault"); err != nil {
-		t.Fatal(err)
-	}
-	rv, _ = c.Review()
-	if rv.RebuildsVCenter || rv.TelemetryCount == 0 {
-		t.Errorf("a telemetry preset must not rebuild: %+v", rv)
-	}
-	c.DiscardDraft()
-	if _, err := c.ApplyPreset("phase1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.ApplyPreset("nope"); err == nil {
-		t.Error("unknown preset must be refused")
-	}
-	for _, p := range c.Presets() {
-		c.DiscardDraft()
-		if _, err := c.ApplyPreset(p.Name); err != nil {
-			t.Errorf("preset %s: %v", p.Name, err)
-		}
-	}
-}
-
-func TestTreeAndClusterView(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	tr := c.Tree()
-	if tr.Clusters != 10 || tr.Overridden != 2 || tr.PendingN != 0 {
-		t.Errorf("tree: %+v", tr)
-	}
-	e := editable(t, c)
-	setHosts(e, "dc-01/cluster-02", 10)
-	put(t, c, e)
-	if _, err := c.DeleteCluster("dc-01/cluster-09"); err != nil {
-		t.Fatal(err)
-	}
-	tr = c.Tree()
-	states := map[string]string{}
-	for _, dc := range tr.Datacenters {
-		for _, cl := range dc.Clusters {
-			states[cl.Name] = cl.State
-		}
-	}
-	if states["cluster-02"] != "pending" || states["cluster-09"] != "removed" || states["cluster-01"] != "" {
-		t.Errorf("states: %v", states)
-	}
-	cv, err := c.Cluster("dc-01/cluster-02")
+	form.Values["start"], form.Values["key"] = "tiny", "lab-b"
+	r, err := c.TaskRun("replace-everything", params(t, form.Values), nil, false, Caller{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var unchanged, added int
-	for _, h := range cv.Hosts {
-		switch h.Identity {
-		case "unchanged":
-			unchanged++
-			if !strings.HasPrefix(h.MoRef, "host-") {
-				t.Errorf("host %s has no MoRef", h.Name)
-			}
-		case "new":
-			added++
-		}
+	if r.Confirm == nil || r.Outcome != nil || r.Confirm.OK != "Yes, replace everything" {
+		t.Fatalf("no confirm before replacing everything: %+v", r)
 	}
-	if unchanged != 6 || added != 4 || cv.State != "pending" || cv.HostsOld != 6 {
-		t.Errorf("cluster-02: unchanged %d added %d state %s hostsOld %d", unchanged, added, cv.State, cv.HostsOld)
+	before := identities(c)
+	out := must(t, c, "replace-everything", nil, map[string]any{"start": "own", "dcs": 2, "per": 2, "hmin": 3, "hmax": 3, "vmin": 1, "vmax": 1, "key": "lab-b"})
+	wantContains(t, out.Done, "New environment built: 4 clusters, 12 hosts and 12 VMs.")
+	v := c.Clusters()
+	if len(v.Rows) != 4 || len(v.Datacenters) != 2 || v.Rows[3].Key != "dc-02/cluster-02" {
+		t.Fatalf("clusters %+v", v.Rows)
 	}
-	if cv.Override == nil || cv.Override.Hosts != 10 {
-		t.Errorf("override: %+v", cv.Override)
+	if identities(c)["dc-01/cluster-01"] == before["dc-01/cluster-01"] {
+		t.Error("a new layout name kept the old identities")
 	}
-	if _, err := c.Cluster("dc-01/cluster-99"); err == nil {
-		t.Error("unknown cluster")
+	r = do(t, c, "replace-everything", nil, map[string]any{"start": "own", "dcs": 1, "per": 1, "hmin": 2, "hmax": 1, "vmin": 0, "vmax": 0})
+	if !strings.Contains(r.Errors["hmin"], "Use 3 to 64 hosts") {
+		t.Errorf("errors %v", r.Errors)
 	}
 }
 
-// The projection counts entities without building them; the count must equal
-// what the wildcard handler enumerates for every family on both architectures.
-func TestPerfEntityCountMatchesEnumeration(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	e := editable(t, c)
-	e.Clusters[0].Architecture = "osa"
-	put(t, c, e)
-	mixed, _ := c.previewTopology(c.draft)
-	osa := 0
-	for _, cl := range mixed.Clusters() {
-		if cl.Spec.Architecture == "osa" {
-			osa++
-		}
-		for _, family := range vsanhealth.PerfFamilyNames(c.cat, cl) {
-			refs, err := vsanhealth.PerfEntities(c.cat, cl, family)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := vsanhealth.PerfEntityCount(c.cat, cl, family)
-			if err != nil || got != len(refs) {
-				t.Errorf("%s %s: count %d (%v), enumerated %d", cl.Key, family, got, err, len(refs))
-			}
-		}
-	}
-	if osa != 1 {
-		t.Fatalf("%d OSA clusters, want 1", osa)
-	}
-}
+// Storage asks for a name and a size; the simulator invents the rest, and
+// every later change finds the datastore by its name.
+func TestStorageTasks(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	sum := preview(t, c, "add-iscsi", nil, nil)
+	wantContains(t, sum, "Adds a **2 TB** iSCSI datastore called **iscsi-ds-1**, half full.")
+	wantContains(t, sum, "All 4 hosts in **cluster-01** connect to it")
+	out := must(t, c, "add-iscsi", nil, nil)
+	wantContains(t, out.Done, "iSCSI datastore iscsi-ds-1 (2 TB) added for cluster-01. Every host in that cluster is connected to it.")
+	out = must(t, c, "add-nfs", nil, nil)
+	wantContains(t, out.Done, "NFS datastore nfs-ds-1 (4 TB) added for every cluster in dc-01.")
 
-// A mixed ESA and OSA topology must be labelled per cluster: the datastore
-// type follows the cluster's architecture and the projection counts OSA
-// clusters so the console does not call every cluster ESA.
-func TestArchitectureIsLabelledPerCluster(t *testing.T) {
-	sc := tenClusters(t)
-	c := newCtl(t, sc, "", "t")
-	if got := Project(c.cat, c.applied().topo).OSAClusters; got != 0 {
-		t.Fatalf("ESA-only topology: %d OSA clusters", got)
+	st := c.Storage()
+	if len(st.Rows) != 2 {
+		t.Fatalf("storage %+v", st.Rows)
 	}
-	e := editable(t, c)
-	for i := range e.Clusters {
-		if e.Clusters[i].Key == "dc-01/cluster-01" {
-			e.Clusters[i].Architecture = "osa"
+	item, err := c.StorageItem("dc-01/iscsi-ds-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Size != "2 TB" || item.Free != "1 TB" || item.Full != "Half full" || len(item.Cut) != 0 || item.Details[0][1] != "10.0.50.21:3260" || !strings.HasPrefix(item.Details[1][1], "iqn.") {
+		t.Errorf("item %+v", item)
+	}
+	// a second one gets its own name and address
+	out = must(t, c, "add-iscsi", nil, nil)
+	wantContains(t, out.Done, "iscsi-ds-2")
+	r := do(t, c, "add-iscsi", nil, map[string]any{"name": "iscsi-ds-1"})
+	wantContains(t, r.Errors["name"], "There is already storage called iscsi-ds-1")
+	r = do(t, c, "add-nfs", nil, map[string]any{"name": "Bad Name"})
+	wantContains(t, r.Errors["name"], "Use only small letters, numbers and hyphens")
+
+	for _, id := range []string{"dc-01/iscsi-ds-1", "dc-01/nfs-ds-1"} {
+		q := map[string]string{"id": id}
+		must(t, c, "storage-disconnect", q, map[string]any{"pick": []string{"esx02"}})
+		item, _ = c.StorageItem(id)
+		if len(item.Cut) != 1 || item.Cut[0] != "esx02 in cluster-01" {
+			t.Errorf("%s cut %v", id, item.Cut)
 		}
-	}
-	if e.Defaults.Architecture != "" {
-		t.Fatalf("test assumes an ESA default, got %q", e.Defaults.Architecture)
-	}
-	put(t, c, e)
-	mixed, _ := c.previewTopology(c.draft)
-	if got := Project(c.cat, mixed).OSAClusters; got != 1 {
-		t.Errorf("mixed topology: %d OSA clusters, want 1", got)
-	}
-	for key, want := range map[string]string{"dc-01/cluster-01": "vSAN OSA", "dc-01/cluster-02": "vSAN ESA"} {
-		cv, err := c.Cluster(key)
-		if err != nil {
+		if _, err := c.ReconnectStorage(id); err != nil {
 			t.Fatal(err)
 		}
-		if got := cv.Datastores[0].Type; got != want {
-			t.Errorf("%s datastore type %q, want %q", key, got, want)
+		if item, _ = c.StorageItem(id); len(item.Cut) != 0 {
+			t.Errorf("%s still cut after reconnect: %v", id, item.Cut)
 		}
+		out := must(t, c, "storage-size", q, map[string]any{"size": 500, "unit": "GB", "full": "Nearly full"})
+		wantContains(t, out.Done, "is now 500 GB, nearly full.")
+		if item, _ = c.StorageItem(id); item.Size != "500 GB" || item.Full != "Nearly full" {
+			t.Errorf("%s after resize: %+v", id, item)
+		}
+		if _, err := c.RemoveStorage(id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.StorageItem(id); err == nil {
+			t.Errorf("%s is still there", id)
+		}
+	}
+	if cl, _ := c.Cluster("dc-01/cluster-01"); len(cl.Storage) != 1 || cl.Storage[0].Name != "iscsi-ds-2" {
+		t.Errorf("cluster storage %+v", cl.Storage)
 	}
 }
 
-// ---- the API plane ------------------------------------------------------------
-
-const soapEnv = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Body>%s</soapenv:Body></soapenv:Envelope>`
-
-type apiClient struct {
-	t   *testing.T
-	srv *httptest.Server
-	hc  *http.Client
+func TestVCenterVersionAndTheHosts(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	before := identities(c)
+	out := must(t, c, "vcenter-version", nil, map[string]any{"vc": "9.0", "hosts": "all"})
+	wantContains(t, out.Done, "vCenter now says it is 9.0. 4 hosts moved to ESX 9.0 with it.")
+	if v := c.Versions(); v.VCenter != "9.0" || len(v.ByESX) != 1 || v.ByESX[0].Label != "9.0" {
+		t.Fatalf("versions %+v", v)
+	}
+	for key, id := range before {
+		if identities(c)[key] != id {
+			t.Errorf("%s changed identity with the version", key)
+		}
+	}
+	// leaving the hosts where they are when vCenter goes down makes them
+	// newer than vCenter, and the form says so before it happens
+	form, _ := c.TaskForm("vcenter-version", nil, Caller{})
+	form.Values["vc"], form.Values["hosts"] = "8.0u3", "none"
+	p, err := c.TaskPreview("vcenter-version", params(t, form.Values), Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := fmt.Sprint(p.Extra["hostOpts"])
+	wantContains(t, opts, "Put all 4 hosts on ESX 8.0 Update 3 as well")
+	wantContains(t, opts, "**4 hosts would then be newer than vCenter.**")
+	out = must(t, c, "vcenter-version", nil, map[string]any{"vc": "8.0u3", "hosts": "none"})
+	wantContains(t, out.Done, "No host was changed.")
+	if v := c.Versions(); v.VCenter != "8.0 Update 3" || v.ByESX[0].Label != "9.0" {
+		t.Errorf("versions %+v", v)
+	}
+	// a typed version gets a build and a product name
+	out = must(t, c, "vcenter-version", nil, map[string]any{"vc": "other", "other": "9.2.0", "hosts": "all"})
+	wantContains(t, out.Done, "vCenter now says it is 9.2.0. 4 hosts moved to ESX 9.2.0 with it.")
+	vc := c.applied().topo.VCenterVersion
+	if vc.Build == "" || !strings.Contains(vc.FullName, "9.2.0") || vc.APIVersion != "9.2.0.0" {
+		t.Errorf("derived version %+v", vc)
+	}
+	r := do(t, c, "vcenter-version", nil, map[string]any{"vc": "other", "other": "nine"})
+	wantContains(t, r.Errors["other"], "Type a version number like 9.2.0")
+	r = do(t, c, "vcenter-version", nil, nil)
+	wantContains(t, r.Errors["vc"], "vCenter is already 9.2.0.")
 }
 
-func newAPIClient(t *testing.T, c *Controller) *apiClient {
-	srv := httptest.NewServer(c)
+func TestMixedClusterVersions(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	q := map[string]string{"cluster": "dc-01/cluster-01"}
+	set := map[string]any{"mode": "mixed", "ver": "9.1.1", "low": "8.0u3", "pick": []string{"esx01", "esx02"}}
+	wantContains(t, preview(t, c, "cluster-versions", q, set), "**esx01 and esx02** run **ESX 8.0 Update 3**.")
+	out := must(t, c, "cluster-versions", q, set)
+	wantContains(t, out.Done, "cluster-01 is now mixed: esx01 and esx02 on ESX 8.0 Update 3, the rest on ESX 9.1.1.")
+	v := c.Versions()
+	if !v.Rows[0].Mixed || v.Rows[0].Label != "2 hosts on ESX 9.1.1, 2 on ESX 8.0 Update 3" {
+		t.Errorf("row %+v", v.Rows[0])
+	}
+	r := do(t, c, "cluster-versions", q, map[string]any{"mode": "mixed", "ver": "9.1.1", "low": "9.1.1", "pick": []string{"esx01"}})
+	wantContains(t, r.Errors["low"], "Both boxes say the same version.")
+	r = do(t, c, "cluster-versions", q, map[string]any{"mode": "mixed", "ver": "9.1.1", "low": "9.0", "pick": []string{"esx01", "esx02", "esx03", "esx04"}})
+	wantContains(t, r.Errors["pick"], "You ticked every host.")
+
+	// hosts newer than vCenter need saying so twice
+	must(t, c, "vcenter-version", nil, map[string]any{"vc": "9.0", "hosts": "all"})
+	r = do(t, c, "cluster-versions", q, map[string]any{"mode": "same", "ver": "9.1.1"})
+	wantContains(t, r.Errors["allow"], "tick this box to go ahead anyway")
+	out = must(t, c, "cluster-versions", q, map[string]any{"mode": "same", "ver": "9.1.1", "allow": true})
+	wantContains(t, out.Done, "Every host in cluster-01 now runs ESX 9.1.1.")
+}
+
+const soapEnv = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Body>%s</soapenv:Body></soapenv:Envelope>`
+
+// apiClient is a stand-in tool: one address, one name, one cookie jar.
+type apiClient struct {
+	t     *testing.T
+	srv   *httptest.Server
+	hc    *http.Client
+	agent string
+}
+
+func newTool(t *testing.T, c *Controller, agent string) *apiClient {
+	return toolOn(t, httptest.NewServer(c), agent)
+}
+
+func toolOn(t *testing.T, srv *httptest.Server, agent string) *apiClient {
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
-	return &apiClient{t: t, srv: srv, hc: &http.Client{Jar: jar, Timeout: 20 * time.Second}}
+	return &apiClient{t: t, srv: srv, hc: &http.Client{Jar: jar, Timeout: 20 * time.Second}, agent: agent}
 }
 
-func (a *apiClient) post(path, body string) (int, string) {
+func (a *apiClient) do(method, path, body string) (int, string) {
 	a.t.Helper()
-	res, err := a.hc.Post(a.srv.URL+path, "text/xml", strings.NewReader(fmt.Sprintf(soapEnv, body)))
+	var rd io.Reader
+	if body != "" {
+		rd = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, a.srv.URL+path, rd)
 	if err != nil {
-		a.t.Fatalf("POST %s: %v", path, err)
+		a.t.Fatal(err)
+	}
+	req.Header.Set("User-Agent", a.agent)
+	if body != "" {
+		req.Header.Set("Content-Type", "text/xml")
+	}
+	res, err := a.hc.Do(req)
+	if err != nil {
+		return 0, err.Error()
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
 	return res.StatusCode, string(b)
 }
 
+func (a *apiClient) post(path, body string) (int, string) {
+	return a.do(http.MethodPost, path, fmt.Sprintf(soapEnv, body))
+}
+
 func (a *apiClient) login(user, pass string) bool {
 	a.t.Helper()
-	_, r := a.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+user+`</userName><password>`+pass+`</password></Login>`)
-	return !strings.Contains(r, "Login failure")
+	st, r := a.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+user+`</userName><password>`+pass+`</password></Login>`)
+	return st == 200 && !strings.Contains(r, "Login failure")
+}
+
+func (a *apiClient) content() int {
+	st, _ := a.post("/sdk", `<RetrieveServiceContent xmlns="urn:vim25"><_this type="ServiceInstance">ServiceInstance</_this></RetrieveServiceContent>`)
+	return st
 }
 
 func (a *apiClient) perf(cluster, family string) (int, string) {
@@ -621,1573 +584,1051 @@ func (a *apiClient) perf(cluster, family string) (int, string) {
 		family, now.Add(-15*time.Minute).Format("2006-01-02T15:04:05.000Z"), now.Format("2006-01-02T15:04:05.000Z"), cluster))
 }
 
-func TestRequestLogAndFaultClassification(t *testing.T) {
-	sc := tenClusters(t)
-	sc.Faults = []scenario.Fault{{Family: "host-domowner", Fault: scenario.FaultSystemError}}
+func clusterRef(c *Controller) string { return c.applied().sim.Clusters[0].Ref.Value }
+
+// lastCall is the newest request in the log.
+func lastCall(c *Controller) activity.Call {
+	all := c.Log.All()
+	return all[len(all)-1]
+}
+
+func askOf(t *testing.T, c *Controller, title string) Ask {
+	t.Helper()
+	for _, a := range c.Requests().Asks {
+		if strings.Contains(a.T, title) {
+			return a
+		}
+	}
+	t.Fatalf("no request row with %q in %+v", title, c.Requests().Asks)
+	return Ask{}
+}
+
+// With no account supplied, nothing can sign in until first-run set-up
+// chooses the password; there is no published default.
+func TestFirstRunAccount(t *testing.T) {
+	sc := scenario.Phase1("first")
 	c := newCtl(t, sc, "", "t")
-	a := newAPIClient(t, c)
-	if !a.login("administrator@vsphere.local", "VMware1!") {
-		t.Fatal("login refused")
+	if !c.AccountNeeded() || !c.Home().AccountNeeded {
+		t.Fatal("a fresh simulator with no supplied account should need one")
 	}
-	if a.login("administrator@vsphere.local", "wrong") {
-		t.Fatal("wrong password accepted")
-	}
-	cl := c.applied().sim.Clusters[0]
-	ref := cl.Ref.Value
-	_, ok := a.perf(ref, "vsan-pnic-net")
-	if strings.Contains(ok, "faultstring") {
-		t.Fatalf("pnic query faulted: %.300s", ok)
-	}
-	_, bad := a.perf(ref, "host-domowner")
-	if !strings.Contains(bad, "faultstring") {
-		t.Fatalf("injected fault not served: %.300s", bad)
-	}
-	a.perf(ref, "disk-group")     // answers empty by design
-	a.perf(ref, "no-such-family") // a real, unexpected fault
-
-	calls := c.Log.Query(activity.Filter{Limit: 50})
-	byKey := map[string]activity.Call{}
-	for _, call := range calls {
-		byKey[call.Method+"/"+call.Family+"/"+call.Result] = call
-	}
-	if call, ok := byKey["VsanPerfQueryPerf/vsan-pnic-net/ok"]; !ok || call.Entities == 0 || call.Empty != 0 || call.Cluster != cl.Cluster.Key || call.Bytes == 0 {
-		t.Errorf("ok perf call: %+v", call)
-	}
-	if call, ok := byKey["VsanPerfQueryPerf/host-domowner/injected"]; !ok || call.Fault != "SystemError" {
-		t.Errorf("injected perf call: %+v", call)
-	}
-	if call, ok := byKey["VsanPerfQueryPerf/disk-group/ok"]; !ok || call.Empty == 0 || call.Empty != call.Entities {
-		t.Errorf("empty perf call: %+v", call)
-	}
-	if _, ok := byKey["VsanPerfQueryPerf/no-such-family/fault"]; !ok {
-		t.Errorf("unexpected fault not classified: %v", keys(byKey))
-	}
-	if call, ok := byKey["Login//denied"]; !ok || call.Surface != "sdk" || call.Body != "" {
-		t.Errorf("refused login: %+v", call)
-	}
-	for _, call := range c.Log.Query(activity.Filter{Surface: "sdk", Limit: 50}) {
-		if call.Body != "" {
-			t.Error("a /sdk body (a login carries a password) must never be kept")
+	tool := newTool(t, c, "tool/1")
+	for _, pw := range []string{"VMware123!VMware123!", "VMware1!", "x"} {
+		if tool.login(DefaultUsername, pw) {
+			t.Fatalf("signed in with %q before any password was chosen", pw)
 		}
 	}
-	// the detail view keeps the /vsanHealth body, and nothing secret is in it
-	if full, ok := c.Log.Get(byKey["VsanPerfQueryPerf/vsan-pnic-net/ok"].Seq); !ok || !strings.Contains(full.Body, "vsan-pnic-net:*") || strings.Contains(full.Body, "VMware1!") {
-		t.Errorf("detail: %+v", full)
+	if err := c.SetupAccount("short"); err == nil || !strings.Contains(err.Error(), "That is 5 characters. Use at least 8") {
+		t.Fatalf("short password: %v", err)
 	}
-
-	sum := c.Log.Summarize(time.Now())
-	if sum.Faults.Injected != 1 || sum.Faults.Unexpected != 1 || sum.Faults.Denied != 1 {
-		t.Errorf("faults: %+v", sum.Faults)
+	if err := c.SetupAccount("chosen-password"); err != nil {
+		t.Fatal(err)
 	}
-	if got := sum.Cycle.Calls; got == 0 || sum.Cycle.Client == "" {
-		t.Errorf("cycle: %+v", sum.Cycle)
+	if c.AccountNeeded() || !tool.login(DefaultUsername, "chosen-password") {
+		t.Fatal("the chosen password does not sign in")
 	}
-	sawInjected := false
-	for _, f := range sum.Cycle.Findings {
-		if f.Severity == "warn" && strings.Contains(f.Title, "injected") {
-			sawInjected = true
-		}
+	if got := c.Home().Connect; got.Username != DefaultUsername || got.Password != "inuse" {
+		t.Errorf("connect %+v", got)
 	}
-	if !sawInjected {
-		t.Errorf("findings: %+v", sum.Cycle.Findings)
+	if err := c.SetupAccount("another-password"); err == nil {
+		t.Error("set-up ran twice")
 	}
 }
 
-func keys(m map[string]activity.Call) []string {
-	var out []string
-	for k := range m {
-		out = append(out, k)
+// The account survives an edit of the scenario file when the console made it.
+func TestConsoleAccountsSurviveAScenarioEdit(t *testing.T) {
+	dir := t.TempDir()
+	c := newCtl(t, scenario.Phase1("first"), dir, "hash-1")
+	if err := c.SetupAccount("chosen-password"); err != nil {
+		t.Fatal(err)
 	}
-	return out
+	c.Close()
+	c2 := newCtl(t, scenario.Phase1("first"), dir, "hash-2")
+	if c2.AccountNeeded() {
+		t.Fatal("the account was lost when the scenario file changed")
+	}
+	if !newTool(t, c2, "tool/1").login(DefaultUsername, "chosen-password") {
+		t.Error("the chosen password no longer signs in")
+	}
 }
 
-func TestPauseRefusesConnections(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	a := newAPIClient(t, c)
+func TestUsers(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	admin := "administrator@vsphere.local"
+	r := do(t, c, "add-user", nil, map[string]any{"pw": "short"})
+	wantContains(t, r.Errors["pw"], `That is 5 characters. Use at least 8, or press "Make one for me".`)
+	form, _ := c.TaskForm("add-user", nil, Caller{})
+	if form.Values["name"] != "tool-1@vsphere.local" || form.Values["role"] != "read" {
+		t.Errorf("new users should be suggested a name and start read-only: %+v", form.Values)
+	}
+	out := must(t, c, "add-user", nil, map[string]any{"pw": "collector-pw-1"})
+	wantContains(t, out.Done, "tool-1@vsphere.local can now sign in with read-only access.")
+
+	tool := newTool(t, c, "collector/2.0")
+	if !tool.login("tool-1@vsphere.local", "collector-pw-1") || tool.content() != 200 {
+		t.Fatal("the new user cannot sign in")
+	}
+	users := c.Users()
+	var row UserRow
+	for _, u := range users.Users {
+		if u.Name == "tool-1@vsphere.local" {
+			row = u
+		}
+	}
+	if row.Role != "read" || row.Last == nil || len(row.InUse) != 1 {
+		t.Fatalf("user row %+v", row)
+	}
+
+	// access changes without a new password; the old password still works
+	q := map[string]string{"name": "tool-1@vsphere.local"}
+	wantContains(t, preview(t, c, "change-user", q, map[string]any{"role": "full"}), "is signed in as this user right now.** It is signed out and signs in again by itself.")
+	out = must(t, c, "change-user", q, map[string]any{"role": "full"})
+	wantContains(t, out.Done, "tool-1@vsphere.local now has full access.")
+	if !newTool(t, c, "other/1").login("tool-1@vsphere.local", "collector-pw-1") {
+		t.Error("changing access changed the password")
+	}
+	r = do(t, c, "change-user", q, nil)
+	wantContains(t, r.Errors["pw"], "Nothing has been changed.")
+
+	// removing a user a tool is signed in as says so, and Home knows why
+	if !tool.login("tool-1@vsphere.local", "collector-pw-1") || tool.content() != 200 {
+		t.Fatal("sign in again")
+	}
+	done, tone, err := c.RemoveUser("tool-1@vsphere.local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tone != "warn" || !strings.Contains(done, "was signed out** and is now being refused") {
+		t.Errorf("remove said %q (%s)", done, tone)
+	}
+	home := c.Home()
+	if len(home.Tools) == 0 || home.Tools[0].State != ToolRemoved {
+		t.Fatalf("tools after removing its user: %+v", home.Tools)
+	}
+	found := false
+	for _, a := range home.Attention {
+		found = found || strings.Contains(a.T, "can no longer sign in")
+	}
+	if !found {
+		t.Errorf("Home does not say the tool can no longer sign in: %+v", home.Attention)
+	}
+	if tool.login("tool-1@vsphere.local", "collector-pw-1") {
+		t.Error("a removed user signed in")
+	}
+
+	// a tool whose sign-in ended and that keeps asking without signing in
+	// again is not shown as connected
+	other := newTool(t, c, "other/1")
+	if !other.login(admin, "first-password") || other.content() != 200 {
+		t.Fatal("sign in as the administrator")
+	}
+	must(t, c, "change-user", map[string]string{"name": admin}, map[string]any{"role": "read"})
+	other.perf(clusterRef(c), "host-domclient") // refused: its session is gone
+	var st string
+	for _, tv := range c.Home().Tools {
+		if tv.Agent == "other/1" {
+			st = tv.State
+		}
+	}
+	if st != ToolSignedOut {
+		t.Errorf("a tool that is being refused for not being signed in is shown as %q", st)
+	}
+	if !other.login(admin, "first-password") {
+		t.Fatal("sign in again")
+	}
+	for _, tv := range c.Home().Tools {
+		if tv.Agent == "other/1" && tv.State != ToolConnected {
+			t.Errorf("after signing in again it is %q", tv.State)
+		}
+	}
+	wantContains(t, askOf(t, c, "which has been removed").Short, "The user was removed")
+
+	if _, _, err := c.RemoveUser(admin); err == nil || !strings.Contains(err.Error(), "only user") {
+		t.Errorf("removing the last user: %v", err)
+	}
+}
+
+// One place knows whether a tool is connected, and every screen reads it.
+// A user added again under a name that was used before is a new account: it
+// has never signed in, whatever the removed one did, now and after a restart.
+func TestUserAddedAgainHasNeverSignedIn(t *testing.T) {
+	const name = "auditor@vsphere.local"
+	dir := t.TempDir()
+	c := newCtl(t, small(t), dir, "t")
+	row := func(c *Controller) UserRow {
+		t.Helper()
+		for _, u := range c.Users().Users {
+			if u.Name == name {
+				return u
+			}
+		}
+		t.Fatalf("no user %s in %+v", name, c.Users().Users)
+		return UserRow{}
+	}
+	add := func(pw string) {
+		t.Helper()
+		must(t, c, "add-user", nil, map[string]any{"name": name, "pw": pw, "role": "read"})
+	}
+	add("auditor-password-1")
+	if r := row(c); r.Last != nil {
+		t.Fatalf("a new user has already signed in: %v", r.Last)
+	}
+	tool := newTool(t, c, "collector/2.0")
+	if !tool.login(name, "auditor-password-1") || tool.content() != 200 {
+		t.Fatal("sign in")
+	}
+	if r := row(c); r.Last == nil || len(r.InUse) != 1 {
+		t.Fatalf("the sign-in was not recorded: %+v", r)
+	}
+	if _, _, err := c.RemoveUser(name); err != nil {
+		t.Fatal(err)
+	}
+	add("another-password-2")
+	if r := row(c); r.Last != nil || len(r.InUse) != 0 {
+		t.Errorf("the user added again shows the removed user's sign-in: last %v, in use by %v", r.Last, r.InUse)
+	}
+	// the removed tool's refused attempts are not sign-ins by the new account
+	if tool.login(name, "auditor-password-1") {
+		t.Fatal("the removed user's password still works")
+	}
+	if r := row(c); r.Last != nil {
+		t.Errorf("a refused sign-in counted as the new user signing in: %v", r.Last)
+	}
+	c.Close()
+	c2 := newCtl(t, small(t), dir, "t")
+	if r := row(c2); r.Last != nil {
+		t.Errorf("after a restart the user added again shows a sign-in: %v", r.Last)
+	}
+	// and a real sign-in by the new account is recorded as before
+	tool2 := newTool(t, c2, "collector/2.0")
+	if !tool2.login(name, "another-password-2") {
+		t.Fatal("the new account cannot sign in")
+	}
+	if r := row(c2); r.Last == nil {
+		t.Error("the new account's own sign-in was not recorded")
+	}
+}
+
+// A tool that signs itself out is not connected any more: Home says when it
+// signed out, Users no longer shows the account in use, and a change to
+// that account does not warn about a signed-in tool. The sign-out is not
+// counted as something the tool asked for, and signing in again brings it
+// back. It holds on both surfaces a tool can sign out of.
+func TestToolThatSignsOutIsNotConnected(t *testing.T) {
+	const user, pass = "administrator@vsphere.local", "first-password"
+	inUse := func(c *Controller) []string {
+		for _, u := range c.Users().Users {
+			if u.Name == user {
+				return u.InUse
+			}
+		}
+		t.Fatalf("no user %s", user)
+		return nil
+	}
+	changing := func(c *Controller) string {
+		return preview(t, c, "change-user", map[string]string{"name": user}, map[string]any{"pw": "another-password-1"})
+	}
+	connected := func(c *Controller, when string) {
+		t.Helper()
+		home := c.Home()
+		if len(home.Tools) != 1 || home.Tools[0].State != ToolConnected || home.Tools[0].Since != nil {
+			t.Fatalf("%s: tools %+v", when, home.Tools)
+		}
+		if got := inUse(c); len(got) != 1 {
+			t.Errorf("%s: account in use by %v", when, got)
+		}
+		wantContains(t, changing(c), "is signed in as this user right now.")
+	}
+	left := func(c *Controller, when string, at time.Time) {
+		t.Helper()
+		home := c.Home()
+		if len(home.Tools) != 1 {
+			t.Fatalf("%s: tools %+v", when, home.Tools)
+		}
+		tv := home.Tools[0]
+		if tv.State != ToolLeft || tv.Since == nil || !tv.Since.Equal(at) {
+			t.Fatalf("%s: state %s since %v, want %s since %v", when, tv.State, tv.Since, ToolLeft, at)
+		}
+		if !tv.Last.Before(at) {
+			t.Errorf("%s: the sign-out counted as something the tool asked for (last %v, signed out %v)", when, tv.Last, at)
+		}
+		if tv.User != user {
+			t.Errorf("%s: the account it used was forgotten: %q", when, tv.User)
+		}
+		if got := inUse(c); len(got) != 0 {
+			t.Errorf("%s: account still shown in use by %v", when, got)
+		}
+		wantContains(t, changing(c), "Nothing is signed in as this user at the moment.")
+		for _, a := range home.Attention {
+			if strings.Contains(a.T, "The tool at") {
+				t.Errorf("%s: signing out was raised as a problem: %+v", when, a)
+			}
+		}
+	}
+
+	t.Run("SOAP Logout", func(t *testing.T) {
+		c := newCtl(t, small(t), "", "t")
+		tool := newTool(t, c, "collector/2.0")
+		if !tool.login(user, pass) || tool.content() != 200 {
+			t.Fatal("sign in")
+		}
+		connected(c, "signed in")
+		if st, body := tool.post("/sdk", `<Logout xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this></Logout>`); st != 200 {
+			t.Fatalf("Logout: %d %s", st, body)
+		}
+		out := lastCall(c)
+		if out.Method != "Logout" || out.Reason != activity.ReasonAnswered || out.User != user {
+			t.Fatalf("the sign-out was recorded as %+v", out)
+		}
+		left(c, "after Logout", out.Time)
+		// a second sign-out, with no session left, changes nothing
+		tool.post("/sdk", `<Logout xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this></Logout>`)
+		if tv := c.Home().Tools[0]; tv.State != ToolLeft && tv.State != ToolSignedOut {
+			t.Errorf("after a second Logout: %s", tv.State)
+		}
+		if !tool.login(user, pass) || tool.content() != 200 {
+			t.Fatal("sign in again")
+		}
+		connected(c, "signed in again")
+	})
+
+	t.Run("REST DELETE /api/session", func(t *testing.T) {
+		c := newCtl(t, small(t), "", "t")
+		tool := newTool(t, c, "rest-collector/1.0")
+		rest := func(method, path, token string) (int, string) {
+			req, err := http.NewRequest(method, tool.srv.URL+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("User-Agent", tool.agent)
+			if token == "" {
+				req.SetBasicAuth(user, pass)
+			} else {
+				req.Header.Set("vmware-api-session-id", token)
+			}
+			res, err := tool.hc.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			b, _ := io.ReadAll(res.Body)
+			return res.StatusCode, string(b)
+		}
+		signIn := func() string {
+			st, body := rest(http.MethodPost, "/api/session", "")
+			var token string
+			if st/100 != 2 || json.Unmarshal([]byte(body), &token) != nil || token == "" {
+				t.Fatalf("REST sign-in: %d %s", st, body)
+			}
+			if st, body := rest(http.MethodGet, "/api/vcenter/cluster", token); st != 200 {
+				t.Fatalf("list clusters: %d %s", st, body)
+			}
+			return token
+		}
+		token := signIn()
+		connected(c, "signed in")
+		if st, body := rest(http.MethodDelete, "/api/session", token); st/100 != 2 {
+			t.Fatalf("DELETE /api/session: %d %s", st, body)
+		}
+		out := lastCall(c)
+		if out.Method != "DELETE /api/session" || out.User != user {
+			t.Fatalf("the sign-out was recorded as %+v", out)
+		}
+		left(c, "after DELETE /api/session", out.Time)
+		signIn()
+		connected(c, "signed in again")
+	})
+}
+
+// A tool that holds two sessions and signs out of one is still connected
+// once it is served on the other.
+func TestSigningOutOfOneSessionKeepsAToolWithAnotherConnected(t *testing.T) {
+	b := newToolbook()
+	t0 := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	call := func(at time.Time, method string) activity.Call {
+		return activity.Call{Time: at, Surface: activity.SurfaceSDK, Client: "10.0.0.9", Agent: "collector/2.0", User: "ops@vsphere.local", Method: method, Reason: activity.ReasonAnswered}
+	}
+	b.note(call(t0, "Login"), true)
+	b.note(call(t0.Add(time.Second), "RetrievePropertiesEx"), false)
+	b.note(call(t0.Add(10*time.Second), "Logout"), false)
+	if v := b.list(t0.Add(11*time.Second), false, time.Time{}); len(v) != 1 || v[0].State != ToolLeft {
+		t.Fatalf("after Logout: %+v", v)
+	}
+	// a request that was already on its way when it signed out is not it coming back
+	b.note(call(t0.Add(9*time.Second), "RetrievePropertiesEx"), false)
+	if v := b.list(t0.Add(11*time.Second), false, time.Time{}); v[0].State != ToolLeft {
+		t.Fatalf("an earlier request undid the sign-out: %+v", v)
+	}
+	b.note(call(t0.Add(12*time.Second), "RetrievePropertiesEx"), false)
+	if v := b.list(t0.Add(13*time.Second), false, time.Time{}); v[0].State != ToolConnected {
+		t.Fatalf("served on its other session: %+v", v)
+	}
+}
+
+func TestToolsAreTrackedAcrossPauseAndCertificate(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	tool := newTool(t, c, "collector/2.0")
+	if !tool.login("administrator@vsphere.local", "first-password") || tool.content() != 200 {
+		t.Fatal("sign in")
+	}
+	home := c.Home()
+	if len(home.Tools) != 1 || home.Tools[0].State != ToolConnected || home.Tools[0].Agent != "collector/2.0" || home.Tools[0].User != "administrator@vsphere.local" {
+		t.Fatalf("tools %+v", home.Tools)
+	}
 	c.SetPaused(true)
-	if _, err := a.hc.Post(a.srv.URL+"/sdk", "text/xml", strings.NewReader(fmt.Sprintf(soapEnv, `<RetrieveServiceContent xmlns="urn:vim25"><_this type="ServiceInstance">ServiceInstance</_this></RetrieveServiceContent>`))); err == nil {
-		t.Error("a paused simulator must drop the connection")
+	if st := tool.content(); st != 0 {
+		t.Errorf("a paused simulator answered with %d", st)
 	}
-	if got := c.Log.Query(activity.Filter{Result: activity.ResultRefused}); len(got) != 1 {
-		t.Errorf("refused calls: %+v", got)
+	if got := c.Home().Tools[0].State; got != ToolPaused {
+		t.Errorf("state while paused: %s", got)
+	}
+	if lastCall(c).Reason != activity.ReasonPaused {
+		t.Errorf("a request dropped by a pause was recorded as %s", lastCall(c).Reason)
 	}
 	c.SetPaused(false)
-	if !a.login(DefaultUsername, DefaultPassword) && len(c.opts.Credentials) == 0 && len(tenClusters(t).Auth.Users) == 0 {
-		t.Error("resume should serve again")
+	if got := c.Home().Tools[0].State; got != ToolConnected {
+		t.Errorf("state after resuming: %s", got)
 	}
-	if c.Paused() {
-		t.Error("still paused")
+
+	fp := c.Security().Certificate.Fingerprint
+	out := must(t, c, "new-certificate", nil, nil)
+	wantContains(t, out.Done, "New certificate made.")
+	sec := c.Security().Certificate
+	if sec.Fingerprint == fp || sec.Kind != "made" {
+		t.Errorf("certificate did not change: %+v", sec)
+	}
+	home = c.Home()
+	if home.Tools[0].State != ToolCert {
+		t.Fatalf("after a new certificate the tool is %s", home.Tools[0].State)
+	}
+	if _, body := tool.perf(clusterRef(c), "host-domclient"); !strings.Contains(body, "NotAuthenticated") {
+		t.Errorf("the tool's session survived the certificate change: %s", body)
+	}
+	// it comes back by signing in again, and the history says so
+	if !tool.login("administrator@vsphere.local", "first-password") {
+		t.Fatal("sign in again")
+	}
+	if got := c.Home().Tools[0].State; got != ToolConnected {
+		t.Errorf("state after reconnecting: %s", got)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(history(c), "reconnected") && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	wantContains(t, history(c), "The tool at 127.0.0.1 reconnected.")
+}
+
+func TestNewCertificateSuggestsNames(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	form, err := c.TaskForm("new-certificate", nil, Caller{Host: "console.lab.test:9090"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := fmt.Sprint(form.Values["names"])
+	for _, want := range []string{"sim.test", "console.lab.test", "127.0.0.1"} {
+		wantContains(t, names, want)
+	}
+	r := do(t, c, "new-certificate", nil, map[string]any{"names": " "})
+	wantContains(t, r.Errors["names"], "Enter at least one name or address")
+}
+
+func TestOwnCertificateIsCheckedBeforeItIsUsed(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	dir := t.TempDir()
+	a, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "a"), []string{"other.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a
+	crt, _ := os.ReadFile(filepath.Join(dir, "a", "cert.pem"))
+	key, _ := os.ReadFile(filepath.Join(dir, "a", "key.pem"))
+	if _, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "b"), []string{"b.test"}); err != nil {
+		t.Fatal(err)
+	}
+	wrongKey, _ := os.ReadFile(filepath.Join(dir, "b", "key.pem"))
+
+	form, _ := c.TaskForm("own-certificate", nil, Caller{})
+	form.Values["crt"], form.Values["key"] = string(crt), string(wrongKey)
+	p, err := c.TaskPreview("own-certificate", params(t, form.Values), Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := p.Extra["found"].(map[string]any)
+	if found["state"] != "bad" || !strings.Contains(fmt.Sprint(found["text"]), "valid for other.test") || !strings.Contains(fmt.Sprint(found["dropped"]), "It does not cover sim.test and 127.0.0.1") {
+		t.Errorf("found %+v", found)
+	}
+	r := do(t, c, "own-certificate", nil, map[string]any{"crt": string(crt), "key": string(wrongKey)})
+	wantContains(t, r.Errors["key"], "This key does not belong to the certificate.")
+	r = do(t, c, "own-certificate", nil, map[string]any{"crt": "not a certificate", "key": string(key)})
+	wantContains(t, r.Errors["crt"], "That file does not hold a certificate.")
+	fp := c.Security().Certificate.Fingerprint
+	must(t, c, "own-certificate", nil, map[string]any{"crt": string(crt), "key": string(key)})
+	if got := c.Security().Certificate; got.Fingerprint == fp || got.Names[0] != "other.test" {
+		t.Errorf("certificate %+v", got)
 	}
 }
 
-func TestTimeoutFaultIsInjected(t *testing.T) {
-	old := vsanhealth.TimeoutHold
-	vsanhealth.TimeoutHold = 50 * time.Millisecond
-	defer func() { vsanhealth.TimeoutHold = old }()
-	sc := tenClusters(t)
-	sc.Faults = []scenario.Fault{{Family: "vsan-pnic-net", Fault: scenario.FaultTimeout}}
+func TestIdleSignOut(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	if c.Security().Idle != "" {
+		t.Fatal("idle sign-out should start as never")
+	}
+	r := do(t, c, "idle", nil, nil)
+	wantContains(t, r.Errors["idle"], "It is already set to never.")
+	out := must(t, c, "idle", nil, map[string]any{"idle": "15 minutes"})
+	wantContains(t, out.Done, "Tools are signed out after 15 minutes of no activity.")
+	if c.Security().Idle != "15 minutes" {
+		t.Errorf("idle %q", c.Security().Idle)
+	}
+}
+
+// A fault takes effect when the button is pressed and stops when it is
+// turned off, without a new vCenter; what failed stays explained.
+func TestFaultsAreImmediateAndStayExplained(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	tool := newTool(t, c, "collector/2.0")
+	if !tool.login("administrator@vsphere.local", "first-password") {
+		t.Fatal("sign in")
+	}
+	running := c.applied().sim
+	if st, _ := tool.perf(clusterRef(c), "vsan-pnic-net"); st != 200 {
+		t.Fatalf("perf before the fault: %d", st)
+	}
+	wantContains(t, preview(t, c, "fault", map[string]string{"preset": "error"}, nil), "**Requests for statistics about host network cards come back with an error, on every cluster.**")
+	out := must(t, c, "fault", map[string]string{"preset": "error"}, nil)
+	wantContains(t, out.Done, "Switched on: requests for statistics about host network cards come back with an error, on every cluster.")
+	if c.applied().sim != running {
+		t.Fatal("switching a fault on built a new vCenter")
+	}
+	if st, body := tool.perf(clusterRef(c), "vsan-pnic-net"); st != 500 || !strings.Contains(body, "SystemError") {
+		t.Fatalf("perf with the fault on: %d %s", st, body)
+	}
+	call := lastCall(c)
+	if call.Reason != activity.ReasonFault || call.Cause == 0 {
+		t.Fatalf("faulted call recorded as %+v", call)
+	}
+	if st, _ := tool.perf(clusterRef(c), "host-domclient"); st != 200 {
+		t.Error("the fault reached another kind of data")
+	}
+	on := c.Faults()
+	if len(on.On) != 1 || on.Ready[1].On != on.On[0].ID {
+		t.Fatalf("faults view %+v", on)
+	}
+	ask := askOf(t, c, "vSAN performance data for host network cards")
+	if ask.St != "fault" || ask.Cond != on.On[0].ID {
+		t.Errorf("ask %+v", ask)
+	}
+	home := c.Home()
+	if home.Faults != 1 || home.Attention[0].Act != "condOff" {
+		t.Errorf("home %+v", home.Attention)
+	}
+	if v := c.Requests().Verdict; v.Tone != "warn" || !strings.Contains(v.Big, "except what you are failing on purpose") {
+		t.Errorf("verdict %+v", v)
+	}
+
+	text, err := c.ConditionOff(on.On[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContains(t, text, "**Turned off.** Requests for statistics about host network cards are answered again. No slowness or faults are switched on now.")
+	if st, _ := tool.perf(clusterRef(c), "vsan-pnic-net"); st != 200 {
+		t.Error("the fault is still on")
+	}
+	// the hour's failed requests still say why they failed
+	found := false
+	for _, a := range c.Requests().Asks {
+		if a.Label == "Answered now" && strings.Contains(a.Short, "Failed on purpose until {{time:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no row explains the ended fault: %+v", c.Requests().Asks)
+	}
+	if v := c.Requests().Verdict; v.Tone != "ok" {
+		t.Errorf("verdict after the fault ended: %+v", v)
+	}
+}
+
+func TestPerformanceServiceOffAndSlowness(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	tool := newTool(t, c, "collector/2.0")
+	if !tool.login("administrator@vsphere.local", "first-password") {
+		t.Fatal("sign in")
+	}
+	running := c.applied().sim
+	must(t, c, "fault", map[string]string{"preset": "perfdown"}, nil)
+	if c.applied().sim != running {
+		t.Fatal("switching the performance service off built a new vCenter")
+	}
+	if st, body := tool.perf(clusterRef(c), "host-domclient"); st != 500 || !strings.Contains(body, "Stats primary") {
+		t.Fatalf("perf with the service off: %d %s", st, body)
+	}
+	if call := lastCall(c); call.Reason != activity.ReasonFault || call.Cause == 0 {
+		t.Errorf("recorded as %+v", call)
+	}
+	wantContains(t, c.Faults().On[0].Text, "The vSAN performance service is switched off, on cluster-01.")
+	if _, err := c.ConditionOff(0); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := tool.perf(clusterRef(c), "host-domclient"); st != 200 {
+		t.Error("the performance service did not come back")
+	}
+
+	must(t, c, "fault", map[string]string{"preset": "slow"}, map[string]any{"ms": 300, "jitter": 0})
+	start := time.Now()
+	tool.perf(clusterRef(c), "host-domclient")
+	if took := time.Since(start); took < 300*time.Millisecond {
+		t.Errorf("a slow answer took %s", took)
+	}
+	r := do(t, c, "fault", map[string]string{"preset": "slow"}, map[string]any{"ms": 0})
+	wantContains(t, r.Errors["ms"], "Enter how much slower, from 1 to 60,000 milliseconds.")
+	r = do(t, c, "fault", nil, map[string]any{"kind": "error", "where": "some", "pick": []string{}})
+	wantContains(t, r.Errors["pick"], "Tick at least one cluster")
+}
+
+func TestTimedFaultTurnsItselfOff(t *testing.T) {
+	ck := &clock{t: time.Date(2026, 11, 12, 14, 0, 0, 0, time.UTC)}
+	c := newCtlAt(t, small(t), "", "t", ck.now)
+	must(t, c, "fault", map[string]string{"preset": "timeout"}, map[string]any{"until": "15m"})
+	on := c.Faults().On
+	if len(on) != 1 || on[0].Until == nil || !on[0].Until.Equal(ck.now().Add(15*time.Minute)) {
+		t.Fatalf("on %+v", on)
+	}
+	ck.add(16 * time.Minute)
+	if on = c.Faults().On; len(on) != 0 {
+		t.Fatalf("still on after its time: %+v", on)
+	}
+	wantContains(t, history(c), "A fault turned itself off. Requests for all vSAN performance data are answered again.")
+	if c.Home().Faults != 0 {
+		t.Error("Home still counts the fault")
+	}
+}
+
+// The scenario file's own fault rules, latency and statsPrimary: false
+// become conditions, so the console lists everything that is on.
+func TestScenarioFaultsBecomeConditions(t *testing.T) {
+	sc, err := scenario.Load("../../examples/scenarios/faults-and-latency.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	sc.Clusters[0].StatsPrimary = &off
 	c := newCtl(t, sc, "", "t")
-	a := newAPIClient(t, c)
-	a.login("administrator@vsphere.local", "VMware1!")
-	a.perf(c.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	got := c.Log.Query(activity.Filter{Family: "vsan-pnic-net"})
-	if len(got) != 1 || got[0].Result != activity.ResultInjected || got[0].DurationMs < 50 {
-		t.Errorf("timeout call: %+v", got)
+	r := c.applied()
+	if len(r.sc.Faults) != 0 || r.sc.Latency.PerfQuery != nil || r.sc.Latency.SDK != nil || len(r.sc.Latency.Families) != 0 {
+		t.Errorf("faults and latency were left in the scenario: %+v %+v", r.sc.Faults, r.sc.Latency)
+	}
+	var texts []string
+	for _, v := range c.Faults().On {
+		texts = append(texts, v.Text)
+	}
+	all := strings.Join(texts, "\n")
+	wantContains(t, all, "The simulator says statistics about host network cards are not available, on cluster-03.")
+	wantContains(t, all, "The vSAN performance service is switched off, on cluster-01.")
+	wantContains(t, all, "Requests for lists of clusters, hosts and VMs take about")
+	if r.topo.Clusters()[0].PrimaryOnline() {
+		t.Error("cluster-01's performance service should be off")
+	}
+	if !r.topo.Clusters()[1].PrimaryOnline() {
+		t.Error("cluster-02's performance service should be on")
+	}
+}
+
+// A scheduled change waits without locking anything; it is planned again
+// when its time comes, so one that no longer makes sense fails cleanly.
+func TestSchedulingWithoutTheLock(t *testing.T) {
+	ck := &clock{t: time.Date(2026, 11, 12, 14, 31, 0, 0, time.UTC)}
+	c := newCtlAt(t, small(t), "", "t", ck.now)
+	must(t, c, "add-cluster", nil, map[string]any{"hosts": 3, "vms": 1})
+	at := ck.now().Add(4 * time.Minute)
+	form, _ := c.TaskForm("add-hosts", map[string]string{"cluster": "dc-01/cluster-02"}, Caller{})
+	r, err := c.TaskRun("add-hosts", params(t, form.Values), &at, false, Caller{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Scheduled == nil || r.Scheduled.Text != "Add 2 hosts to cluster-02" || !r.Scheduled.At.Equal(at) {
+		t.Fatalf("scheduled %+v", r)
+	}
+	if cl, _ := c.Cluster("dc-01/cluster-02"); len(cl.Hosts) != 3 {
+		t.Fatal("a scheduled change was made at once")
+	}
+	if home := c.Home(); len(home.Scheduled) != 1 {
+		t.Fatalf("Home does not list it: %+v", home.Scheduled)
+	}
+	wantContains(t, history(c), "Scheduled for {{time:2026-11-12T14:35:00Z}}: add 2 hosts to cluster-02.")
+
+	// other changes are still possible
+	must(t, c, "add-hosts", map[string]string{"cluster": "dc-01/cluster-01"}, map[string]any{"n": 1})
+
+	// a second one, then cancel it
+	later := ck.now().Add(9 * time.Minute)
+	r, err = c.TaskRun("idle", params(t, map[string]any{"idle": "1 hour"}), &later, false, Caller{})
+	if err != nil || r.Scheduled == nil {
+		t.Fatalf("second schedule: %+v %v", r, err)
+	}
+	text, err := c.ScheduledCancel(r.Scheduled.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContains(t, text, `**Cancelled.** "Change the idle sign-out to 1 hour" will not happen. Nothing was changed.`)
+	if c.Security().Idle != "" {
+		t.Error("a cancelled change was made")
+	}
+
+	// "Do it now" makes the first one
+	id := c.Home().Scheduled[0].ID
+	now, err := c.ScheduledNow(id)
+	if err != nil || now.Outcome == nil {
+		t.Fatalf("do it now: %+v %v", now, err)
+	}
+	if cl, _ := c.Cluster("dc-01/cluster-02"); len(cl.Hosts) != 5 {
+		t.Errorf("cluster-02 has %d hosts", len(cl.Hosts))
+	}
+	if len(c.Home().Scheduled) != 0 {
+		t.Error("it is still listed as scheduled")
+	}
+
+	// a change scheduled for a cluster that is then removed fails cleanly,
+	// with its own values kept for "Try again"
+	r, err = c.TaskRun("add-hosts", params(t, form.Values), &at, false, Caller{})
+	if err != nil || r.Scheduled == nil {
+		t.Fatal("schedule again")
+	}
+	if _, err := c.RemoveCluster("dc-01/cluster-02"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := c.ScheduledNow(r.Scheduled.ID)
+	if err != nil || !res.Failed {
+		t.Fatalf("a change to a removed cluster: %+v %v", res, err)
+	}
+	f := c.Home().Failure
+	if f == nil || f.What != `The change "Add 2 hosts to cluster-02" was not made.` || !strings.Contains(f.Why, "There is no cluster called cluster-02") || f.Kind != "add-hosts" || !strings.Contains(string(f.Params), "dc-01/cluster-02") {
+		t.Fatalf("failure %+v", f)
+	}
+	wantContains(t, history(c), "Failed: add 2 hosts to cluster-02.")
+	c.DismissFailure()
+	if c.Home().Failure != nil {
+		t.Error("the failure bar was not hidden")
+	}
+
+	// a time that has passed is refused
+	past := ck.now().Add(-time.Minute)
+	r, _ = c.TaskRun("idle", params(t, map[string]any{"idle": "1 hour"}), &past, false, Caller{})
+	if r.Errors["at"] == "" {
+		t.Error("a time in the past was accepted")
+	}
+}
+
+func TestScheduledChangeFiresOnItsOwn(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	at := time.Now().Add(300 * time.Millisecond)
+	r, err := c.TaskRun("idle", params(t, map[string]any{"idle": "8 hours"}), &at, false, Caller{})
+	if err != nil || r.Scheduled == nil {
+		t.Fatalf("%+v %v", r, err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for c.Security().Idle == "" && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if c.Security().Idle != "8 hours" {
+		t.Fatal("the scheduled change did not happen")
+	}
+	if len(c.Home().Scheduled) != 0 {
+		t.Error("it is still listed")
+	}
+}
+
+func TestFailureKeepsNoSecrets(t *testing.T) {
+	secrets := `{"name":"a","pw":"secret-1","pw2":"secret-2","key":"-----BEGIN","cur":"x","crt":"y","role":"read"}`
+	for _, kind := range []string{"own-certificate", "console-password", "add-user", "change-user", ""} {
+		got := string(scrub(kind, json.RawMessage(secrets)))
+		for _, bad := range []string{"secret-1", "secret-2", "BEGIN", `"cur"`, `"crt"`} {
+			if strings.Contains(got, bad) {
+				t.Errorf("%q kept %s in %s", kind, bad, got)
+			}
+		}
+		wantContains(t, got, `"name":"a"`)
+	}
+}
+
+// A failed replace-everything keeps the environment name that was typed, so
+// "Try again" builds the environment that failed; a failed own-certificate
+// change keeps the names it was given but neither the certificate nor the key.
+func TestFailureKeepsWhatIsNotASecret(t *testing.T) {
+	replace, err := json.Marshal(replaceParams{Start: "own", Key: "prod-lab"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContains(t, string(scrub("replace-everything", replace)), `"key":"prod-lab"`)
+	if strings.Contains(string(scrub("", replace)), "prod-lab") {
+		t.Error("a task not known to carry a plain key still kept it")
+	}
+	cert, err := json.Marshal(certParams{Names: "vcsim.lab.example", Crt: "-----BEGIN CERTIFICATE", Key: "-----BEGIN PRIVATE KEY", CrtName: "tls.crt", KeyName: "tls.key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(scrub("own-certificate", cert))
+	if strings.Contains(got, "BEGIN") {
+		t.Errorf("kept the certificate or key: %s", got)
+	}
+	wantContains(t, got, `"names":"vcsim.lab.example"`)
+}
+
+// What was changed survives a restart; what was only scheduled does not,
+// and the history says so.
+func TestStateSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	c := newCtl(t, small(t), dir, "h")
+	must(t, c, "add-hosts", map[string]string{"cluster": "dc-01/cluster-01"}, map[string]any{"n": 1})
+	must(t, c, "remove-hosts", map[string]string{"cluster": "dc-01/cluster-01"}, map[string]any{"pick": []string{"esx02"}})
+	must(t, c, "add-nfs", nil, nil)
+	must(t, c, "fault", map[string]string{"preset": "slow"}, nil)
+	at := time.Now().Add(time.Hour)
+	if r, err := c.TaskRun("idle", params(t, map[string]any{"idle": "1 day"}), &at, false, Caller{}); err != nil || r.Scheduled == nil {
+		t.Fatal("schedule")
+	}
+	before := identities(c)
+	c.Close()
+
+	c2 := newCtl(t, small(t), dir, "h")
+	after := identities(c2)
+	if len(after) != len(before) {
+		t.Fatalf("inventory changed across the restart: %d -> %d", len(before), len(after))
+	}
+	for key, id := range before {
+		if after[key] != id {
+			t.Errorf("%s changed identity across the restart", key)
+		}
+	}
+	if len(c2.Storage().Rows) != 1 || len(c2.Faults().On) != 1 {
+		t.Errorf("storage %d, faults %d", len(c2.Storage().Rows), len(c2.Faults().On))
+	}
+	if len(c2.Home().Scheduled) != 0 {
+		t.Error("a scheduled change survived the restart")
+	}
+	wantContains(t, history(c2), "(change the idle sign-out to 1 day) was dropped because the simulator restarted.")
+	wantContains(t, history(c2), "Simulator started with 1 cluster, 4 hosts and 4 VMs.")
+}
+
+// The Requests headline counts only what the simulator truly cannot answer.
+func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	capture, err := querylog.NewCapture(t.TempDir(), "", querylog.Settings{Unanswered: true}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Capture = capture
+	tool := toolOn(t, httptest.NewServer(capture.Wrap(c)), "collector/2.0")
+	stranger := toolOn(t, httptest.NewServer(capture.Wrap(c)), "curl/8")
+	if v := c.Requests().Verdict; v.Tone != "none" {
+		t.Fatalf("verdict before anything connected: %+v", v)
+	}
+	if stranger.login("administrator@vsphere.local", "wrong-password") {
+		t.Fatal("a wrong password signed in")
+	}
+	if !tool.login("administrator@vsphere.local", "first-password") {
+		t.Fatal("sign in")
+	}
+	ref := clusterRef(c)
+	tool.content()
+	tool.perf(ref, "host-domclient") // data
+	tool.perf(ref, "cache-disk")     // "there are none" on an ESA cluster
+	tool.perf(ref, "clom-disk")      // refused by a real vCenter too
+	tool.perf(ref, "cluster-pmem")   // likewise
+	tool.do(http.MethodPost, "/ls/sdk", fmt.Sprintf(soapEnv, `<QueryAssignedLicenses xmlns="urn:vim25"><_this type="LicenseAssignmentManager">LicenseAssignmentManager</_this></QueryAssignedLicenses>`))
+	tool.post("/sdk", `<QueryPerfCounterByLevel xmlns="urn:vim25"><_this type="PerformanceManager">PerfMgr</_this><level>1</level></QueryPerfCounterByLevel>`)
+	tool.do(http.MethodGet, "/rest/vcenter/namespace-management/clusters", "")
+	tool.do(http.MethodGet, "/sdk/vim.wsdl", "")
+	tool.do(http.MethodGet, "/sdk/vimServiceVersions.xml", "")
+	tool.content() // it carries on
+
+	v := c.Requests()
+	want := map[string]string{
+		"Which license this vCenter has":                                  "unknown",
+		"The list of measurements vCenter can report":                     "unknown",
+		"Whether Kubernetes is turned on for any cluster":                 "unknown",
+		"The file that describes how to talk to vCenter":                  "unknown",
+		"Sign-in with a wrong password, from 127.0.0.1":                   "denied",
+		"Signing in and out":                                              "ok",
+		"vSAN performance data for host disk activity":                    "ok",
+		"vSAN performance data for cache disks":                           "ok",
+		"vSAN performance data that a real vCenter also refuses, 2 kinds": "ok",
+		"Which versions of its interface vCenter offers":                  "ok",
+	}
+	got := map[string]string{}
+	for _, a := range v.Asks {
+		got[a.T] = a.St
+	}
+	for title, st := range want {
+		if got[title] != st {
+			t.Errorf("%q is %q, want %q (all: %v)", title, got[title], st, got)
+		}
+	}
+	if v.Counts["unknown"] != 4 || v.Counts["denied"] != 1 || v.Counts["fault"] != 0 {
+		t.Errorf("counts %v", v.Counts)
+	}
+	if v.Asks[0].St != "unknown" {
+		t.Error("problems are not listed first")
+	}
+	if v.Verdict.Tone != "bad" || v.Verdict.Big != "4 kinds of request are not being answered." || !strings.Contains(v.Verdict.Line, `The tool at 127.0.0.1 ("collector/2.0") is connected. It carried on collecting without them.`) {
+		t.Errorf("verdict %+v", v.Verdict)
+	}
+	wantContains(t, askOf(t, c, "Which license").Short, "The tool carried on. VCF Operations' own adapter would stop")
+	wantContains(t, askOf(t, c, "cache disks").Short, `The answer was "there are none"`)
+	wantContains(t, askOf(t, c, "also refuses").Short, `as on a real vCenter`)
+
+	// capture holds only the four the simulator has no answer for
+	if cv := v.Capture; cv.Kept != 4 || cv.Kinds != 4 || !cv.Unanswered {
+		t.Errorf("capture %+v", cv)
+	}
+	home := c.Home()
+	if home.Unanswered != 4 {
+		t.Errorf("Home counts %d unanswered", home.Unanswered)
+	}
+	var titles []string
+	for _, a := range home.Attention {
+		titles = append(titles, a.T+" / "+a.D)
+	}
+	all := strings.Join(titles, "\n")
+	wantContains(t, all, "4 kinds of request are not being answered")
+	wantContains(t, all, "One is the license, which would stop a different tool")
+	wantContains(t, all, "Someone else tried a wrong password 1 time")
+	if len(home.Tools) != 1 || home.Tools[0].Unknown != 4 || !home.Tools[0].Carried {
+		t.Errorf("tools %+v", home.Tools)
+	}
+
+	// turning capture off keeps what was captured; deleting is the one
+	// thing that discards it
+	text, err := c.SetCapture("unanswered", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantContains(t, text, "The 4 already captured are kept")
+	if c.Requests().Capture.Kept != 4 {
+		t.Error("turning capture off threw the captured requests away")
+	}
+	if _, err := c.ClearCapture(); err != nil {
+		t.Fatal(err)
+	}
+	if c.Requests().Capture.Kept != 0 {
+		t.Error("delete did not delete")
+	}
+
+	// every request, one at a time
+	log := c.RequestLog()
+	if len(log) < 10 || log[0].T != "Signing in and out" {
+		t.Errorf("log %+v", log[:min(3, len(log))])
+	}
+	var seq uint64
+	for _, row := range log {
+		if strings.Contains(row.T, "host disk activity") {
+			seq = row.Seq
+		}
+	}
+	sent, err := c.RequestBody(seq)
+	if err != nil || !strings.Contains(sent.Body, "host-domclient:*") || sent.Line != "POST /vsanHealth" {
+		t.Errorf("sent %+v %v", sent, err)
+	}
+	for _, row := range log {
+		if row.Tech == "Login" {
+			if s, _ := c.RequestBody(row.Seq); s.Body != "" || !strings.Contains(s.Note, "sign-in") {
+				t.Errorf("a sign-in kept its text: %+v", s)
+			}
+		}
+	}
+}
+
+var hostRefRe = regexp.MustCompile(`host-[0-9]+`)
+
+// Every request in the live captures was answered by a real vCenter, so the
+// simulator must never call one of them "not answered". This is the check
+// that keeps the Requests headline honest.
+func TestCapturedRequestsAreNeverCalledUnanswered(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	tool := newTool(t, c, "capture-replay")
+	if !tool.login("administrator@vsphere.local", "first-password") {
+		t.Fatal("sign in")
+	}
+	refs := c.applied().sim.Clusters[0]
+	files, _ := filepath.Glob("../../fixtures/live/9.1.1/*.req.xml")
+	if len(files) < 50 {
+		t.Fatalf("only %d captured requests found", len(files))
+	}
+	for _, file := range files {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := filepath.Base(file)
+		if strings.HasPrefix(name, "nocookie-") {
+			continue
+		}
+		req := strings.ReplaceAll(string(b), "domain-c6004", refs.Ref.Value)
+		req = hostRefRe.ReplaceAllString(req, refs.Hosts[0].Value)
+		path := "/vsanHealth"
+		if strings.Contains(req, "urn:vim25") && !strings.Contains(req, "urn:vsan") {
+			path = "/sdk"
+		}
+		before := len(c.Log.All())
+		tool.do(http.MethodPost, path, req)
+		calls := c.Log.All()
+		if len(calls) != before+1 {
+			t.Fatalf("%s: not recorded", name)
+		}
+		if call := calls[len(calls)-1]; call.Reason == activity.ReasonUnknown || call.Reason == activity.ReasonDenied {
+			t.Errorf("%s: a request a real vCenter answered is recorded as %q (fault %q, status %d)", name, call.Reason, call.Fault, call.Status)
+		}
+	}
+	// the one captured without a session is a refused sign-in, not a gap
+	b, _ := os.ReadFile("../../fixtures/live/9.1.1/nocookie-vsanHealth.req.xml")
+	stranger := newTool(t, c, "no-session")
+	stranger.do(http.MethodPost, "/vsanHealth", strings.ReplaceAll(string(b), "domain-c6004", refs.Ref.Value))
+	if call := lastCall(c); call.Reason != activity.ReasonDenied {
+		t.Errorf("a request without a session is recorded as %q", call.Reason)
+	}
+	if n := c.Requests().Counts["unknown"]; n != 0 {
+		t.Errorf("%d kinds of captured request are called not answered", n)
 	}
 }
 
 func TestStripRemovesSecrets(t *testing.T) {
 	sc := tenClusters(t)
-	sc.TLS = scenario.TLS{CertFile: "/x/c", KeyFile: "/x/k"}
+	sc.TLS.CertFile, sc.TLS.KeyFile = "/secret/cert.pem", "/secret/key.pem"
 	b, _ := json.Marshal(Strip(sc))
-	if strings.Contains(string(b), "VMware1!") || strings.Contains(string(b), "administrator@") || strings.Contains(string(b), "/x/k") {
-		t.Errorf("secrets in the editable view: %s", b)
-	}
-	c := newCtl(t, sc, "", "t")
-	if _, err := os.Stat(filepath.Join(c.opts.DataDir, "console.json")); err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := os.ReadFile(filepath.Join(c.opts.DataDir, "console.json"))
-	if strings.Contains(string(raw), "VMware1!") || strings.Contains(string(raw), "administrator@") {
-		t.Error("console.json holds credentials")
-	}
-}
-
-// An unauthenticated query is refused before any fault rule is consulted, so
-// the log must not call it injected.
-func TestUnauthenticatedQueryIsNotInjected(t *testing.T) {
-	sc := tenClusters(t)
-	sc.Faults = []scenario.Fault{{Family: "host-domowner", Fault: scenario.FaultSystemError}}
-	c := newCtl(t, sc, "", "t")
-	a := newAPIClient(t, c) // no login
-	a.perf(c.applied().sim.Clusters[0].Ref.Value, "host-domowner")
-	got := c.Log.Query(activity.Filter{Family: "host-domowner"})
-	if len(got) != 1 || got[0].Result != activity.ResultDenied || got[0].Fault != "NotAuthenticated" {
-		t.Errorf("unauthenticated call: %+v", got)
-	}
-}
-
-// Removing something preserves surviving MoRefs; telemetry edits do not move the version.
-func TestRemovalKeepsSurvivorMoRefs(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	refs := func() map[string]string {
-		m := map[string]string{}
-		for _, r := range c.applied().sim.Clusters {
-			m[r.Cluster.Key] = r.Ref.Value
-			for i, h := range r.Cluster.Hosts {
-				m[h.Key] = r.Hosts[i].Value
-			}
-			for i, v := range r.Cluster.VMs {
-				m[v.Key] = r.VMs[i].Value
-			}
-		}
-		return m
-	}
-	before := refs()
-	if _, err := c.DeleteCluster("dc-01/cluster-02"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	after := refs()
-	if len(after) >= len(before) {
-		t.Fatalf("removal did not shrink the inventory: %d -> %d", len(before), len(after))
-	}
-	for key, ref := range after {
-		if before[key] != ref {
-			t.Errorf("%s moved from %q to %q", key, before[key], ref)
+	for _, bad := range []string{"VMware1!", "/secret/", "password"} {
+		if strings.Contains(string(b), bad) {
+			t.Errorf("stripped scenario still has %q", bad)
 		}
 	}
 }
 
-func TestTelemetryOnlyChangeKeepsVersion(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	e := editable(t, c)
-	setHosts(e, "dc-01/cluster-02", 12)
-	put(t, c, e)
-	if rv, _ := c.Review(); rv.Churn {
-		t.Errorf("adding hosts reported identity churn: %+v", rv)
+func TestAddressAndItsCheck(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	if got := c.Address(); got != "https://sim.test:8443" {
+		t.Errorf("address %q", got)
 	}
-	c.DiscardDraft()
-
-	e = editable(t, c)
-	e.Latency.SDK = &scenario.Delay{FixedMs: 5}
-	put(t, c, e)
-	rv, _ := c.Review()
-	if rv.To != rv.From || c.DraftState().Pending.Target != rv.From {
-		t.Errorf("a telemetry-only change moves the version: %d -> %d", rv.From, rv.To)
+	c.opts.PublicURL = "https://vcsim.lab.example/"
+	if got := c.Home().Address; got != "https://vcsim.lab.example" {
+		t.Errorf("address %q", got)
 	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	if c.applied().version != 1 {
-		t.Errorf("version %d after a telemetry apply", c.applied().version)
+	// nothing listens at that name from here, and the check says so plainly
+	c.opts.PublicURL = "https://127.0.0.1:1"
+	c.opts.APIAddrs = []string{"127.0.0.1:1"}
+	ok, text := c.CheckAddress()
+	if ok || !strings.Contains(text, "did not answer") {
+		t.Errorf("check: %v %q", ok, text)
 	}
 }
 
-// A failed build must leave the running vCenter alone and say so until dismissed.
-func TestFailedApplyIsReportedAndHarmless(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	e := editable(t, c)
-	setHosts(e, "dc-01/cluster-02", 9)
-	put(t, c, e)
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
-	if _, err := c.Apply("now"); err == nil {
-		t.Fatal("the build should fail without a temp directory")
-	}
-	st := c.State()
-	if !strings.Contains(st.LastErr, "failed to apply") || !strings.Contains(st.LastErr, "previous settings are still serving") {
-		t.Errorf("last error: %q", st.LastErr)
-	}
-	if c.applied().version != 1 || !c.DraftState().Pending.Exists {
-		t.Error("a failed apply must keep the version and the draft")
-	}
-	if tl := c.Timeline(); tl[0].Text != "Apply failed; previous settings are still serving" {
-		t.Errorf("timeline: %+v", tl[0])
-	}
-	c.DismissError()
-	if c.State().LastErr != "" {
-		t.Error("dismiss did not clear the error")
-	}
-}
-
-func TestDeleteClusterDropsItsScopedFaultRules(t *testing.T) {
-	sc := tenClusters(t)
-	const del, other = "dc-01/cluster-03", "dc-01/cluster-04"
-	sc.Faults = []scenario.Fault{
-		{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError, Clusters: []string{del}},
-		{Family: "host-domowner", Fault: scenario.FaultSystemError, Clusters: []string{del, other}},
-	}
-	c := newCtl(t, sc, "", "t")
-	v, err := c.DeleteCluster(del)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := v.Scenario.Faults
-	if len(got) != 1 || got[0].Family != "host-domowner" || len(got[0].Clusters) != 1 || got[0].Clusters[0] != other {
-		t.Fatalf("faults after delete = %+v; the rule scoped only to the deleted cluster must go, not widen to all clusters", got)
-	}
-}
-
-// Loading a telemetry preset must not discard what is already pending.
-func TestTelemetryPresetKeepsThePendingDraft(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	e := editable(t, c)
-	setHosts(e, "dc-01/cluster-02", 9)
-	put(t, c, e)
-	if _, err := c.Regenerate("dc-01/cluster-04"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.SetDraft(mustJSON(t, Strip(c.draft.Scenario)), ScopeDashboard); err != nil {
-		t.Fatal(err)
-	}
-	v, err := c.ApplyPreset("brown-out")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var hosts int
-	for _, o := range v.Scenario.Clusters {
-		if o.Key == "dc-01/cluster-02" {
-			hosts = o.Hosts
-		}
-	}
-	if hosts != 9 {
-		t.Errorf("the pending host edit was discarded: %+v", v.Scenario.Clusters)
-	}
-	if len(v.Regenerate) != 1 || v.Regenerate[0] != "dc-01/cluster-04" {
-		t.Errorf("regeneration marker lost: %v", v.Regenerate)
-	}
-	if v.Scope != ScopeDashboard {
-		t.Errorf("scope %q", v.Scope)
-	}
-	if len(v.Scenario.Faults) != 1 || v.Scenario.Faults[0].Family != "host-domowner" || v.Scenario.Latency.PerfQuery == nil || v.Scenario.Latency.PerfQuery.FixedMs != 300 {
-		t.Errorf("preset not applied: %+v %+v", v.Scenario.Faults, v.Scenario.Latency)
-	}
-	if rv, _ := c.Review(); rv.TopologyCount == 0 || rv.TelemetryCount == 0 {
-		t.Errorf("review must show both: %+v", rv)
-	}
-
-	// a topology preset replaces the topology but keeps the pending scope
-	v, err = c.ApplyPreset("phase1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.Scope != ScopeDashboard {
-		t.Errorf("topology preset reset the scope to %q", v.Scope)
-	}
-}
-
-func mustJSON(t *testing.T, v any) []byte {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-func TestOSAGeneratorPreservesSettingsAndReviewsChanges(t *testing.T) {
-	sc := scenario.Phase1("osa-generator")
-	sc.Defaults.Architecture = "osa"
-	sc.Defaults.Hosts = 3
-	primary := false
-	sc.Defaults.StatsPrimary = &primary
-	c := newCtl(t, sc, "", "t")
-	params := GenParams{Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1}}, Hosts: 3}
-	generated, err := c.Generate(params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if generated.Scenario.Defaults.Architecture != "osa" || generated.Scenario.Defaults.StatsPrimary == nil || *generated.Scenario.Defaults.StatsPrimary {
-		t.Fatalf("generator lost OSA settings: %+v", generated.Scenario.Defaults)
-	}
-	c.DiscardDraft()
-	online := true
-	params.Architecture = "esa"
-	params.StatsPrimary = &online
-	if _, err := c.Generate(params); err != nil {
-		t.Fatal(err)
-	}
-	review, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	changes := map[string]Change{}
-	for _, ch := range review.Changes {
-		changes[ch.Field] = ch
-	}
-	if changes["Architecture"].Before != "OSA" || changes["Architecture"].After != "ESA" || changes["Stats primary"].Before != "offline" || changes["Stats primary"].After != "online" {
-		t.Fatalf("missing settings in review: %+v", review.Changes)
-	}
-	for _, unchanged := range review.NotAffected {
-		if strings.Contains(unchanged, "other clusters") {
-			t.Errorf("changed cluster listed as unaffected: %s", unchanged)
-		}
-	}
-	c.DiscardDraft()
-	if _, err := c.ApplyPreset("osa"); err != nil {
-		t.Fatal(err)
-	}
-	if got := c.DraftState().Scenario.Defaults.Architecture; got != "osa" {
-		t.Errorf("OSA preset: %q", got)
-	}
-}
-
-func TestArchitectureReviewCountsPerformanceIdentityChanges(t *testing.T) {
-	sc := scenario.Phase1("arch-review")
-	sc.Defaults.Hosts = 3
-	c := newCtl(t, sc, "", "t")
-	edit := editable(t, c)
-	edit.Clusters = append(edit.Clusters, scenario.ClusterOverride{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{Architecture: "osa"}})
-	put(t, c, edit)
-	review, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, ch := range review.Changes {
-		if ch.Field == "Architecture" && ch.Before == "ESA" && ch.After == "OSA" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("architecture missing in review: %+v", review.Changes)
-	}
-	var perf IdentityRow
-	for _, row := range review.Identities {
-		if row.Label == "Performance entities" {
-			perf = row
-		}
-	}
-	if perf.Kept == 0 || perf.Added == 0 || perf.Removed == 0 || !review.Churn {
-		t.Errorf("architecture change must count retained, new and removed performance identities: %+v, churn=%v", perf, review.Churn)
-	}
-	tree := c.Tree()
-	if tree.Datacenters[0].Clusters[0].Architecture != "osa" || tree.Datacenters[0].Clusters[0].State != "pending" {
-		t.Errorf("tree does not show pending OSA: %+v", tree.Datacenters[0].Clusters[0])
-	}
-	view, err := c.Cluster("dc-01/cluster-01")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, check := range view.Checks {
-		if check.Title == "Dedup is off" {
-			t.Error("ESA dedup warning should not apply to OSA")
-		}
-	}
-}
-
-func TestStatsPrimaryChangeReviewAndWarning(t *testing.T) {
-	sc := scenario.Phase1("osa-primary-review")
-	sc.Defaults.Architecture, sc.Defaults.Hosts = "osa", 3
-	c := newCtl(t, sc, "", "t")
-	edit := editable(t, c)
-	offline := false
-	edit.Clusters = append(edit.Clusters, scenario.ClusterOverride{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{StatsPrimary: &offline}})
-	put(t, c, edit)
-	review, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, change := range review.Changes {
-		if change.Field == "Stats primary" && change.Before == "online" && change.After == "offline" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("stats-primary change not reviewed: %+v", review.Changes)
-	}
-	for _, row := range review.Identities {
-		if row.Label == "Performance entities" && (row.Kept != review.Before.Entities || row.Added != 0 || row.Removed != 0) {
-			t.Errorf("offline primary should retain performance identities: %+v", row)
-		}
-	}
-	if review.After.Entities != 0 {
-		t.Errorf("offline primary should project no samples: %+v", review.After)
-	}
-	if review.Churn {
-		t.Error("stats unavailability alone must not claim stable UUIDs were replaced")
-	}
-	view, err := c.Cluster("dc-01/cluster-01")
-	if err != nil {
-		t.Fatal(err)
-	}
-	warned := false
-	for _, check := range view.Checks {
-		if check.Title == "Stats primary is offline" {
-			warned = true
-		}
-	}
-	if !warned {
-		t.Errorf("missing offline warning: %+v", view.Checks)
-	}
-}
-
-func TestOSACompatibilityAndDashboardCoverage(t *testing.T) {
-	sc := scenario.Phase1("osa-compat")
-	sc.Defaults.Architecture = "osa"
-	primary := false
-	sc.Defaults.StatsPrimary = &primary
-	c := newCtl(t, sc, "", "t")
-	compat := c.Compatibility()
-	for name, want := range map[string]int{"data": 30, "empty": 26, "invalid-argument": 16, "not-supported": 2} {
-		if got := compat.OSAKinds[name]; got != want {
-			t.Errorf("OSA %s: %d, want %d", name, got, want)
-		}
-	}
-	for _, pending := range compat.Pending {
-		if strings.Contains(pending, "schema-only") || strings.Contains(pending, "is emulated") {
-			t.Errorf("pending list should name only unverified behavior: %q", pending)
-		}
-	}
-	view, err := c.Cluster("dc-01/cluster-01")
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, check := range view.Checks {
-		if check.Title == "Stats primary is offline" {
-			found = true
-		}
-		if check.Title == "Dedup is off" {
-			t.Error("OSA cannot use ESA dedup warning")
-		}
-	}
-	if !found {
-		t.Error("missing primary warning")
-	}
-	projection := Project(c.cat, c.applied().topo)
-	flags := map[string]bool{}
-	for _, family := range projection.Families {
-		flags[family.Family] = family.Dashboard
-	}
-	if !flags["cache-disk"] || !flags["capacity-disk"] || flags["disk-group"] {
-		t.Errorf("dashboard scope: cache=%v capacity=%v group=%v", flags["cache-disk"], flags["capacity-disk"], flags["disk-group"])
-	}
-}
-
-// Applying a cluster removal and restarting from the saved state must expose
-// the same references and UUIDs for each surviving cluster, host and VM.
-func TestRemovalIdentityAcrossApplyAndRestart(t *testing.T) {
-	sc, err := scenario.Parse([]byte("seed: apply-identity\ndatacenters: [{name: dc, clusters: 3}]\ndefaults: {hosts: 3, vms: {perHost: 1}}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	c := newCtl(t, sc, dir, "same")
-	identities := func(c *Controller) map[string]string {
-		m := map[string]string{}
-		for _, refs := range c.applied().sim.Clusters {
-			cl := refs.Cluster
-			m[cl.Key] = fmt.Sprint(refs.Ref, cl.VsanUUID, cl.StatsUUID)
-			for i, h := range cl.Hosts {
-				m[h.Key] = fmt.Sprint(refs.Hosts[i], h.HardwareUUID, h.NodeUUID)
-			}
-			for i, v := range cl.VMs {
-				m[v.Key] = fmt.Sprint(refs.VMs[i], v.UUID, v.InstanceUUID)
-			}
-		}
-		return m
-	}
-	before := identities(c)
-	if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	after := identities(c)
-	for key, value := range after {
-		if before[key] != value {
-			t.Errorf("%s changed on apply", key)
-		}
-	}
-	c.Close()
-	restarted := newCtl(t, sc, dir, "same")
-	for key, value := range identities(restarted) {
-		if after[key] != value {
-			t.Errorf("%s changed on restart", key)
-		}
-	}
-}
-
-func TestGrowingHostsKeepsMoRefsOnApplyAndRestart(t *testing.T) {
-	parse := func(devices int) *scenario.Scenario {
-		sc, err := scenario.Parse([]byte(fmt.Sprintf("seed: growth\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, host: {localDevices: %d}, vms: {perHost: 1}}\n", devices)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return sc
-	}
-	refs := func(c *Controller) map[string]string {
-		m := map[string]string{}
-		for _, r := range c.applied().sim.Clusters {
-			m[r.Cluster.Key] = r.Ref.Value
-			for i, h := range r.Cluster.Hosts {
-				m[h.Key] = r.Hosts[i].Value
-			}
-			for i, v := range r.Cluster.VMs {
-				m[v.Key] = r.VMs[i].Value
-			}
-		}
-		return m
-	}
-	same := func(what string, want, got map[string]string) {
-		t.Helper()
-		if len(want) != len(got) {
-			t.Fatalf("%s: %d objects, want %d", what, len(got), len(want))
-		}
-		for k, v := range want {
-			if got[k] != v {
-				t.Errorf("%s: %s is %q, was %q", what, k, got[k], v)
-			}
-		}
-	}
-	dir := t.TempDir()
-	c := newCtl(t, parse(1), dir, "one")
-	original := refs(c)
-
-	e := editable(t, c)
-	e.Defaults.Host.LocalDevices = scenario.IntPtr(2)
-	put(t, c, e)
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatalf("adding a device to existing hosts must apply: %v", err)
-	}
-	same("after apply", original, refs(c))
-	c.Close()
-
-	c = newCtl(t, parse(3), dir, "three")
-	same("after editing the scenario file while stopped", original, refs(c))
-}
-
-func TestReviewDistinguishesRestoredAndNewIdentities(t *testing.T) {
-	sc, err := scenario.Parse([]byte("seed: review-restored\ndatacenters: [{name: dc, clusters: 1}]\ndefaults: {hosts: 4, vms: {perHost: 1}}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := newCtl(t, sc, "", "same")
-	smaller := editable(t, c)
-	setHosts(smaller, "dc/cluster-01", 3)
-	put(t, c, smaller)
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	bigger := editable(t, c)
-	setHosts(bigger, "dc/cluster-01", 5)
-	put(t, c, bigger)
-	rv, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, prefix := range []string{"Host", "VM", "MoRefs"} {
-		found := false
-		for _, row := range rv.Identities {
-			if strings.HasPrefix(row.Label, prefix) {
-				found = true
-				want := 1
-				if prefix == "MoRefs" {
-					want = 2
-				}
-				if row.Restored != want || row.Added != want || row.Removed != 0 {
-					t.Errorf("%s accounting: %+v", prefix, row)
-				}
-			}
-		}
-		if !found {
-			t.Errorf("missing %s row", prefix)
-		}
-	}
-}
-
-func TestReviewRestorationDependsOnRetirement(t *testing.T) {
-	sc, err := scenario.Parse([]byte("seed: retired\ndatacenters: [{name: dc, clusters: 2}]\ndefaults: {hosts: 3, vms: {perHost: 1}}\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, explicit := range []bool{false, true} {
-		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
-			c := newCtl(t, sc, "", "same")
-			identities := func(c *Controller) map[string]string {
-				result := map[string]string{}
-				for _, refs := range c.applied().sim.Clusters {
-					cl := refs.Cluster
-					result[cl.Key] = fmt.Sprint(refs.Ref, cl.VsanUUID, cl.StatsUUID, cl.PolicyUUID)
-					for i, h := range cl.Hosts {
-						result[h.Key] = fmt.Sprint(refs.Hosts[i], h.HardwareUUID, h.NodeUUID)
-					}
-					for i, vm := range cl.VMs {
-						result[vm.Key] = fmt.Sprint(refs.VMs[i], vm.UUID, vm.InstanceUUID)
-					}
-				}
-				return result
-			}
-			before := identities(c)
-			if explicit {
-				if _, err := c.DeleteCluster("dc/cluster-02"); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				next := editable(t, c)
-				next.Datacenters[0].Clusters = 1
-				put(t, c, next)
-			}
-			if _, err := c.Apply("now"); err != nil {
-				t.Fatal(err)
-			}
-			next := editable(t, c)
-			next.Datacenters[0].Clusters = 2
-			next.Removed = nil
-			put(t, c, next)
-			rv, err := c.Review()
-			if err != nil {
-				t.Fatal(err)
-			}
-			found := false
-			for _, row := range rv.Identities {
-				if strings.HasPrefix(row.Label, "Cluster") {
-					found = true
-					if row.Added != 0 || row.Restored != 1 {
-						t.Errorf("returning: %+v", row)
-					}
-				}
-			}
-			if !found {
-				t.Fatal("missing cluster row")
-			}
-			if _, err := c.Apply("now"); err != nil {
-				t.Fatal(err)
-			}
-			after := identities(c)
-			for key, value := range before {
-				if after[key] != value {
-					t.Errorf("%s changed after re-add: %s -> %s", key, value, after[key])
-				}
-			}
-		})
-	}
-}
-
-func TestGenerateKeepsNFSDatastores(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	nfs := scenario.NFSDatastore{Name: "shared-nfs", RemoteHost: "nfs01.example.test", RemotePath: "/vol/shared", Capacity: 5_000_000_000_000, FreeSpace: 3_000_000_000_000}
-	if _, err := c.Generate(GenParams{Seed: "nfs-1", Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1, NFS: []scenario.NFSDatastore{nfs}}}, Hosts: 3}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	dcs := c.applied().topo.Datacenters
-	if len(dcs) != 1 || len(dcs[0].NFS) != 1 || dcs[0].NFS[0].Spec.Name != "shared-nfs" || dcs[0].NFS[0].Spec.RemoteHost != "nfs01.example.test" {
-		t.Errorf("generated topology lost NFS datastores: %+v", dcs)
-	}
-}
-
-func TestReviewAccountsForNFSDatastoresAcrossDraftPaths(t *testing.T) {
-	base := scenario.Phase1("nfs-review")
-	base.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "shared-nfs", RemoteHost: "nfs.sim.invalid", RemotePath: "/exports/a", Capacity: 1000, FreeSpace: 800}}
-	c := newCtl(t, base, "", "t")
-	check := func(wantObject, effect string) {
-		t.Helper()
-		rv, err := c.Review()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, ch := range rv.Changes {
-			if ch.Object == wantObject && ch.Field == "NFS datastore" && strings.Contains(ch.Effect, effect) {
-				if !rv.RebuildsVCenter || rv.TopologyCount == 0 {
-					t.Fatalf("NFS change must rebuild: %+v", rv)
-				}
-				return
-			}
-		}
-		t.Fatalf("missing NFS %s %s in %+v", wantObject, effect, rv.Changes)
-	}
-	sc := Strip(base)
-	sc.Datacenters[0].NFS[0].RemotePath = "/exports/b"
-	if _, err := c.SetDraft(mustJSON(t, sc), ""); err != nil {
-		t.Fatal(err)
-	}
-	check("dc-01/shared-nfs", "updates")
-	sc.Datacenters[0].NFS = append(sc.Datacenters[0].NFS, scenario.NFSDatastore{Name: "new-nfs", RemoteHost: "nfs.sim.invalid", RemotePath: "/exports/new", Capacity: 2000, FreeSpace: 1000})
-	if _, err := c.SetDraft(mustJSON(t, sc), ""); err != nil {
-		t.Fatal(err)
-	}
-	check("dc-01/new-nfs", "adds")
-	sc.Datacenters[0].NFS = nil
-	if _, err := c.SetDraft(mustJSON(t, sc), ""); err != nil {
-		t.Fatal(err)
-	}
-	check("dc-01/shared-nfs", "removes")
-	c.DiscardDraft()
-	if _, err := c.ApplyPreset("phase1"); err != nil {
-		t.Fatal(err)
-	}
-	check("dc-01/shared-nfs", "removes")
-	c.DiscardDraft()
-	if _, err := c.Generate(GenParams{Seed: base.Seed, Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1}}, Hosts: 3}); err != nil {
-		t.Fatal(err)
-	}
-	check("dc-01/shared-nfs", "removes")
-}
-
-func TestNFSReviewAndIDsAfterRemoveAndRestore(t *testing.T) {
-	sc, err := scenario.Parse([]byte(`seed: nfs-restored
-datacenters:
-  - name: dc
-    clusters: 1
-    nfs:
-      - {name: first-nfs, remoteHost: nfs.sim.invalid, remotePath: /first, capacity: 1000, freeSpace: 800}
-      - {name: second-nfs, remoteHost: nfs.sim.invalid, remotePath: /second, capacity: 1000, freeSpace: 800}
-defaults: {hosts: 3, vms: {perHost: 1}}
-`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := newCtl(t, sc, "", "same")
-	datastoreIDs := func() map[string]string {
-		t.Helper()
-		srv := httptest.NewServer(c.applied().sim.Handler)
-		defer srv.Close()
-		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
-		req.SetBasicAuth(DefaultUsername, DefaultPassword)
-		res, err := srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var token string
-		if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/vcenter/datastore", nil)
-		req.Header.Set("vmware-api-session-id", token)
-		res, err = srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			t.Fatalf("datastore list: %s", res.Status)
-		}
-		var rows []struct {
-			Name string `json:"name"`
-			ID   string `json:"datastore"`
-		}
-		if err := json.NewDecoder(res.Body).Decode(&rows); err != nil {
-			t.Fatal(err)
-		}
-		ids := map[string]string{}
-		for _, r := range rows {
-			ids[r.Name] = r.ID
-		}
-		return ids
-	}
-	before := datastoreIDs()
-	if before["first-nfs"] == "" || before["second-nfs"] == "" {
-		t.Fatal("initial NFS datastores missing")
-	}
-	firstUUID := c.applied().topo.Datacenters[0].NFS[0].UUID
-	removed := editable(t, c)
-	removed.Datacenters[0].NFS = removed.Datacenters[0].NFS[1:]
-	put(t, c, removed)
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	afterRemove := datastoreIDs()
-	for name, id := range before {
-		if name != "first-nfs" && afterRemove[name] != id {
-			t.Errorf("%s changed after removal: %s -> %s", name, id, afterRemove[name])
-		}
-	}
-	restored := editable(t, c)
-	restored.Datacenters[0].NFS = append(restored.Datacenters[0].NFS, sc.Datacenters[0].NFS[0], scenario.NFSDatastore{Name: "third-nfs", RemoteHost: "nfs.sim.invalid", RemotePath: "/third", Capacity: 1000, FreeSpace: 800})
-	put(t, c, restored)
-	review, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, row := range review.Identities {
-		if row.Label == "NFS datastore identities" {
-			found = true
-			if row.Kept != 1 || row.Restored != 1 || row.Added != 1 || row.Removed != 0 {
-				t.Errorf("NFS identity accounting: %+v", row)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("NFS identity row missing")
-	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	afterRestore := datastoreIDs()
-	for name, id := range before {
-		if afterRestore[name] != id {
-			t.Errorf("%s changed after restore: %s -> %s", name, id, afterRestore[name])
-		}
-	}
-	for _, n := range c.applied().topo.Datacenters[0].NFS {
-		if n.Spec.Name == "first-nfs" && n.UUID != firstUUID {
-			t.Errorf("NFS UUID changed: %s -> %s", firstUUID, n.UUID)
-		}
-	}
-}
-
-func TestISCSIDraftReviewAndStableIdentity(t *testing.T) {
-	sc := scenario.Phase1("iscsi-review")
-	sc.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{Cluster: "dc-01/cluster-01", Adapters: []scenario.ISCSIAdapter{{Name: "adapter-1", Kind: "software"}}, Targets: []scenario.ISCSITarget{{Name: "array", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}}, LUNs: []scenario.ISCSILUN{{Name: "shared-vmfs", Target: "array", Number: 1, Capacity: 1048576, FreeSpace: 1024, Paths: []scenario.ISCSIPath{{Adapter: "adapter-1", State: "active"}}}}}}
-	c := newCtl(t, sc, "", "test")
-	read := func() (string, string, string) {
-		t.Helper()
-		r := c.applied()
-		lun := r.topo.Datacenters[0].ISCSI[0].LUNs[0]
-		srv := httptest.NewServer(r.sim.Handler)
-		defer srv.Close()
-		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
-		req.SetBasicAuth(DefaultUsername, DefaultPassword)
-		res, err := srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var token string
-		if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		req, _ = http.NewRequest(http.MethodGet, srv.URL+"/api/vcenter/datastore", nil)
-		req.Header.Set("vmware-api-session-id", token)
-		res, err = srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer res.Body.Close()
-		var rows []struct {
-			Name string `json:"name"`
-			ID   string `json:"datastore"`
-		}
-		if err = json.NewDecoder(res.Body).Decode(&rows); err != nil {
-			t.Fatal(err)
-		}
-		for _, row := range rows {
-			if row.Name == "shared-vmfs" {
-				return row.ID, lun.UUID, lun.CanonicalName
-			}
-		}
-		t.Fatal("datastore missing")
-		return "", "", ""
-	}
-	id, uuid, canonical := read()
-	draft := editable(t, c)
-	draft.Datacenters[0].ISCSI[0].LUNs[0].FreeSpace = 2048
-	draft.Datacenters[0].ISCSI[0].LUNs[0].Paths[0].State = "dead"
-	put(t, c, draft)
-	review, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, change := range review.Changes {
-		if change.Field == "iSCSI storage" && strings.Contains(change.After, "dead") {
-			found = true
-		}
-	}
-	if !found || !review.RebuildsVCenter {
-		t.Fatal("storage change missing from review")
-	}
-	if _, err = c.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	nextID, nextUUID, nextCanonical := read()
-	if id != nextID || uuid != nextUUID || canonical != nextCanonical {
-		t.Fatalf("identity changed after path edit")
-	}
-}
-
-func TestGeneratePrunesStorageReferencesToMissingHosts(t *testing.T) {
-	sc := scenario.Phase1("gen-storage")
-	sc.Datacenters[0].Clusters = 1
-	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-01", ClusterSpec: scenario.ClusterSpec{Hosts: 6}}}
-	nfs := scenario.NFSDatastore{Name: "shared-nfs", RemoteHost: "nfs01.example.test", RemotePath: "/vol/shared", Capacity: 5_000_000_000_000, FreeSpace: 3_000_000_000_000, InaccessibleHosts: []string{"dc-01/cluster-01/esx06"}}
-	sc.Datacenters[0].NFS = []scenario.NFSDatastore{nfs}
-	if err := sc.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	c := newCtl(t, sc, "", "t")
-	p := GenParams{Seed: "gen-storage", Datacenters: []scenario.Datacenter{{Name: "dc-01", Clusters: 1, NFS: []scenario.NFSDatastore{nfs}}}, Hosts: 4}
-	if _, err := c.PreviewGenerate(p); err != nil {
-		t.Fatalf("preview with a host that the generated topology no longer has: %v", err)
-	}
-	if _, err := c.Generate(p); err != nil {
-		t.Fatalf("generate with a host that the generated topology no longer has: %v", err)
-	}
-}
-
-func TestStorageDraftMarksAffectedClusterAndStandby(t *testing.T) {
-	sc := scenario.Phase1("storage-pending")
-	sc.Datacenters[0].Clusters = 2
-	c := newCtl(t, sc, "", "pending")
-	draft := editable(t, c)
-	draft.Datacenters[0].NFS = []scenario.NFSDatastore{{Name: "scoped", RemoteHost: "nfs.example.test", RemotePath: "/shared", Capacity: 4096, FreeSpace: 2048, Clusters: []string{"dc-01/cluster-01"}}}
-	draft.Datacenters[0].ISCSI = []scenario.ISCSIStorage{{Cluster: "dc-01/cluster-01", Adapters: []scenario.ISCSIAdapter{{Name: "a", Kind: "software"}}, Targets: []scenario.ISCSITarget{{Name: "t", Address: "array.example.test", IQN: "iqn.2026-01.test.example:array"}}, LUNs: []scenario.ISCSILUN{{Name: "shared", Target: "t", Capacity: 1048576, FreeSpace: 1024, Paths: []scenario.ISCSIPath{{Adapter: "a", State: "standby"}}}}}}
-	put(t, c, draft)
-	tree := c.Tree()
-	if tree.PendingN != 1 || tree.Datacenters[0].Clusters[0].State != "pending" || tree.Datacenters[0].Clusters[1].State != "" {
-		t.Fatalf("tree pending: %+v", tree)
-	}
-	v, err := c.Cluster("dc-01/cluster-01")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v.State != "pending" {
-		t.Fatalf("cluster pending state %q", v.State)
-	}
-	found := false
-	for _, ds := range v.Datastores {
-		if ds.Name == "shared" && strings.Contains(ds.State, "standby") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("standby path missing from storage state")
-	}
-}
-
-func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
-	testPassword, wrongPassword := uuid.NewString(), uuid.NewString()
-	cases := []struct {
-		name       string
-		sc         *scenario.Scenario
-		extra      map[string]string
-		any        bool
-		user, pass string
-	}{
-		{name: "default", sc: scenario.Phase1("default-auth"), user: DefaultUsername, pass: DefaultPassword},
-		{name: "environment override", sc: scenario.Phase1("env-auth"), extra: map[string]string{"operator": testPassword}, user: "operator", pass: testPassword},
-		{name: "any login", sc: scenario.Phase1("open-auth"), any: true, user: "arbitrary", pass: testPassword},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctl, err := New(Options{Scenario: tc.sc, DataDir: t.TempDir(), Credentials: tc.extra, AnyLogin: tc.any})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer ctl.Close()
-			api := newAPIClient(t, ctl)
-			if !tc.any {
-				bad := newAPIClient(t, ctl)
-				code, body := bad.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+tc.user+`</userName><password>`+wrongPassword+`</password></Login>`)
-				if code != http.StatusInternalServerError || !strings.Contains(body, "InvalidLogin") {
-					t.Fatalf("wrong SOAP credential: %d %s", code, body)
-				}
-			}
-			if !api.login(tc.user, tc.pass) {
-				t.Fatal("expected SOAP credential refused")
-			}
-			code, body := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-			if code != http.StatusOK || strings.Contains(body, "NotAuthenticated") {
-				t.Fatalf("vSAN session: %d", code)
-			}
-			for _, bad := range []bool{false, true} {
-				req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
-				pass := tc.pass
-				if bad {
-					pass = wrongPassword
-				}
-				req.SetBasicAuth(tc.user, pass)
-				res, err := http.DefaultClient.Do(req)
-				if err != nil {
-					t.Fatal(err)
-				}
-				res.Body.Close()
-				want := http.StatusCreated
-				if bad && !tc.any {
-					want = http.StatusUnauthorized
-				}
-				if res.StatusCode != want {
-					t.Fatalf("REST bad=%v status=%d want=%d", bad, res.StatusCode, want)
-				}
-			}
-		})
-	}
-}
-
-func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
-	updatedPassword := uuid.NewString()
-	dir := t.TempDir()
-	sc := scenario.Phase1("credential-draft")
-	ctl, err := New(Options{Scenario: sc, SourceHash: "source-a", DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	api := newAPIClient(t, ctl)
-	if !api.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("default login failed")
-	}
-	req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
-	req.SetBasicAuth(DefaultUsername, DefaultPassword)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var token string
-	if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	oldSim := ctl.applied().sim
-	if _, err = ctl.PutUser(DefaultUsername, updatedPassword, "administrator"); err != nil {
-		t.Fatal(err)
-	}
-	viewBytes, _ := json.Marshal(ctl.CredentialsView())
-	if strings.Contains(string(viewBytes), updatedPassword) || strings.Contains(string(viewBytes), "$2") {
-		t.Fatal("credential draft exposed a secret")
-	}
-	review, err := ctl.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if review.SettingsCount != 1 || !review.SessionsDropped || review.RebuildsVCenter {
-		t.Fatal("credential review did not explain the session change")
-	}
-	for _, text := range review.NotAffected {
-		if strings.Contains(text, "sessions") {
-			t.Fatal("review incorrectly says sessions are unaffected")
-		}
-	}
-	if _, err = ctl.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	if ctl.applied().sim != oldSim {
-		t.Fatal("credentials rebuilt the simulator")
-	}
-	persisted, err := os.ReadFile(filepath.Join(dir, "vcenter-users.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(persisted), updatedPassword) || strings.Contains(string(persisted), DefaultPassword) {
-		t.Fatal("credential file contains a plaintext password")
-	}
-	info, err := os.Stat(filepath.Join(dir, "vcenter-users.json"))
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("credential file is not owner-only")
-	}
-	code, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if code != http.StatusInternalServerError {
-		t.Fatalf("SOAP session survived: %d", code)
-	}
-	req, _ = http.NewRequest(http.MethodGet, api.srv.URL+"/api/vcenter/datastore", nil)
-	req.Header.Set("vmware-api-session-id", token)
-	res, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("REST session survived: %d", res.StatusCode)
-	}
-	if newAPIClient(t, ctl).login(DefaultUsername, DefaultPassword) {
-		t.Fatal("old password accepted")
-	}
-	if !newAPIClient(t, ctl).login(DefaultUsername, updatedPassword) {
-		t.Fatal("new password rejected")
-	}
-	ctl.Close()
-	ctl, err = New(Options{Scenario: sc, SourceHash: "source-a", DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	if !newAPIClient(t, ctl).login(DefaultUsername, updatedPassword) {
-		t.Fatal("password change did not persist")
-	}
-	ctl.Close()
-	ctl, err = New(Options{Scenario: sc, SourceHash: "source-b", DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	if !newAPIClient(t, ctl).login(DefaultUsername, DefaultPassword) {
-		t.Fatal("changed scenario did not restore default")
-	}
-}
-
-func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
-	readerPassword := uuid.NewString()
-	ctl, err := New(Options{Scenario: scenario.Phase1("readonly"), DataDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	admin := newAPIClient(t, ctl)
-	if !admin.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("admin login failed")
-	}
-	if _, err = ctl.PutUser("reader@vsphere.local", readerPassword, "read-only"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = ctl.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	// Adding another user does not sign out the existing administrator.
-	status, _ := admin.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != http.StatusOK {
-		t.Fatalf("unrelated session revoked: %d", status)
-	}
-	reader := newAPIClient(t, ctl)
-	if !reader.login("reader@vsphere.local", readerPassword) {
-		t.Fatal("reader login failed")
-	}
-	status, body := reader.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != http.StatusOK || strings.Contains(body, "NoPermission") {
-		t.Fatalf("read-only performance query denied: %d", status)
-	}
-	for _, op := range []string{
-		"VsanQueryVcClusterHealthSummary", "VsanQueryAllSupportedHealthChecks", "VsanQueryVcClusterSmartStatsSummary",
-		"VsanHealthQueryVsanClusterHealthConfig", "VsanHealthGetVsanClusterSilentChecks", "VsanHealthQueryVsanClusterHealthCheckInterval",
-		"VsanHealthQueryVsanProxyConfig", "VsanHealthIsRebalanceRunning", "VsanGetCapabilities", "VsanClusterGetConfig",
-		"VsanClusterGetRuntimeStats", "VsanClusterGetClaimedCapacity", "VsanQuerySpaceUsage", "VsanQueryEntitySpaceUsage",
-		"VsanPerfGetSupportedEntityTypes", "VsanPerfQueryNodeInformation", "VsanPerfQueryTimeRanges",
-		"VsanVitGetIscsiTargets", "VsanVitGetIscsiLUNs", "VsanVitGetIscsiInitiatorGroups", "VsanVitGetHomeObject", "VsanVitQueryIscsiTargetServiceVersion",
-	} {
-		status, body = reader.post("/vsanHealth", `<`+op+` xmlns="urn:vsan"><_this type="VsanVcClusterHealthSystem">vsan-cluster-health-system</_this></`+op+`>`)
-		if strings.Contains(body, "NoPermission") {
-			t.Fatalf("read-only user refused vSAN read %s: %d %s", op, status, body)
-		}
-	}
-	u, _ := url.Parse(reader.srv.URL)
-	cookies := reader.hc.Jar.Cookies(u)
-	if len(cookies) == 0 {
-		t.Fatal("reader has no session")
-	}
-	status, body = reader.post("/sdk", `<HasPrivilegeOnEntity xmlns="urn:vim25"><_this type="AuthorizationManager">AuthorizationManager</_this><entity type="Folder">group-d1</entity><sessionId>`+cookies[0].Value+`</sessionId><privId>Global.Licenses</privId></HasPrivilegeOnEntity>`)
-	if status != http.StatusOK || !strings.Contains(body, "<returnval>false</returnval>") {
-		t.Fatalf("read-only license privilege not refused: %d", status)
-	}
-	status, body = reader.post("/sdk", `<Destroy_Task xmlns="urn:vim25"><_this type="Folder">group-d1</_this></Destroy_Task>`)
-	if status != http.StatusInternalServerError || !strings.Contains(body, "NoPermission") {
-		t.Fatalf("read-only mutation not refused: %d %s", status, body)
-	}
-	// Use a real disposable folder so a regression cannot destroy the root.
-	status, created := admin.post("/sdk", `<CreateFolder xmlns="urn:vim25"><_this type="Folder">group-d1</_this><name>readonly-test-folder</name></CreateFolder>`)
-	var response struct {
-		Folder string `xml:"Body>CreateFolderResponse>returnval"`
-	}
-	if status != http.StatusOK || xml.Unmarshal([]byte(created), &response) != nil || response.Folder == "" {
-		t.Fatal("administrator could not create the test folder")
-	}
-	// A comment before the real SOAP Body must not determine authorization.
-	mutation := `<Destroy_Task xmlns="urn:vim25"><_this type="Folder">` + response.Folder + `</_this></Destroy_Task>`
-	disguised := strings.Replace(fmt.Sprintf(soapEnv, mutation), "<soapenv:Body>", "<!-- <Body><Query/> --><soapenv:Body>", 1)
-	res, err := reader.hc.Post(reader.srv.URL+"/sdk", "text/xml", strings.NewReader(disguised))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := io.ReadAll(res.Body)
-	res.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.StatusCode != http.StatusInternalServerError || !strings.Contains(string(b), "NoPermission") {
-		t.Fatalf("disguised read-only mutation not refused: %d %s", res.StatusCode, b)
-	}
-	if _, err = ctl.DeleteUser("reader@vsphere.local"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = ctl.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	status, _ = reader.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != http.StatusInternalServerError {
-		t.Fatalf("removed user's session survived: %d", status)
-	}
-}
-
-func TestVersionChangeReviewsAndKeepsIdentity(t *testing.T) {
-	ctl, err := New(Options{Scenario: scenario.Phase1("version-swap"), DataDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	api := newAPIClient(t, ctl)
-	if !api.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("login failed")
-	}
-	before := nodeUUIDs(ctl)
-	draft := editable(t, ctl)
-	draft.VCenter = scenario.Version{Preset: "8.0u3"}
-	draft.ESX = scenario.Version{Preset: "9.0"}
-	draft.ForceNewerHosts = true
-	put(t, ctl, draft)
-	review, err := ctl.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !review.RebuildsVCenter || !review.SessionsDropped {
-		t.Fatalf("version review did not explain the restart: %+v", review)
-	}
-	warned := false
-	for _, w := range review.Warnings {
-		if w.Title == "Host newer than vCenter" {
-			warned = true
-		}
-	}
-	if !warned {
-		t.Fatal("forced newer host warning missing")
-	}
-	if _, err = ctl.Apply("now"); err != nil {
-		t.Fatal(err)
-	}
-	after := nodeUUIDs(ctl)
-	for name, id := range before {
-		if after[name] != id {
-			t.Fatalf("identity changed: %s", name)
-		}
-	}
-	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != http.StatusInternalServerError {
-		t.Fatalf("old session remained: %d", status)
-	}
-}
-
-func TestHostVersionChangeIsNotListedAsUnaffected(t *testing.T) {
-	c := newCtl(t, scenario.Phase1("host-version-review"), "", "t")
-	sc := editable(t, c)
-	key := c.applied().topo.Clusters()[0].Hosts[0].Key
-	sc.HostVersions = map[string]scenario.Version{key: {Preset: "9.0"}}
-	put(t, c, sc)
-	rv, err := c.Review()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range rv.NotAffected {
-		if strings.Contains(s, "other clusters") {
-			t.Fatalf("changed cluster marked unaffected: %v", rv.NotAffected)
-		}
-	}
-}
-
-func TestRuntimeSessionTimeoutAppliesAndPersists(t *testing.T) {
-	dir := t.TempDir()
-	sc := scenario.Phase1("runtime-timeout")
-	ctl, err := New(Options{Scenario: sc, DataDir: dir, SessionTimeout: 30 * time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	api := newAPIClient(t, ctl)
-	if !api.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("SOAP login failed")
-	}
-	req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
-	req.SetBasicAuth(DefaultUsername, DefaultPassword)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var token string
-	if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if _, err = ctl.SetRuntimeSettings(RuntimeSettings{SessionTimeoutSeconds: 1}); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(1100 * time.Millisecond)
-	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != http.StatusInternalServerError {
-		t.Fatalf("SOAP idle session remained: %d", status)
-	}
-	req, _ = http.NewRequest(http.MethodGet, api.srv.URL+"/api/vcenter/datastore", nil)
-	req.Header.Set("vmware-api-session-id", token)
-	res, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("REST idle session remained: %d", res.StatusCode)
-	}
-	if _, err = ctl.SetRuntimeSettings(RuntimeSettings{}); err != nil {
-		t.Fatal(err)
-	}
-	ctl.Close()
-	ctl, err = New(Options{Scenario: sc, DataDir: dir, SessionTimeout: 30 * time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	if got := ctl.RuntimeSettings().SessionTimeoutSeconds; got != 0 {
-		t.Fatalf("saved timeout %d, want zero", got)
-	}
-}
-
-func TestChangingCertificateEndsSessionsAndRejectsInvalidUpload(t *testing.T) {
-	dir := t.TempDir()
-	cert, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "tls"), []string{"localhost"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = cert.EnableConsole(dir); err != nil {
-		t.Fatal(err)
-	}
-	ctl, err := New(Options{Scenario: scenario.Phase1("certificate-change"), DataDir: dir, Certificate: cert})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	api := newAPIClient(t, ctl)
-	if !api.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("SOAP login failed")
-	}
-	before := cert.Info()
-	if _, err = ctl.UploadCertificate("not a certificate", "not a key"); err == nil {
-		t.Fatal("invalid pair accepted")
-	}
-	if cert.Info().Fingerprint != before.Fingerprint {
-		t.Fatal("invalid upload changed certificate")
-	}
-	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != 200 {
-		t.Fatal("invalid upload ended session")
-	}
-	info, err := ctl.RegenerateCertificate([]string{"localhost", "new.example.test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Fingerprint == before.Fingerprint || len(info.Names) != 2 {
-		t.Fatalf("certificate metadata not updated: %+v", info)
-	}
-	status, _ = api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != 500 {
-		t.Fatal("certificate change did not end SOAP session")
-	}
-	newClient := newAPIClient(t, ctl)
-	if !newClient.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("login after rotation failed")
-	}
-	uploadDir := filepath.Join(dir, "upload-source")
-	if _, err := serve.LoadOrCreateCertificate(uploadDir, []string{"uploaded.example.test"}); err != nil {
-		t.Fatal(err)
-	}
-	certPEM, err := os.ReadFile(filepath.Join(uploadDir, "cert.pem"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyPEM, err := os.ReadFile(filepath.Join(uploadDir, "key.pem"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	uploaded, err := ctl.UploadCertificate(string(certPEM), string(keyPEM))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if uploaded.Fingerprint == info.Fingerprint || len(uploaded.Names) != 1 || uploaded.Names[0] != "uploaded.example.test" {
-		t.Fatal("uploaded certificate not selected")
-	}
-	status, _ = newClient.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
-	if status != 500 {
-		t.Fatal("certificate upload did not end SOAP session")
-	}
-}
-
-func TestCaptureRealUnansweredSOAPAndMissingPath(t *testing.T) {
-	dir := t.TempDir()
-	ctl, err := New(Options{Scenario: scenario.Phase1("capture-faults"), DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Full: true, Unanswered: true}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(capture.Wrap(ctl))
-	defer srv.Close()
-	jar, _ := cookiejar.New(nil)
-	api := &apiClient{t: t, srv: srv, hc: &http.Client{Jar: jar, Timeout: 20 * time.Second}}
-	fetch := `<Fetch xmlns="urn:vim25"><_this type="Folder">group-d1</_this><prop>name</prop></Fetch>`
-	if code, _ := api.post("/sdk", fetch); code != 500 {
-		t.Fatalf("unauthenticated Fetch: %d", code)
-	}
-	if !api.login(DefaultUsername, DefaultPassword) {
-		t.Fatal("login failed")
-	}
-	cases := []struct{ body, fault, property string }{
-		{`<DefinitelyUnknown xmlns="urn:vim25"><_this type="ServiceInstance">ServiceInstance</_this></DefinitelyUnknown>`, "InvalidRequest", ""},
-		{`<Fetch xmlns="urn:vim25"><_this type="HostSystem">not-present</_this><prop>name</prop></Fetch>`, "ManagedObjectNotFound", "name"},
-		{`<Fetch xmlns="urn:vim25"><_this type="Folder">group-d1</_this><prop>notARealProperty</prop></Fetch>`, "InvalidProperty", "notARealProperty"},
-	}
-	for _, tc := range cases {
-		if code, _ := api.post("/sdk", tc.body); code != 500 {
-			t.Fatalf("%s: %d", tc.fault, code)
-		}
-	}
-	if code, _ := api.post("/ls/sdk", fetch); code != 404 {
-		t.Fatalf("missing path: %d", code)
-	}
-	records := capture.Records(true)
-	if len(records) != 5 {
-		t.Fatalf("got %d unanswered records", len(records))
-	}
-	if records[0].Fault != "NotAuthenticated" || len(records[0].Properties) != 1 || records[0].Properties[0] != "name" {
-		t.Fatalf("unauthenticated Fetch missing details: %+v", records[0])
-	}
-	for i, tc := range cases {
-		record := records[i+1]
-		if record.Fault != tc.fault || record.Request == "" {
-			t.Fatalf("fault %s not captured: %+v", tc.fault, record)
-		}
-		if tc.property != "" && (len(record.Properties) != 1 || record.Properties[0] != tc.property) {
-			t.Fatalf("property not captured for %s", tc.fault)
-		}
-	}
-	if records[4].Path != "/ls/sdk" || records[4].Status != 404 {
-		t.Fatalf("missing path: %+v", records[4])
-	}
-	u, _ := url.Parse(srv.URL)
-	cookies := jar.Cookies(u)
-	if len(cookies) == 0 {
-		t.Fatal("missing SOAP session")
-	}
-	logged, err := os.ReadFile(capture.State().Path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(logged), DefaultPassword) || strings.Contains(string(logged), cookies[0].Value) {
-		t.Fatal("full query log leaked a credential or session")
-	}
-}
-
-func TestLegacyTimelineUsesPlainDescriptions(t *testing.T) {
-	ctl, err := New(Options{Scenario: scenario.Phase1("legacy-timeline"), DataDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	ctl.mu.Lock()
-	ctl.timeline = []TimelineEntry{{Text: "Topology v3 built: 1 cluster", Area: "Topology"}, {Text: "Apply failed: v3 still serving", Area: "Service"}}
-	ctl.mu.Unlock()
-	timeline := ctl.Timeline()
-	if timeline[0].Text != "Apply failed; previous settings are still serving" || timeline[1].Text != "Topology built: 1 cluster" {
-		t.Fatalf("legacy descriptions: %+v", timeline)
-	}
-	for _, event := range ctl.State().Events {
-		if strings.Contains(event.Text, "v3") {
-			t.Fatal("overview exposes a legacy revision")
-		}
-	}
-}
-
-func TestScenarioUserRoleIsExplicit(t *testing.T) {
-	t.Setenv("VCSIM_READONLY_PASSWORD", "reader-secret")
-	sc := scenario.Phase1("roles")
-	sc.Auth.Users = []scenario.User{
-		{Name: "admin@vsphere.local", Password: "admin-secret"},
-		{Name: "reader@vsphere.local", PasswordEnv: "VCSIM_READONLY_PASSWORD", Role: "read-only"},
-		{Name: "named-like-readonly@vsphere.local", PasswordEnv: "VCSIM_READONLY_PASSWORD"},
-	}
-	ctl, err := New(Options{Scenario: sc, DataDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	roles := map[string]string{}
-	for _, u := range ctl.CredentialsView().Users {
-		roles[u.Name] = u.Role
-	}
-	if roles["admin@vsphere.local"] != "administrator" || roles["reader@vsphere.local"] != "read-only" || roles["named-like-readonly@vsphere.local"] != "administrator" {
-		t.Fatalf("roles: %v", roles)
-	}
-	bad := scenario.Phase1("roles")
-	bad.Auth.Users = []scenario.User{{Name: "x", Password: "y", Role: "superuser"}}
-	if err := bad.Validate(); err == nil {
-		t.Fatal("unknown role accepted")
-	}
-}
-
-// Deleting a cluster must not strand a host version set for one of its hosts:
-// the review drops it and the draft stays applicable.
-func TestReviewDropsHostVersionsOfDeletedHosts(t *testing.T) {
-	c := newCtl(t, tenClusters(t), "", "t")
-	raw, err := json.Marshal(c.applied().sc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatal(err)
-	}
-	doc["hostVersions"] = map[string]any{"dc-01/cluster-05/esx01": map[string]any{"preset": "9.0"}}
-	raw, _ = json.Marshal(doc)
-	if _, err := c.SetDraft(raw, ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.DeleteCluster("dc-01/cluster-05"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Review(); err != nil {
-		t.Fatalf("review of a draft with a stale host version: %v", err)
-	}
-	if len(c.DraftState().Scenario.HostVersions) != 0 {
-		t.Fatal("version set for a deleted host survived in the draft")
-	}
-	if _, err := c.Apply("now"); err != nil {
-		t.Fatalf("apply: %v", err)
-	}
-}
-
-func TestCredentialRoleAppliesToFlagUser(t *testing.T) {
-	ctl, err := New(Options{Scenario: scenario.Phase1("flag-role"), DataDir: t.TempDir(),
-		Credentials: map[string]string{"viewer": "pw"}, CredentialRole: "read-only"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctl.Close()
-	for _, u := range ctl.CredentialsView().Users {
-		if u.Name == "viewer" && u.Role != "read-only" {
-			t.Fatalf("flag user role %q", u.Role)
-		}
+func TestHistoryIsPlainSentences(t *testing.T) {
+	c := newCtl(t, small(t), "", "t")
+	must(t, c, "add-cluster", nil, map[string]any{"hosts": 3})
+	c.SetPaused(true)
+	c.SetPaused(false)
+	h := history(c)
+	for _, want := range []string{"Simulator resumed.", "Simulator paused.", "cluster-02 added to dc-01 with 3 hosts and 24 VMs.", "Simulator started with 1 cluster, 4 hosts and 4 VMs."} {
+		wantContains(t, h, want)
+	}
+	if home := c.Home(); len(home.Recent) != 3 || home.HistoryCount != 4 || home.Recent[0].Text != "Simulator resumed." {
+		t.Errorf("recent %+v", home.Recent)
 	}
 }

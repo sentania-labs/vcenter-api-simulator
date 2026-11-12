@@ -12,9 +12,11 @@
 // change. Without -scenario the built-in Phase 1 scenario (one four-host
 // cluster) runs under -seed.
 //
-// Login uses the published administrator credential by default. Scenario or
-// environment users replace that default; -any-login explicitly permits any
-// non-empty username and password.
+// Login takes the users of the scenario and of -username or VCSIM_USERNAME;
+// -any-login explicitly permits any non-empty username and password. With
+// none of these there is no published default password: the first account,
+// administrator@vsphere.local, gets its password in the control console's
+// first-run set-up, and nothing can sign in before then.
 package main
 
 import (
@@ -63,6 +65,7 @@ func main() {
 	seed := flag.String("seed", "phase1", "identity seed for the built-in scenario (ignored with -scenario)")
 	queryLog := flag.String("query-log", "", "enable full query capture to this JSONL path (may contain inventory identifiers)")
 	unansweredStdout := flag.Bool("unanswered-stdout", false, "write unanswered requests as JSON lines to stdout")
+	debugCapture := flag.Bool("debug-capture", true, "initially write license-service requests (/ls/) to stdout, with secrets scrubbed; the console's choice overrides this default")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
 	tlsManaged := flag.Bool("tls-managed", false, "the deployment manages the certificate pair in -tls-dir")
 	tlsDir := flag.String("tls-dir", "", "directory holding the persisted self-signed certificate (default <data>/tls)")
@@ -80,6 +83,8 @@ func main() {
 	adminReset := flag.Bool("admin-reset", false, "remove the console password and exit; stop the console first")
 	adminHosts := flag.String("admin-allowed-hosts", "", "comma-separated Host names the control console answers to besides localhost, 127.0.0.1 and ::1; any other Host gets 403 (env VCSIM_ADMIN_ALLOWED_HOSTS)")
 	sessionTimeout := flag.Duration("session-timeout", 0, "idle session timeout (0: sessions never expire)")
+	publicURL := flag.String("public-url", "", "the address tools should use, shown in the console (env VCSIM_PUBLIC_URL; default https://<name>:<port>)")
+	reportURL := flag.String("report-url", "", "where the console sends people to report a request the simulator cannot answer (env VCSIM_REPORT_URL; default the project's new-issue page)")
 	flag.Parse()
 	adminSet := false
 	flag.Visit(func(f *flag.Flag) {
@@ -101,6 +106,12 @@ func main() {
 	}
 	if *role == "" {
 		*role = os.Getenv("VCSIM_ROLE")
+	}
+	if *publicURL == "" {
+		*publicURL = os.Getenv("VCSIM_PUBLIC_URL")
+	}
+	if *reportURL == "" {
+		*reportURL = os.Getenv("VCSIM_REPORT_URL")
 	}
 	if *role != "" && *role != "administrator" && *role != "read-only" {
 		log.Fatal("-role must be administrator or read-only")
@@ -164,16 +175,18 @@ func main() {
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
 		Credentials: extra, CredentialRole: *role, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
+		PublicURL: *publicURL, ReportURL: *reportURL,
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer ctl.Close()
 
-	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: true}, os.Stdout)
+	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: *debugCapture}, os.Stdout)
 	if err != nil {
 		log.Fatal(err)
 	}
+	ctl.Capture = capture
 	var handler http.Handler = capture.Wrap(ctl)
 	ls, err := serve.Listen(listen, handler, cert)
 	if err != nil {
@@ -193,7 +206,7 @@ func main() {
 			fmt.Printf("vcsimulator: control console not started: %v (set -admin to another address)\n", err)
 			*adminAddr = ""
 		default:
-			adminHandler, err := admin.ProtectedHandler(ctl, strings.Split(*adminHosts, ","), *dataDir, os.Getenv("VCSIM_ADMIN_PASSWORD"), *adminSecure, capture)
+			adminHandler, err := admin.ProtectedHandler(ctl, strings.Split(*adminHosts, ","), *dataDir, os.Getenv("VCSIM_ADMIN_PASSWORD"), *adminSecure)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -213,6 +226,9 @@ func main() {
 		fmt.Println("vcsimulator: " + line)
 	}
 	fmt.Printf("vcsimulator: %s\n", loginMode(ctl.LoginUsers()))
+	if ctl.AccountNeeded() && *adminAddr == "" {
+		fmt.Println("vcsimulator: nothing can sign in: start with -username and -password (or VCSIM_USERNAME and VCSIM_PASSWORD), or turn the control console on and choose the password there")
+	}
 	for _, a := range ls.Addrs {
 		fmt.Printf("vcsimulator: listening on https://%s/sdk and /vsanHealth\n", a)
 	}
@@ -266,9 +282,12 @@ func adminNote(addr string) string {
 	return "reachable beyond this host: use TLS when accessing remotely"
 }
 
-func loginMode(users []string) string {
-	if len(users) == 0 {
+func loginMode(users []string, anyone bool) string {
+	switch {
+	case anyone:
 		return "login accepts any user name and password"
+	case len(users) == 0:
+		return "login has no account yet: open the control console to choose the password of " + control.DefaultUsername
 	}
 	return fmt.Sprintf("login restricted to %d user(s)", len(users))
 }

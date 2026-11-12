@@ -1,7 +1,7 @@
 package activity
 
 import (
-	"encoding/json"
+	"encoding/xml"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -54,189 +54,101 @@ func TestRingKeepsTheLastCalls(t *testing.T) {
 	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
 	l := New(5, now)
 	for i := 0; i < 12; i++ {
-		l.Add(Call{Time: now.Add(time.Duration(i) * time.Second), Method: "m", Surface: "sdk", Result: ResultOK})
+		l.Add(Call{Time: now.Add(time.Duration(i) * time.Second), Method: "m", Surface: SurfaceSDK, Reason: ReasonAnswered})
 	}
-	got := l.Query(Filter{Limit: 100})
-	if len(got) != 5 || got[0].Seq != 12 || got[4].Seq != 8 {
-		t.Errorf("ring: %+v", got)
+	got := l.All()
+	if len(got) != 5 || got[0].Seq != 8 || got[4].Seq != 12 {
+		t.Fatalf("ring holds %d calls, first %d last %d", len(got), got[0].Seq, got[len(got)-1].Seq)
 	}
 	if tot := l.Totals(); tot.Requests != 12 || tot.Held != 5 {
-		t.Errorf("totals: %+v", tot)
+		t.Errorf("totals %+v", tot)
 	}
-	if got := l.Query(Filter{AfterSeq: 10}); len(got) != 2 {
-		t.Errorf("after: %+v", got)
+	if recent := l.Since(now.Add(10 * time.Second)); len(recent) != 2 || recent[0].Seq != 11 {
+		t.Errorf("since: %+v", recent)
 	}
 	if _, ok := l.Get(3); ok {
-		t.Error("a call that left the ring is gone")
+		t.Error("a call that left the ring was found")
+	}
+	if c, ok := l.Get(9); !ok || c.Seq != 9 {
+		t.Error("a held call was not found")
 	}
 }
 
-func TestCycleAndDiagnosis(t *testing.T) {
-	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	add := func(l *Log, at time.Time, c Call) {
-		c.Time = at
-		if c.Client == "" {
-			c.Client = "10.0.0.2"
-		}
-		l.Add(c)
+// Classify decides what the Requests headline counts. "unknown" is only for
+// a request the simulator has no answer for.
+func TestClassify(t *testing.T) {
+	cases := []struct {
+		name string
+		f    Facts
+		want string
+	}{
+		{"a full answer", Facts{Surface: SurfaceSDK, Method: "RetrieveServiceContent", Status: 200}, ReasonAnswered},
+		{"a performance query with data", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 200, Entities: 4, Empty: 0}, ReasonAnswered},
+		{"a performance query where every entity is empty", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 200, Entities: 4, Empty: 4}, ReasonEmpty},
+		{"a performance query with no entity at all", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 200}, ReasonEmpty},
+		{"a kind a real vCenter refuses", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "InvalidArgument"}, ReasonRefused},
+		{"persistent memory, not supported on a real vCenter either", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "NotSupported"}, ReasonRefused},
+		{"a fault the operator switched on", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "SystemError", Injected: true}, ReasonFault},
+		{"a switched-on fault wins over its own fault type", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "InvalidArgument", Injected: true}, ReasonFault},
+		{"no answer at all, on purpose", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 200, Injected: true}, ReasonFault},
+		{"the performance service switched off", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "NotFound", PerfOff: true}, ReasonFault},
+		{"a system error nobody asked for", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "SystemError"}, ReasonUnknown},
+		{"a vSAN object the simulator does not model", Facts{Surface: SurfaceVsan, Method: "VsanQueryObjectIdentities", Status: 500, Faulted: true, FaultType: "ManagedObjectNotFound", ObjectType: "VsanObjectSystem"}, ReasonUnknown},
+		{"a wrong password", Facts{Surface: SurfaceSDK, Method: "Login", Status: 500, Faulted: true, FaultType: "InvalidLogin"}, ReasonDenied},
+		{"a request that is not signed in", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "NotAuthenticated"}, ReasonDenied},
+		{"not signed in, even with a fault switched on", Facts{Surface: SurfaceVsan, Method: "VsanPerfQueryPerf", Status: 500, Faulted: true, FaultType: "NotAuthenticated", PerfOff: true}, ReasonDenied},
+		{"a REST request without a session", Facts{Surface: SurfaceREST, HTTPMethod: "GET", Path: "/api/vcenter/vm", Status: 401}, ReasonDenied},
+		{"a method vcsim does not implement", Facts{Surface: SurfaceSDK, Method: "QueryPerfCounterByLevel", Status: 500, Faulted: true, FaultType: "MethodNotFound"}, ReasonUnknown},
+		{"a property the simulator does not have", Facts{Surface: SurfaceSDK, Method: "RetrievePropertiesEx", Status: 500, Faulted: true, FaultType: "InvalidProperty"}, ReasonUnknown},
+		{"a manager the simulator does not have", Facts{Surface: SurfaceSDK, Method: "QueryAssignedLicenses", Status: 500, Faulted: true, FaultType: "ManagedObjectNotFound", ObjectType: "LicenseAssignmentManager"}, ReasonUnknown},
+		{"a cluster that was removed, as on a real vCenter", Facts{Surface: SurfaceSDK, Method: "RetrieveProperties", Status: 500, Faulted: true, FaultType: "ManagedObjectNotFound", ObjectType: "ClusterComputeResource"}, ReasonRefused},
+		{"a read-only user asking to change something", Facts{Surface: SurfaceSDK, Method: "PowerOffVM_Task", Status: 500, Faulted: true, FaultType: "NoPermission"}, ReasonRefused},
+		{"a bad argument, as a real vCenter answers it", Facts{Surface: SurfaceSDK, Method: "CreateContainerView", Status: 500, Faulted: true, FaultType: "InvalidArgument"}, ReasonRefused},
+		{"a path nothing serves", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/ls/sdk", Status: 404}, ReasonUnknown},
+		{"the older REST interface", Facts{Surface: SurfaceREST, HTTPMethod: "GET", Path: "/rest/vcenter/namespace-management/clusters", Status: 404}, ReasonUnknown},
+		{"a document the simulator does not have", Facts{Surface: SurfaceSDK, HTTPMethod: "GET", Path: "/sdk/vim.wsdl", Status: 404}, ReasonUnknown},
+		{"a browser visiting /sdk, as a real vCenter answers it", Facts{Surface: SurfaceSDK, HTTPMethod: "GET", Path: "/sdk", Status: 404}, ReasonRefused},
+		{"a browser visiting /vsanHealth", Facts{Surface: SurfaceVsan, HTTPMethod: "GET", Path: "/vsanHealth", Status: 501}, ReasonRefused},
+		{"a REST path a real vCenter denies a read-only session", Facts{Surface: SurfaceREST, HTTPMethod: "GET", Path: "/api/content/library", Status: 403}, ReasonRefused},
+		{"a REST filter a real vCenter rejects", Facts{Surface: SurfaceREST, HTTPMethod: "GET", Path: "/api/vcenter/vm", Status: 400}, ReasonRefused},
+		{"a REST change the read-only interface cannot make", Facts{Surface: SurfaceREST, HTTPMethod: "POST", Path: "/api/vcenter/vm", Status: 405}, ReasonUnknown},
+		{"a server error without a fault", Facts{Surface: SurfaceSDK, HTTPMethod: "POST", Path: "/sdk", Status: 500}, ReasonUnknown},
+		{"paused", Facts{Surface: SurfaceSDK, Paused: true}, ReasonPaused},
 	}
-
-	// an old cycle, a gap, then a cycle where the login worked and every
-	// query came back empty
-	l := New(100, now)
-	add(l, now.Add(-30*time.Minute), Call{Surface: "sdk", Method: "Login", Result: ResultOK, Client: "10.0.0.1"})
-	add(l, now.Add(-30*time.Minute), Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "host-cpu", Result: ResultOK, Entities: 4, Client: "10.0.0.1"})
-	add(l, now.Add(-2*time.Minute), Call{Surface: "sdk", Method: "Login", Result: ResultOK})
-	add(l, now.Add(-90*time.Second), Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "disk-group", Result: ResultOK, Entities: 1, Empty: 1, DurationMs: 12})
-	add(l, now.Add(-60*time.Second), Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "vsan-iscsi-host", Result: ResultOK, Entities: 1, Empty: 1})
-	s := l.Summarize(now)
-	if s.Cycle.Calls != 3 || s.Cycle.Client != "10.0.0.2" || s.Cycle.Series != 0 || s.Cycle.Empty != 2 {
-		t.Errorf("cycle: %+v", s.Cycle)
-	}
-	if !hasFinding(s.Cycle.Findings, "bad", "Every performance query returned empty") {
-		t.Errorf("findings: %+v", s.Cycle.Findings)
-	}
-	if len(s.Minutes) != 60 || s.Minutes[59].Requests != 0 {
-		t.Errorf("minutes: %d", len(s.Minutes))
-	}
-	if s.Cycle.Steps[0].Name != "Login · RetrieveContent" || s.Cycle.Steps[len(s.Cycle.Steps)-1].Name != "VsanPerfQueryPerf" {
-		t.Errorf("step order: %+v", s.Cycle.Steps)
-	}
-
-	// refused logins
-	l = New(100, now)
-	add(l, now.Add(-10*time.Second), Call{Surface: "sdk", Method: "Login", Result: ResultDenied, Fault: "InvalidLogin"})
-	if f := l.Summarize(now).Cycle.Findings; !hasFinding(f, "bad", "Authentication failed") {
-		t.Errorf("findings: %+v", f)
-	}
-
-	// injected faults are warned about, not called a failure
-	l = New(100, now)
-	add(l, now.Add(-10*time.Second), Call{Surface: "sdk", Method: "Login", Result: ResultOK})
-	add(l, now.Add(-9*time.Second), Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "vsan-pnic-net", Result: ResultInjected, Fault: "SystemError"})
-	add(l, now.Add(-8*time.Second), Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "host-cpu", Result: ResultOK, Entities: 4})
-	s = l.Summarize(now)
-	if s.Faults.Injected != 1 || s.Faults.Unexpected != 0 {
-		t.Errorf("faults: %+v", s.Faults)
-	}
-	if !hasFinding(s.Cycle.Findings, "warn", "1 performance queries answered with an injected fault") {
-		t.Errorf("findings: %+v", s.Cycle.Findings)
-	}
-
-	// no traffic
-	if f := New(10, now).Summarize(now).Cycle.Findings; len(f) != 0 {
-		t.Errorf("an empty log has no cycle: %+v", f)
-	}
-}
-
-func hasFinding(fs []Finding, sev, title string) bool {
-	for _, f := range fs {
-		if f.Severity == sev && f.Title == title {
-			return true
+	for _, c := range cases {
+		if got := Classify(c.f); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}
-	return false
 }
 
-func TestDiagnosisNamesProvisionalKindsAndSeparatesAuthFaults(t *testing.T) {
-	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	l := New(100, now)
-	l.EmptyKind = func(f string) bool { return f == "disk-group" || f == "vsan-iscsi-host" }
-	add := func(at time.Duration, c Call) {
-		c.Time, c.Client = now.Add(at), "10.0.0.2"
-		l.Add(c)
+func TestBodyReaders(t *testing.T) {
+	login := []byte(`<soapenv:Body><Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName> ops@vsphere.local </userName><password>never-read</password></Login></soapenv:Body>`)
+	if got := LoginUser(login); got != "ops@vsphere.local" {
+		t.Errorf("login user %q", got)
 	}
-	add(-20*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultOK})
-	add(-19*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "disk-group", Result: ResultOK, Entities: 1, Empty: 1})
-	add(-18*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "vsan-iscsi-host", Result: ResultOK, Entities: 1, Empty: 1})
-	f := l.Summarize(now).Cycle.Findings
-	var detail string
-	for _, x := range f {
-		if x.Title == "Every performance query returned empty" {
-			detail = x.Detail
+	if got := ObjectType(login); got != "SessionManager" {
+		t.Errorf("object type %q", got)
+	}
+	if LoginUser([]byte("nothing")) != "" || ObjectType([]byte("nothing")) != "" {
+		t.Error("something was read out of nothing")
+	}
+}
+
+// The Login body is written by an XML encoder, which escapes quotes and
+// ampersands; the account name is what a person typed.
+func TestLoginUserIsTheNameThatWasSent(t *testing.T) {
+	type login struct {
+		XMLName  xml.Name `xml:"Login"`
+		UserName string   `xml:"userName"`
+	}
+	for _, name := range []string{"o'brien@vsphere.local", `a"b&c@vsphere.local`, "<x>@vsphere.local"} {
+		body, err := xml.Marshal(login{UserName: name})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if !strings.Contains(detail, "disk-group, vsan-iscsi-host") || !strings.Contains(detail, "authentication was fine") {
-		t.Errorf("detail: %q", detail)
-	}
-
-	// calls that carry no session are an authentication problem, not "unexpected" query failures
-	l = New(100, now)
-	add(-20*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultFault, Fault: "InvalidLogin"})
-	add(-19*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "host-cpu", Result: ResultDenied, Fault: "NotAuthenticated"})
-	s := l.Summarize(now)
-	for _, x := range s.Cycle.Findings {
-		if strings.Contains(x.Title, "without an injected rule") {
-			t.Errorf("an unauthenticated query was reported as an unexpected failure: %+v", x)
-		}
-	}
-	if !hasFinding(s.Cycle.Findings, "bad", "Authentication failed") || !hasFinding(s.Cycle.Findings, "bad", "1 performance queries were refused as not authenticated") {
-		t.Errorf("findings: %+v", s.Cycle.Findings)
-	}
-	if st := s.Cycle.Steps[len(s.Cycle.Steps)-1]; st.Series != 0 {
-		t.Errorf("series: %+v", st)
-	}
-}
-
-func TestACollectionIsSplitFromTheNextLogin(t *testing.T) {
-	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	l := New(100, now)
-	add := func(at time.Duration, c Call) {
-		c.Time, c.Client = now.Add(at), "10.0.0.2"
-		l.Add(c)
-	}
-	// a refused login and its queries, then 5 s later a good login whose queries all came back empty
-	add(-30*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultDenied, Fault: "InvalidLogin"})
-	add(-29*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "host-cpu", Result: ResultDenied, Fault: "NotAuthenticated"})
-	add(-10*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultOK})
-	add(-9*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "disk-group", Result: ResultOK, Entities: 1, Empty: 1})
-	cy := l.Summarize(now).Cycle
-	if cy.Calls != 2 || hasFinding(cy.Findings, "bad", "Authentication failed") {
-		t.Errorf("the latest collection should not inherit the earlier refusals: %+v", cy)
-	}
-	// a login right after queries is the next collection, even inside the gap
-	l = New(100, now)
-	add(-9*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "host-cpu", Result: ResultOK, Entities: 3})
-	add(-8*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultOK})
-	if cy = l.Summarize(now).Cycle; cy.Calls != 1 {
-		t.Errorf("cycle: %+v", cy)
-	}
-}
-
-func TestNextCollectionStartsAtTheServiceContentCall(t *testing.T) {
-	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	l := New(100, now)
-	add := func(at time.Duration, c Call) {
-		c.Time, c.Client = now.Add(at), "10.0.0.2"
-		l.Add(c)
-	}
-	add(-12*time.Second, Call{Surface: "sdk", Method: "RetrieveServiceContent", Result: ResultOK})
-	add(-11*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultDenied, Fault: "InvalidLogin"})
-	add(-10*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "host-cpu", Result: ResultDenied, Fault: "NotAuthenticated"})
-	add(-6*time.Second, Call{Surface: "sdk", Method: "RetrieveServiceContent", Result: ResultOK})
-	add(-5*time.Second, Call{Surface: "sdk", Method: "Login", Result: ResultOK})
-	add(-4*time.Second, Call{Surface: "vsanHealth", Method: "VsanPerfQueryPerf", Family: "disk-group", Result: ResultOK, Entities: 1, Empty: 1})
-	cy := l.Summarize(now).Cycle
-	if cy.Calls != 3 || hasFinding(cy.Findings, "bad", "Authentication failed") || !hasFinding(cy.Findings, "bad", "Every performance query returned empty") {
-		t.Errorf("the second session must be judged on its own: %+v", cy)
-	}
-}
-
-// The console's Telemetry tab reads summary.families.length; a quiet log (no
-// collector traffic yet) must serialize empty lists as [] not null.
-func TestSummaryOfAQuietLogSerializesEmptyListsNotNull(t *testing.T) {
-	now := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
-	b, err := json.Marshal(New(5, now).Summarize(now))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got map[string]json.RawMessage
-	if err := json.Unmarshal(b, &got); err != nil {
-		t.Fatal(err)
-	}
-	for _, k := range []string{"methods", "families", "duration", "minutes", "clusters"} {
-		if s := string(got[k]); !strings.HasPrefix(s, "[") {
-			t.Errorf("%s = %s, want a JSON array", k, s)
+		if got := LoginUser(body); got != name {
+			t.Errorf("sent %q, read %q from %s", name, got, body)
 		}
 	}
 }

@@ -29,6 +29,13 @@ simulator:
   # start, beyond hostname and the Service's cluster-local names. Ignored once
   # a certificate exists, and ignored for tls.existingSecret / cert-manager.
   tlsNames: []
+  # The address tools should use, as the console shows it. Empty means
+  # https://<hostname> with the Service's port (left out when it is 443);
+  # set it when something in front gives the simulator another address.
+  publicUrl: ""
+  # Where the console sends people to report a request the simulator cannot
+  # answer. Empty means the simulator project's new-issue page.
+  reportUrl: ""
   # Additional command-line arguments passed to vcsimulator.
   extraArgs: []
   # Defaults for live capture settings. The console can override these.
@@ -63,8 +70,11 @@ admin:
       secretName: ""
 
 credentials:
-  # When false, the built-in administrator credential is used.
-  # When true, only the pair in the Secret below logs in.
+  # When false, no account is supplied: the control console's first-run
+  # set-up chooses the password of administrator@vsphere.local, and nothing
+  # can sign in to the simulated vCenter before then. There is no default
+  # password.
+  # When true, the pair in the Secret below logs in from the start.
   enabled: false
   # Access of that user: administrator or read-only.
   role: administrator
