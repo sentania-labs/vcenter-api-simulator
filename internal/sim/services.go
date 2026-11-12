@@ -115,12 +115,19 @@ type licenseSession struct {
 	last time.Time
 }
 
+// licenseSessions is the license service's own session store.
 type licenseSessions struct {
 	mu          sync.Mutex
 	tokens      map[string]licenseSession
 	credentials map[string]string
 	check       func(string, string) bool
 	timeout     *atomic.Int64
+}
+
+// newLicenseSessions builds the store for one simulator instance. The store is
+// a pointer so it keeps its identity through the handler's value copies.
+func newLicenseSessions(creds map[string]string, check func(string, string) bool) *licenseSessions {
+	return &licenseSessions{tokens: map[string]licenseSession{}, credentials: creds, check: check}
 }
 
 func (s *licenseSessions) authorized(user, password string) bool {
@@ -161,6 +168,8 @@ func (s *licenseSessions) put(value, user string) {
 	s.mu.Unlock()
 }
 
+// revoke drops every session whose user satisfies affected, as a credential
+// change ends that user's sessions.
 func (s *licenseSessions) revoke(affected func(user string) bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -200,7 +209,8 @@ func licenseCookie(w http.ResponseWriter, value string) {
 
 // serveLicense answers Login and Logout on /ls/sdk. Every other operation
 // keeps today's answer and stays covered by the request capture.
-func (s *licenseSessions) serve(w http.ResponseWriter, r *http.Request) bool {
+func (h *handler) serveLicense(w http.ResponseWriter, r *http.Request) bool {
+	s := &h.license
 	if r.URL.Path != licensePath && r.URL.Path != "/ls" {
 		return false
 	}
@@ -214,6 +224,11 @@ func (s *licenseSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	}
 	switch soapOperation(body) {
 	case "Login":
+		// a login is serialized with a credential change the way /api/session
+		// and the SessionManager operations are, so it cannot slip in between
+		// the new credentials and the revocation of the affected sessions
+		h.accessMu.RLock()
+		defer h.accessMu.RUnlock()
 		value, user := s.login(body)
 		if value == "" {
 			licenseFault(w)
@@ -435,14 +450,16 @@ func decodeSOAPRequest(body []byte) soapRequest {
 			if !inOp || pending == "" {
 				continue
 			}
-			text := strings.TrimSpace(string(t))
+			// The credentials keep their text exactly as supplied, because the
+			// credential store compares the untrimmed value. The reference and
+			// the property name are an identifier each, so surrounding layout
+			// whitespace is not part of them.
+			text := string(t)
 			switch pending {
 			case "_this":
-				req.this = text
+				req.this = strings.TrimSpace(text)
 			default:
-				if text != "" {
-					req.texts = append(req.texts, text)
-				}
+				req.texts = append(req.texts, text)
 			}
 		case xml.EndElement:
 			pending = ""

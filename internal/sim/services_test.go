@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -529,5 +530,149 @@ func TestLicenseSessionRevokedByCredentialChange(t *testing.T) {
 	res, body = postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", logout), cookie)
 	if res.StatusCode != http.StatusInternalServerError {
 		t.Errorf("logout of a revoked session %d, want a fault: %s", res.StatusCode, body)
+	}
+}
+
+// The credential text is the stored value exactly, so a password with leading
+// or trailing whitespace is accepted by /ls/sdk as it is on /sdk and
+// /api/session. Oracle: the same pair was published through
+// sim.Options.Credentials, so the untrimmed value is the only one that matches.
+func TestLicenseLoginKeepsCredentialTextExactly(t *testing.T) {
+	sc := scenario.Phase1("credentials")
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	cert, err := newCertificate(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const padded = " s3cret "
+	s, err := sim.New(sim.Options{Topology: topo, Credentials: map[string]string{"operator": padded}, Certificate: cert})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	srv := httptest.NewServer(s.Handler)
+	t.Cleanup(srv.Close)
+
+	body := `<Login xmlns="urn:internalcis.license"><_this type="CisLicenseSessionManagementService">cis.license.SessionManagementService</_this>` +
+		`<username>operator</username><password>` + padded + `</password></Login>`
+	res, out := postTo(t, srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", body))
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(out), "LoginResponse") {
+		t.Errorf("padded password status %d: %s", res.StatusCode, out)
+	}
+
+	// the trimmed form is a different password, so it is refused
+	trimmed := strings.Replace(body, "<password>"+padded+"</password>", "<password>s3cret</password>", 1)
+	res, out = postTo(t, srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", trimmed))
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Errorf("trimmed password status %d, want a fault: %s", res.StatusCode, out)
+	}
+}
+
+// A certificate-authority read keeps the REST session alive: with an idle
+// timeout, repeated reads on that one path stay authenticated past the timeout
+// measured from the login, which only happens if each read refreshes the
+// session's last-active timestamp.
+func TestCertificateAuthorityReadKeepsRESTSessionAlive(t *testing.T) {
+	sc := scenario.Phase1("idle")
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	cert, err := newCertificate(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := sim.New(sim.Options{Topology: topo, Username: "operator", Password: "s3cret",
+		Credentials: map[string]string{"operator": "s3cret"}, Certificate: cert,
+		SessionTimeout: 100 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	srv := httptest.NewServer(s.Handler)
+	t.Cleanup(srv.Close)
+
+	token := restToken(t, srv)
+	path := "/rest/vcenter/certificate-authority/get-root"
+	for i := 0; i < 4; i++ {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("read %d status %d, want the session kept alive", i+1, res.StatusCode)
+		}
+		res.Body.Close()
+		time.Sleep(60 * time.Millisecond)
+	}
+	// the same token is still the live session after 240ms with a 100ms timeout;
+	// a non-refreshing validator would answer 401 by the second read
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("final read status %d, want 200", res.StatusCode)
+	}
+	// and the token really is the store's own: an unknown one is refused
+	req, _ = http.NewRequest(http.MethodGet, srv.URL+path, nil)
+	req.Header.Set("vmware-api-session-id", token+"0")
+	res, err = srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Errorf("unknown token status %d, want 401", res.StatusCode)
+	}
+}
+
+// A license login is serialized with a credential change: the session that a
+// login creates is the one the same update revokes, never a leftover for the
+// old credentials. The update callback runs under the same lock, so it observes
+// the state the login left behind.
+func TestLicenseLoginSerializedWithCredentialUpdate(t *testing.T) {
+	e := startServices(t)
+	res, body := postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", loginBody))
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login %d: %s", res.StatusCode, body)
+	}
+	cookie := licenseCookieValue(t, res)
+
+	// the last login of each round is inside the update's own window, so the
+	// store it lands in is the one the update then prunes
+	var issued string
+	var err error
+	// the login runs in its own round, outside the update callback, which holds
+	// the access lock and cannot nest a request of its own
+	for round := 0; round < 3; round++ {
+		res, _ := postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", loginBody))
+		for _, ck := range res.Cookies() {
+			if ck.Name == "vmware_soap_session" {
+				issued = ck.Value
+			}
+		}
+		if issued == "" {
+			t.Fatal("no session issued by the login")
+		}
+		err = e.sim.UpdateCredentials(func() ([]string, error) { return []string{"operator"}, nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		logout := `<Logout xmlns="urn:internalcis.license"><_this type="CisLicenseSessionManagementService">cis.license.SessionManagementService</_this></Logout>`
+		res, body = postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", logout),
+			&http.Cookie{Name: "vmware_soap_session", Value: issued})
+		if res.StatusCode != http.StatusInternalServerError {
+			t.Errorf("round %d: session %s survived the credential update: %d %s", round+1, issued, res.StatusCode, body)
+		}
+	}
+
+	// the first cookie behaves the same way once its user is revoked
+	logout := `<Logout xmlns="urn:internalcis.license"><_this type="CisLicenseSessionManagementService">cis.license.SessionManagementService</_this></Logout>`
+	res, body = postTo(t, e.srv, "/ls/sdk", `"urn:internalcis.license/4.0"`, licenseEnvelope(t, "", logout), cookie)
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Errorf("the first cookie still works after the update: %d %s", res.StatusCode, body)
 	}
 }

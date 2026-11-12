@@ -169,7 +169,7 @@ func New(opts Options) (*Simulator, error) {
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}, license: licenseSessions{tokens: map[string]licenseSession{}, credentials: creds, check: opts.Authenticate}, tls: opts.Certificate}
+	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}, license: *newLicenseSessions(creds, opts.Authenticate), tls: opts.Certificate}
 	h.timeout.Store(int64(opts.SessionTimeout))
 	h.rest.timeout = &h.timeout
 	h.license.timeout = &h.timeout
@@ -889,7 +889,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.rest.serve(w, r) {
 		return
 	}
-	if h.license.serve(w, r) {
+	if h.serveLicense(w, r) {
 		return
 	}
 	if serveLookup(w, r) {

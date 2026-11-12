@@ -48,7 +48,9 @@ func (s *restSessions) authorized(user, password string) bool {
 	return ok && subtle.ConstantTimeCompare([]byte(expected), []byte(password)) == 1
 }
 
-// valid reports whether a REST session token is a live session.
+// valid reports whether a REST session token is a live session, and refreshes
+// its idle timestamp, so a read served outside rest.serve keeps the session
+// alive the way any other authenticated REST request does.
 func (s *restSessions) valid(token string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -62,6 +64,8 @@ func (s *restSessions) valid(token string) bool {
 			return false
 		}
 	}
+	session.last = time.Now()
+	s.tokens[token] = session
 	return true
 }
 
