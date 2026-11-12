@@ -41,7 +41,7 @@ func scrubName(n string) bool {
 
 var (
 	longRun    = regexp.MustCompile(`[A-Za-z0-9+/=_-]{65,}`)
-	jsonSecret = regexp.MustCompile(`(?i)("[^"\\]*(?:` + strings.Join(scrubWords, "|") + `)[^"\\]*"\s*:\s*)("(?:[^"\\]|\\.)*")`)
+	jsonSecret = regexp.MustCompile(`(?i)("[^"\\]*(?:` + strings.Join(scrubWords, "|") + `)[^"\\]*"\s*:\s*)("(?:[^"\\]|\\.)*"|\{[^{}]*\}|\[[^\[\]]*\]|[^,}\]\s]+)`)
 	formSecret = regexp.MustCompile(`(?i)((?:^|[&;\s?])[\w.\-]*(?:` + strings.Join(scrubWords, "|") + `)[\w.\-]*=)([^&;\s]*)`)
 )
 
@@ -64,7 +64,11 @@ func ScrubBody(data []byte) string {
 	if trimmed[0] != '<' {
 		s := jsonSecret.ReplaceAllStringFunc(string(data), func(m string) string {
 			p := jsonSecret.FindStringSubmatch(m)
-			return p[1] + `"` + placeholder("value", len(p[2])-2) + `"`
+			n := len(p[2])
+			if p[2][0] == '"' {
+				n -= 2
+			}
+			return p[1] + `"` + placeholder("value", n) + `"`
 		})
 		s = formSecret.ReplaceAllStringFunc(s, func(m string) string {
 			p := formSecret.FindStringSubmatch(m)
@@ -76,6 +80,18 @@ func ScrubBody(data []byte) string {
 		return scrubRuns(s)
 	}
 	return scrubRuns(scrubXML(data))
+}
+
+var attrPair = regexp.MustCompile(`([\w:.\-]+)(\s*=\s*)("[^"]*"|'[^']*')`)
+
+func scrubAttrs(tag string) string {
+	return attrPair.ReplaceAllStringFunc(tag, func(m string) string {
+		p := attrPair.FindStringSubmatch(m)
+		if strings.HasPrefix(strings.ToLower(p[1]), "xmlns") || !scrubName(p[1]) {
+			return m
+		}
+		return p[1] + p[2] + `"` + placeholder("attr", len(p[3])-2) + `"`
+	})
 }
 
 func scrubXML(data []byte) string {
@@ -96,10 +112,20 @@ func scrubXML(data []byte) string {
 			return out.String()
 		}
 		start, ok := tok.(xml.StartElement)
-		if !ok || !scrubName(start.Name.Local) {
+		if !ok {
 			continue
 		}
 		contentStart := d.InputOffset()
+		if tag := string(data[before:contentStart]); strings.Contains(tag, "=") {
+			if clean := scrubAttrs(tag); clean != tag {
+				out.Write(data[at:before])
+				out.WriteString(clean)
+				at = contentStart
+			}
+		}
+		if !scrubName(start.Name.Local) {
+			continue
+		}
 		depth := 1
 		contentEnd := int64(-1)
 		for depth > 0 {

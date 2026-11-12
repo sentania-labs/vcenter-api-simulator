@@ -219,3 +219,20 @@ func TestScrubUsesOneSensitiveDefinition(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubAttributesAndNonStringJSON(t *testing.T) {
+	got := ScrubBody([]byte(`<ls:Login xmlns:ls="urn:ls" sessionId="0123456789abcdef" token='abc123' mode="keep"/>`))
+	if strings.Contains(got, "0123456789abcdef") || strings.Contains(got, "abc123") || !strings.Contains(got, `xmlns:ls="urn:ls"`) || !strings.Contains(got, `mode="keep"`) {
+		t.Errorf("attributes: %s", got)
+	}
+	got = ScrubBody([]byte(`<a><password x="1">pw12345</password><b token="zzz">ok</b></a>`))
+	if strings.Contains(got, "pw12345") || strings.Contains(got, "zzz") || !strings.Contains(got, "<b ") || !strings.Contains(got, ">ok</b></a>") {
+		t.Errorf("attribute plus element: %s", got)
+	}
+	for _, in := range []string{`{"password":12345,"ok":"keep"}`, `{"credentials":{"pass":"hunter2"},"ok":"keep"}`, `{"tokens":["hunter2"],"ok":"keep"}`} {
+		got = ScrubBody([]byte(in))
+		if strings.Contains(got, "12345") || strings.Contains(got, "hunter2") || !strings.Contains(got, `"ok":"keep"`) {
+			t.Errorf("json %s: %s", in, got)
+		}
+	}
+}
