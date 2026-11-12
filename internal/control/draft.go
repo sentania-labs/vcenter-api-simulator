@@ -50,7 +50,10 @@ func (c *Controller) settle() {
 	if d == nil {
 		return
 	}
-	if normal(d.Scenario) == normal(c.applied().sc) && len(d.Regenerate) == 0 && d.Scope == c.scope && d.Origin == "edit" {
+	if d.Credentials != nil && len(c.auth.Diff(*d.Credentials)) == 0 {
+		d.Credentials = nil
+	}
+	if normal(d.Scenario) == normal(c.applied().sc) && len(d.Regenerate) == 0 && d.Scope == c.scope && d.Origin == "edit" && d.Credentials == nil {
 		c.draft = nil
 	}
 }
@@ -61,6 +64,7 @@ type Pending struct {
 	Scheduled bool   `json:"scheduled"`
 	Topology  int    `json:"topologyChanges"`
 	Telemetry int    `json:"telemetryChanges"`
+	Settings  int    `json:"settingsChanges"`
 	Origin    string `json:"origin,omitempty"`
 	BasedOn   int    `json:"basedOn,omitempty"`
 	Target    int    `json:"target,omitempty"`
@@ -84,6 +88,7 @@ func (c *Controller) pending() Pending {
 	if err == nil {
 		p.Topology = rev.TopologyCount
 		p.Telemetry = rev.TelemetryCount
+		p.Settings = rev.SettingsCount
 		p.Target = rev.To
 	}
 	return p
@@ -329,6 +334,7 @@ type Review struct {
 	More             int           `json:"moreChanges"`
 	TopologyCount    int           `json:"topologyChanges"`
 	TelemetryCount   int           `json:"telemetryChanges"`
+	SettingsCount    int           `json:"settingsChanges"`
 	RebuildsVCenter  bool          `json:"rebuildsVcenter"`
 	Identities       []IdentityRow `json:"identities"`
 	Churn            bool          `json:"identityChurn"`
@@ -382,6 +388,7 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	old := c.applied()
 	now := c.now()
 	nt, _ := c.previewTopology(d)
+	dropVanishedHostVersions(d.Scenario, nt)
 	rv := &Review{From: old.version, To: old.version + 1, Origin: d.Origin, Discarded: d.Discarded, Scope: d.Scope,
 		Now: now.UTC(), Boundary: nextBoundary(now), Identities: []IdentityRow{}, Changes: []Change{},
 		NotAffected: []string{}, Warnings: []Warning{}}
@@ -414,10 +421,21 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 		rv.Changes = append(rv.Changes, Change{Object: "Collector", Field: "Metric scope", Before: scopeName(c.scope), After: scopeName(d.Scope),
 			Effect: "projections only", Area: "Telemetry"})
 	}
+	if d.Credentials != nil {
+		for _, change := range c.auth.Diff(*d.Credentials) {
+			rv.Changes = append(rv.Changes, Change{Object: change.Name, Field: "vCenter login", Before: change.Before, After: change.After, Effect: change.Effect, Area: "Credentials"})
+			if change.EndsSessions {
+				rv.SessionsDropped = true
+			}
+		}
+	}
 	for _, ch := range rv.Changes {
-		if ch.Area == "Topology" {
+		switch ch.Area {
+		case "Topology":
 			rv.TopologyCount++
-		} else {
+		case "Credentials":
+			rv.SettingsCount++
+		default:
 			rv.TelemetryCount++
 		}
 	}
@@ -456,6 +474,13 @@ func (c *Controller) review(d *Draft) (*Review, error) {
 	}
 	rv.NotAffected = notAffected(old, nt, d, topoChanged, teleChanged)
 	rv.Warnings = warnings(old, nt, d, rv, newProj)
+	for _, cluster := range nt.Clusters() {
+		for _, host := range cluster.Hosts {
+			if newer, _ := scenario.VersionNewer(host.Version.Version, nt.VCenterVersion.Version); newer {
+				rv.Warnings = append(rv.Warnings, Warning{Severity: "warn", Title: "Host newer than vCenter", Text: host.Name + " is newer than vCenter; this combination was explicitly allowed."})
+			}
+		}
+	}
 	return rv, nil
 }
 
@@ -502,6 +527,22 @@ func specFields(s scenario.ClusterSpec) [][2]string {
 func topologyChanges(old *running, nt *topology.Topology, d *Draft, op, np *Projection) []Change {
 	var out []Change
 	osc, nsc := old.sc, d.Scenario
+	if old.topo.VCenterVersion != nt.VCenterVersion {
+		out = append(out, Change{Object: "vCenter", Field: "Version", Before: old.topo.VCenterVersion.FullName, After: nt.VCenterVersion.FullName, Effect: "sessions end at apply", Area: "Topology"})
+	}
+	oldHosts := map[string]*topology.Host{}
+	for _, cluster := range old.topo.Clusters() {
+		for _, host := range cluster.Hosts {
+			oldHosts[host.Key] = host
+		}
+	}
+	for _, cluster := range nt.Clusters() {
+		for _, host := range cluster.Hosts {
+			if before := oldHosts[host.Key]; before != nil && before.Version != host.Version {
+				out = append(out, Change{Object: host.Key, Field: "ESX version", Before: before.Version.FullName, After: host.Version.FullName, Effect: "host identity retained", Area: "Topology"})
+			}
+		}
+	}
 	out = append(out, nfsChanges(osc, nsc)...)
 	out = append(out, iscsiChanges(osc, nsc)...)
 	if osc.Seed != nsc.Seed {
@@ -1007,6 +1048,22 @@ func sameCluster(o, c *topology.Cluster) bool {
 		fmt.Sprint(specFields(o.Spec)) == fmt.Sprint(specFields(c.Spec)) && o.TelemetrySeed == c.TelemetrySeed
 }
 
+func sameHostVersions(a, b *topology.Cluster) bool {
+	if len(a.Hosts) != len(b.Hosts) {
+		return false
+	}
+	versions := make(map[string]scenario.Version, len(a.Hosts))
+	for _, h := range a.Hosts {
+		versions[h.Key] = h.Version
+	}
+	for _, h := range b.Hosts {
+		if v, ok := versions[h.Key]; !ok || v != h.Version {
+			return false
+		}
+	}
+	return true
+}
+
 func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, teleChanged bool) []string {
 	var out []string
 	if topoChanged {
@@ -1024,7 +1081,7 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 		}
 		kept := 0
 		for _, c := range nt.Clusters() {
-			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && !affectedDC[c.Datacenter.Name] && !touched[c.Key] {
+			if o, ok := oc[c.Key]; ok && sameCluster(o, c) && sameHostVersions(o, c) && !affectedDC[c.Datacenter.Name] && !touched[c.Key] {
 				kept++
 			} else {
 				touched[c.Key] = true
@@ -1037,7 +1094,10 @@ func notAffected(old *running, nt *topology.Topology, d *Draft, topoChanged, tel
 			out = append(out, "seed "+d.Scenario.Seed)
 		}
 	} else {
-		out = append(out, "every cluster, host, VM and identity", "sessions and the running vCenter")
+		out = append(out, "every cluster, host, VM and identity", "the running vCenter")
+		if d.Credentials == nil {
+			out = append(out, "sessions")
+		}
 	}
 	if !teleChanged {
 		out = append(out, "latency and fault rules")
@@ -1057,13 +1117,16 @@ func warnings(old *running, nt *topology.Topology, d *Draft, rv *Review, np *Pro
 			fmt.Sprintf("%s entities per cycle (projected, not measured). Past about 20,000 the collection cycle approaches the five-minute window on the reference pack.", num(rv.After.Entities))})
 	}
 	if rv.SessionsDropped {
-		w = append(w, Warning{"info", "Sessions end at the swap",
-			"The new vCenter starts with an empty session store. A client mid-cycle at the boundary logs in again, as it would after a vCenter restart."})
+		if rv.RebuildsVCenter {
+			w = append(w, Warning{"info", "Sessions end at the swap", "The new vCenter starts with an empty session store. A client mid-cycle at the boundary logs in again, as it would after a vCenter restart."})
+		} else {
+			w = append(w, Warning{"info", "Changed users are signed out", "Sessions for changed or removed users end when the change is applied."})
+		}
 	}
 	for _, k := range d.Regenerate {
 		w = append(w, Warning{"warn", "Regenerate " + k, "Every host, disk and VM UUID in this cluster is replaced. VCF Operations treats them as new objects."})
 	}
-	if !rv.RebuildsVCenter && rv.TelemetryCount > 0 {
+	if !rv.RebuildsVCenter && rv.TelemetryCount > 0 && rv.SettingsCount == 0 {
 		w = append(w, Warning{"ok", "Telemetry only", "The running vCenter is not rebuilt. History and identities are untouched."})
 	}
 	if rv.Discarded != "" {

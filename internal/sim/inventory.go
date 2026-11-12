@@ -151,21 +151,21 @@ func shapeHost(hs *simulator.HostSystem, cl *topology.Cluster, h *topology.Host,
 // shapeHostProduct sets the ESXi product once every host of the cluster
 // exists: vcsim's environment browser parses the version of every cluster
 // host on each AddHost_Task, and govmomi v0.56.2 does not know 9.x.
-func shapeHostProduct(hs *simulator.HostSystem, cat *catalog.Catalog) {
+func shapeHostProduct(hs *simulator.HostSystem, host *topology.Host) {
 	esx := types.AboutInfo{
 		Name:                  "VMware ESXi",
-		FullName:              cat.About.EsxiFullName,
+		FullName:              host.Version.FullName,
 		Vendor:                "VMware, Inc.",
-		Version:               cat.About.EsxiVersion,
-		Build:                 cat.About.EsxiBuild,
+		Version:               host.Version.Version,
+		Build:                 host.Version.Build,
 		LocaleVersion:         "INTL",
 		LocaleBuild:           "000",
 		OsType:                "vmnix-x86",
 		ProductLineId:         "embeddedEsx",
 		ApiType:               "HostAgent",
-		ApiVersion:            cat.About.ApiVersion,
+		ApiVersion:            host.Version.APIVersion,
 		LicenseProductName:    "VMware ESX Server",
-		LicenseProductVersion: "9.1",
+		LicenseProductVersion: host.Version.LicenseVersion(),
 	}
 	hs.Config.Product = esx
 	hs.Summary.Config.Product = &hs.Config.Product

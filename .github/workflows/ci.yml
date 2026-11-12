@@ -60,6 +60,9 @@ jobs:
       # Connect, list hosts and VMs, compare the counts with the scenario,
       # dump every identity, restart on the same data directory, dump again
       # and diff: tools/smoke/smoke.sh.
-      - run: tools/smoke/smoke.sh --scenario examples/scenarios/ten-clusters.yaml --port 18443
+      # --powercli also runs tools/smoke/smoke.ps1 (PowerCLI, installed from
+      # the PowerShell Gallery) on the mixed-version scenario; --versions adds
+      # the govc and REST checks of the 8.0 U3, 9.0 and 9.1.1 presets.
+      - run: tools/smoke/smoke.sh --scenario examples/scenarios/ten-clusters.yaml --port 18443 --powercli
       - run: tools/smoke/smoke.sh --scenario examples/scenarios/phase1.yaml --port 18444
       - run: tools/smoke/smoke.sh --scenario examples/scenarios/storage.yaml --port 18445 --storage

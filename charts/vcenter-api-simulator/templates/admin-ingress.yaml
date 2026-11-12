@@ -1,0 +1,37 @@
+{{- if .Values.admin.ingress.enabled }}
+{{- if not .Values.admin.service.enabled }}{{ fail "admin.ingress.enabled requires admin.service.enabled" }}{{ end }}
+{{- $host := required "admin.ingress.host is required" .Values.admin.ingress.host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "vcsim.fullname" . }}-admin
+  labels:
+    {{- include "vcsim.labels" . | nindent 4 }}
+  {{- with .Values.admin.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.admin.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.admin.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      {{- with .Values.admin.ingress.tls.secretName }}
+      secretName: {{ . | quote }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "vcsim.fullname" . }}-admin
+                port:
+                  name: admin
+{{- end }}

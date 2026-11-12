@@ -39,6 +39,7 @@ auth:
     # a password can also come from the environment:
     # - name: readonly@vsphere.local
     #   passwordEnv: VCSIM_READONLY_PASSWORD
+    #   role: read-only
 # tls:
 #   certFile: /etc/vcsimulator/tls/tls.crt
 #   keyFile: /etc/vcsimulator/tls/tls.key

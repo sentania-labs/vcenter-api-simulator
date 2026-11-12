@@ -49,10 +49,14 @@ type Scenario struct {
 	// identities stay reserved in the registry for a later re-add.
 	Removed []string `yaml:"removed" json:"removed,omitempty"`
 
-	Auth    Auth    `yaml:"auth" json:"auth,omitempty"`
-	TLS     TLS     `yaml:"tls" json:"tls,omitempty"`
-	Faults  []Fault `yaml:"faults" json:"faults,omitempty"`
-	Latency Latency `yaml:"latency" json:"latency,omitempty"`
+	VCenter         Version            `yaml:"vcenterVersion,omitempty" json:"vcenterVersion,omitempty"`
+	ESX             Version            `yaml:"esxVersion,omitempty" json:"esxVersion,omitempty"`
+	HostVersions    map[string]Version `yaml:"hostVersions,omitempty" json:"hostVersions,omitempty"`
+	ForceNewerHosts bool               `yaml:"forceNewerHosts,omitempty" json:"forceNewerHosts,omitempty"`
+	Auth            Auth               `yaml:"auth" json:"auth,omitempty"`
+	TLS             TLS                `yaml:"tls" json:"tls,omitempty"`
+	Faults          []Fault            `yaml:"faults" json:"faults,omitempty"`
+	Latency         Latency            `yaml:"latency" json:"latency,omitempty"`
 }
 
 // Datacenter generates Clusters clusters named cluster-01, cluster-02, ...
@@ -227,14 +231,15 @@ type ClusterOverride struct {
 	// SeedEpoch, when above zero, gives the cluster its own telemetry seed
 	// (the console's Reset cluster seed): every synthetic sample and the
 	// whole history of this cluster change, no identity does.
-	SeedEpoch   int `yaml:"seedEpoch,omitempty" json:"seedEpoch,omitempty"`
+	SeedEpoch   int     `yaml:"seedEpoch,omitempty" json:"seedEpoch,omitempty"`
+	ESX         Version `yaml:"esxVersion,omitempty" json:"esxVersion,omitempty"`
 	ClusterSpec `yaml:",inline" json:",omitempty"`
 }
 
-// Auth lists who may log in. With no users any non-empty user name and
-// password are accepted, as vcsim does.
+// Auth lists accepted users. AnyLogin explicitly permits arbitrary credentials.
 type Auth struct {
-	Users []User `yaml:"users" json:"users,omitempty"`
+	AnyLogin bool   `yaml:"anyLogin" json:"anyLogin,omitempty"`
+	Users    []User `yaml:"users" json:"users,omitempty"`
 }
 
 // User is one account. Password may come from the environment instead of
@@ -243,6 +248,8 @@ type User struct {
 	Name        string `yaml:"name" json:"name,omitempty"`
 	Password    string `yaml:"password" json:"password,omitempty"`
 	PasswordEnv string `yaml:"passwordEnv" json:"passwordEnv,omitempty"`
+	// Role is "administrator" (the default) or "read-only".
+	Role string `yaml:"role,omitempty" json:"role,omitempty"`
 }
 
 // TLS selects the certificate: a provided pair, or a self-signed one
@@ -383,6 +390,9 @@ func StorageNumber(name string) uint32 {
 
 // Validate checks the file and fills Defaults from the built-in defaults.
 func (s *Scenario) Validate() error {
+	if err := s.validateVersions(); err != nil {
+		return err
+	}
 	if s.Seed == "" {
 		return errors.New("scenario: seed is required")
 	}
@@ -583,6 +593,9 @@ func (s *Scenario) Validate() error {
 			return fmt.Errorf("scenario: auth.users[%d]: %q listed twice", i, u.Name)
 		}
 		users[u.Name] = true
+		if u.Role != "" && u.Role != "administrator" && u.Role != "read-only" {
+			return fmt.Errorf("scenario: auth.users[%d] (%s): role must be administrator or read-only", i, u.Name)
+		}
 		if (u.Password == "") == (u.PasswordEnv == "") {
 			return fmt.Errorf("scenario: auth.users[%d] (%s): exactly one of password and passwordEnv is required", i, u.Name)
 		}

@@ -2,12 +2,15 @@ package control
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +19,9 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
 
@@ -196,6 +201,53 @@ func TestTelemetryOnlyApplyKeepsTheVCenter(t *testing.T) {
 	}
 	if d := c.applied().sim.Env.Knobs.SDKDelay(); d != nil {
 		t.Errorf("sdk delay %+v", d)
+	}
+}
+
+func TestFailedCredentialApplyLeavesTelemetryUnchanged(t *testing.T) {
+	c := newCtl(t, scenario.Phase1("failed-credential-telemetry"), "", "t")
+	old := c.applied()
+	sc := editable(t, c)
+	sc.Latency.SDK = &scenario.Delay{FixedMs: 200}
+	sc.Faults = []scenario.Fault{{Family: "vsan-pnic-net", Fault: scenario.FaultSystemError}}
+	put(t, c, sc)
+	if _, err := c.PutUser("test-reader", uuid.NewString(), "read-only"); err != nil {
+		t.Fatal(err)
+	}
+	// A directory at the destination makes credential persistence fail.
+	if err := os.Mkdir(filepath.Join(c.opts.DataDir, "vcenter-users.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Apply("now"); err == nil {
+		t.Fatal("expected credential persistence to fail")
+	}
+	if c.applied() != old || old.sim.Env.Knobs.SDKDelay() != nil {
+		t.Fatal("failed apply changed the running latency")
+	}
+	if old.sim.Env.Knobs.FamilyFault("vsan-pnic-net", old.topo.Clusters()[0].Key) != nil {
+		t.Fatal("failed apply changed the running fault rules")
+	}
+	if !newAPIClient(t, c).login(DefaultUsername, DefaultPassword) {
+		t.Fatal("failed apply changed credentials")
+	}
+}
+
+func TestCannotRemoveLastRequiredUser(t *testing.T) {
+	c := newCtl(t, scenario.Phase1("last-user"), "", "t")
+	if _, err := c.DeleteUser(DefaultUsername); err == nil || !strings.Contains(err.Error(), "Keep at least one vCenter user") {
+		t.Fatalf("last user removal: %v", err)
+	}
+	if c.DraftState().Pending.Exists {
+		t.Fatal("rejected removal created a draft")
+	}
+	if _, err := c.SetAnyLogin(true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DeleteUser(DefaultUsername); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SetAnyLogin(false); err == nil || !strings.Contains(err.Error(), "Add a vCenter user") {
+		t.Fatalf("disabled any-login without users: %v", err)
 	}
 }
 
@@ -660,7 +712,7 @@ func TestPauseRefusesConnections(t *testing.T) {
 		t.Errorf("refused calls: %+v", got)
 	}
 	c.SetPaused(false)
-	if !a.login("any", "thing") && len(c.opts.Credentials) == 0 && len(tenClusters(t).Auth.Users) == 0 {
+	if !a.login(DefaultUsername, DefaultPassword) && len(c.opts.Credentials) == 0 && len(tenClusters(t).Auth.Users) == 0 {
 		t.Error("resume should serve again")
 	}
 	if c.Paused() {
@@ -785,13 +837,13 @@ func TestFailedApplyIsReportedAndHarmless(t *testing.T) {
 		t.Fatal("the build should fail without a temp directory")
 	}
 	st := c.State()
-	if !strings.Contains(st.LastErr, "failed to apply") || !strings.Contains(st.LastErr, "v1 is still serving") {
+	if !strings.Contains(st.LastErr, "failed to apply") || !strings.Contains(st.LastErr, "previous settings are still serving") {
 		t.Errorf("last error: %q", st.LastErr)
 	}
 	if c.applied().version != 1 || !c.DraftState().Pending.Exists {
 		t.Error("a failed apply must keep the version and the draft")
 	}
-	if tl := c.Timeline(); tl[0].Text != "Apply failed: v1 still serving" {
+	if tl := c.Timeline(); tl[0].Text != "Apply failed; previous settings are still serving" {
 		t.Errorf("timeline: %+v", tl[0])
 	}
 	c.DismissError()
@@ -1339,7 +1391,7 @@ defaults: {hosts: 3, vms: {perHost: 1}}
 		srv := httptest.NewServer(c.applied().sim.Handler)
 		defer srv.Close()
 		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
-		req.SetBasicAuth("reader", "password")
+		req.SetBasicAuth(DefaultUsername, DefaultPassword)
 		res, err := srv.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -1435,7 +1487,7 @@ func TestISCSIDraftReviewAndStableIdentity(t *testing.T) {
 		srv := httptest.NewServer(r.sim.Handler)
 		defer srv.Close()
 		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/session", nil)
-		req.SetBasicAuth("reader", "password")
+		req.SetBasicAuth(DefaultUsername, DefaultPassword)
 		res, err := srv.Client().Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -1540,5 +1592,602 @@ func TestStorageDraftMarksAffectedClusterAndStandby(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("standby path missing from storage state")
+	}
+}
+
+func TestDefaultAndExplicitCredentialPolicies(t *testing.T) {
+	testPassword, wrongPassword := uuid.NewString(), uuid.NewString()
+	cases := []struct {
+		name       string
+		sc         *scenario.Scenario
+		extra      map[string]string
+		any        bool
+		user, pass string
+	}{
+		{name: "default", sc: scenario.Phase1("default-auth"), user: DefaultUsername, pass: DefaultPassword},
+		{name: "environment override", sc: scenario.Phase1("env-auth"), extra: map[string]string{"operator": testPassword}, user: "operator", pass: testPassword},
+		{name: "any login", sc: scenario.Phase1("open-auth"), any: true, user: "arbitrary", pass: testPassword},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctl, err := New(Options{Scenario: tc.sc, DataDir: t.TempDir(), Credentials: tc.extra, AnyLogin: tc.any})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ctl.Close()
+			api := newAPIClient(t, ctl)
+			if !tc.any {
+				bad := newAPIClient(t, ctl)
+				code, body := bad.post("/sdk", `<Login xmlns="urn:vim25"><_this type="SessionManager">SessionManager</_this><userName>`+tc.user+`</userName><password>`+wrongPassword+`</password></Login>`)
+				if code != http.StatusInternalServerError || !strings.Contains(body, "InvalidLogin") {
+					t.Fatalf("wrong SOAP credential: %d %s", code, body)
+				}
+			}
+			if !api.login(tc.user, tc.pass) {
+				t.Fatal("expected SOAP credential refused")
+			}
+			code, body := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+			if code != http.StatusOK || strings.Contains(body, "NotAuthenticated") {
+				t.Fatalf("vSAN session: %d", code)
+			}
+			for _, bad := range []bool{false, true} {
+				req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
+				pass := tc.pass
+				if bad {
+					pass = wrongPassword
+				}
+				req.SetBasicAuth(tc.user, pass)
+				res, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				res.Body.Close()
+				want := http.StatusCreated
+				if bad && !tc.any {
+					want = http.StatusUnauthorized
+				}
+				if res.StatusCode != want {
+					t.Fatalf("REST bad=%v status=%d want=%d", bad, res.StatusCode, want)
+				}
+			}
+		})
+	}
+}
+
+func TestCredentialDraftApplyRevokesSessionsAndPersists(t *testing.T) {
+	updatedPassword := uuid.NewString()
+	dir := t.TempDir()
+	sc := scenario.Phase1("credential-draft")
+	ctl, err := New(Options{Scenario: sc, SourceHash: "source-a", DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("default login failed")
+	}
+	req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
+	req.SetBasicAuth(DefaultUsername, DefaultPassword)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	oldSim := ctl.applied().sim
+	if _, err = ctl.PutUser(DefaultUsername, updatedPassword, "administrator"); err != nil {
+		t.Fatal(err)
+	}
+	viewBytes, _ := json.Marshal(ctl.CredentialsView())
+	if strings.Contains(string(viewBytes), updatedPassword) || strings.Contains(string(viewBytes), "$2") {
+		t.Fatal("credential draft exposed a secret")
+	}
+	review, err := ctl.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.SettingsCount != 1 || !review.SessionsDropped || review.RebuildsVCenter {
+		t.Fatal("credential review did not explain the session change")
+	}
+	for _, text := range review.NotAffected {
+		if strings.Contains(text, "sessions") {
+			t.Fatal("review incorrectly says sessions are unaffected")
+		}
+	}
+	if _, err = ctl.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	if ctl.applied().sim != oldSim {
+		t.Fatal("credentials rebuilt the simulator")
+	}
+	persisted, err := os.ReadFile(filepath.Join(dir, "vcenter-users.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(persisted), updatedPassword) || strings.Contains(string(persisted), DefaultPassword) {
+		t.Fatal("credential file contains a plaintext password")
+	}
+	info, err := os.Stat(filepath.Join(dir, "vcenter-users.json"))
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("credential file is not owner-only")
+	}
+	code, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if code != http.StatusInternalServerError {
+		t.Fatalf("SOAP session survived: %d", code)
+	}
+	req, _ = http.NewRequest(http.MethodGet, api.srv.URL+"/api/vcenter/datastore", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("REST session survived: %d", res.StatusCode)
+	}
+	if newAPIClient(t, ctl).login(DefaultUsername, DefaultPassword) {
+		t.Fatal("old password accepted")
+	}
+	if !newAPIClient(t, ctl).login(DefaultUsername, updatedPassword) {
+		t.Fatal("new password rejected")
+	}
+	ctl.Close()
+	ctl, err = New(Options{Scenario: sc, SourceHash: "source-a", DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	if !newAPIClient(t, ctl).login(DefaultUsername, updatedPassword) {
+		t.Fatal("password change did not persist")
+	}
+	ctl.Close()
+	ctl, err = New(Options{Scenario: sc, SourceHash: "source-b", DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	if !newAPIClient(t, ctl).login(DefaultUsername, DefaultPassword) {
+		t.Fatal("changed scenario did not restore default")
+	}
+}
+
+func TestReadOnlyUserCanReadButCannotMutate(t *testing.T) {
+	readerPassword := uuid.NewString()
+	ctl, err := New(Options{Scenario: scenario.Phase1("readonly"), DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	admin := newAPIClient(t, ctl)
+	if !admin.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("admin login failed")
+	}
+	if _, err = ctl.PutUser("reader@vsphere.local", readerPassword, "read-only"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ctl.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	// Adding another user does not sign out the existing administrator.
+	status, _ := admin.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusOK {
+		t.Fatalf("unrelated session revoked: %d", status)
+	}
+	reader := newAPIClient(t, ctl)
+	if !reader.login("reader@vsphere.local", readerPassword) {
+		t.Fatal("reader login failed")
+	}
+	status, body := reader.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusOK || strings.Contains(body, "NoPermission") {
+		t.Fatalf("read-only performance query denied: %d", status)
+	}
+	for _, op := range []string{
+		"VsanQueryVcClusterHealthSummary", "VsanQueryAllSupportedHealthChecks", "VsanQueryVcClusterSmartStatsSummary",
+		"VsanHealthQueryVsanClusterHealthConfig", "VsanHealthGetVsanClusterSilentChecks", "VsanHealthQueryVsanClusterHealthCheckInterval",
+		"VsanHealthQueryVsanProxyConfig", "VsanHealthIsRebalanceRunning", "VsanGetCapabilities", "VsanClusterGetConfig",
+		"VsanClusterGetRuntimeStats", "VsanClusterGetClaimedCapacity", "VsanQuerySpaceUsage", "VsanQueryEntitySpaceUsage",
+		"VsanPerfGetSupportedEntityTypes", "VsanPerfQueryNodeInformation", "VsanPerfQueryTimeRanges",
+		"VsanVitGetIscsiTargets", "VsanVitGetIscsiLUNs", "VsanVitGetIscsiInitiatorGroups", "VsanVitGetHomeObject", "VsanVitQueryIscsiTargetServiceVersion",
+	} {
+		status, body = reader.post("/vsanHealth", `<`+op+` xmlns="urn:vsan"><_this type="VsanVcClusterHealthSystem">vsan-cluster-health-system</_this></`+op+`>`)
+		if strings.Contains(body, "NoPermission") {
+			t.Fatalf("read-only user refused vSAN read %s: %d %s", op, status, body)
+		}
+	}
+	u, _ := url.Parse(reader.srv.URL)
+	cookies := reader.hc.Jar.Cookies(u)
+	if len(cookies) == 0 {
+		t.Fatal("reader has no session")
+	}
+	status, body = reader.post("/sdk", `<HasPrivilegeOnEntity xmlns="urn:vim25"><_this type="AuthorizationManager">AuthorizationManager</_this><entity type="Folder">group-d1</entity><sessionId>`+cookies[0].Value+`</sessionId><privId>Global.Licenses</privId></HasPrivilegeOnEntity>`)
+	if status != http.StatusOK || !strings.Contains(body, "<returnval>false</returnval>") {
+		t.Fatalf("read-only license privilege not refused: %d", status)
+	}
+	status, body = reader.post("/sdk", `<Destroy_Task xmlns="urn:vim25"><_this type="Folder">group-d1</_this></Destroy_Task>`)
+	if status != http.StatusInternalServerError || !strings.Contains(body, "NoPermission") {
+		t.Fatalf("read-only mutation not refused: %d %s", status, body)
+	}
+	// Use a real disposable folder so a regression cannot destroy the root.
+	status, created := admin.post("/sdk", `<CreateFolder xmlns="urn:vim25"><_this type="Folder">group-d1</_this><name>readonly-test-folder</name></CreateFolder>`)
+	var response struct {
+		Folder string `xml:"Body>CreateFolderResponse>returnval"`
+	}
+	if status != http.StatusOK || xml.Unmarshal([]byte(created), &response) != nil || response.Folder == "" {
+		t.Fatal("administrator could not create the test folder")
+	}
+	// A comment before the real SOAP Body must not determine authorization.
+	mutation := `<Destroy_Task xmlns="urn:vim25"><_this type="Folder">` + response.Folder + `</_this></Destroy_Task>`
+	disguised := strings.Replace(fmt.Sprintf(soapEnv, mutation), "<soapenv:Body>", "<!-- <Body><Query/> --><soapenv:Body>", 1)
+	res, err := reader.hc.Post(reader.srv.URL+"/sdk", "text/xml", strings.NewReader(disguised))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusInternalServerError || !strings.Contains(string(b), "NoPermission") {
+		t.Fatalf("disguised read-only mutation not refused: %d %s", res.StatusCode, b)
+	}
+	if _, err = ctl.DeleteUser("reader@vsphere.local"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ctl.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	status, _ = reader.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("removed user's session survived: %d", status)
+	}
+}
+
+func TestVersionChangeReviewsAndKeepsIdentity(t *testing.T) {
+	ctl, err := New(Options{Scenario: scenario.Phase1("version-swap"), DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("login failed")
+	}
+	before := nodeUUIDs(ctl)
+	draft := editable(t, ctl)
+	draft.VCenter = scenario.Version{Preset: "8.0u3"}
+	draft.ESX = scenario.Version{Preset: "9.0"}
+	draft.ForceNewerHosts = true
+	put(t, ctl, draft)
+	review, err := ctl.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !review.RebuildsVCenter || !review.SessionsDropped {
+		t.Fatalf("version review did not explain the restart: %+v", review)
+	}
+	warned := false
+	for _, w := range review.Warnings {
+		if w.Title == "Host newer than vCenter" {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatal("forced newer host warning missing")
+	}
+	if _, err = ctl.Apply("now"); err != nil {
+		t.Fatal(err)
+	}
+	after := nodeUUIDs(ctl)
+	for name, id := range before {
+		if after[name] != id {
+			t.Fatalf("identity changed: %s", name)
+		}
+	}
+	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("old session remained: %d", status)
+	}
+}
+
+func TestHostVersionChangeIsNotListedAsUnaffected(t *testing.T) {
+	c := newCtl(t, scenario.Phase1("host-version-review"), "", "t")
+	sc := editable(t, c)
+	key := c.applied().topo.Clusters()[0].Hosts[0].Key
+	sc.HostVersions = map[string]scenario.Version{key: {Preset: "9.0"}}
+	put(t, c, sc)
+	rv, err := c.Review()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range rv.NotAffected {
+		if strings.Contains(s, "other clusters") {
+			t.Fatalf("changed cluster marked unaffected: %v", rv.NotAffected)
+		}
+	}
+}
+
+func TestRuntimeSessionTimeoutAppliesAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	sc := scenario.Phase1("runtime-timeout")
+	ctl, err := New(Options{Scenario: sc, DataDir: dir, SessionTimeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("SOAP login failed")
+	}
+	req, _ := http.NewRequest(http.MethodPost, api.srv.URL+"/api/session", nil)
+	req.SetBasicAuth(DefaultUsername, DefaultPassword)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if _, err = ctl.SetRuntimeSettings(RuntimeSettings{SessionTimeoutSeconds: 1}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != http.StatusInternalServerError {
+		t.Fatalf("SOAP idle session remained: %d", status)
+	}
+	req, _ = http.NewRequest(http.MethodGet, api.srv.URL+"/api/vcenter/datastore", nil)
+	req.Header.Set("vmware-api-session-id", token)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("REST idle session remained: %d", res.StatusCode)
+	}
+	if _, err = ctl.SetRuntimeSettings(RuntimeSettings{}); err != nil {
+		t.Fatal(err)
+	}
+	ctl.Close()
+	ctl, err = New(Options{Scenario: sc, DataDir: dir, SessionTimeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	if got := ctl.RuntimeSettings().SessionTimeoutSeconds; got != 0 {
+		t.Fatalf("saved timeout %d, want zero", got)
+	}
+}
+
+func TestChangingCertificateEndsSessionsAndRejectsInvalidUpload(t *testing.T) {
+	dir := t.TempDir()
+	cert, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "tls"), []string{"localhost"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = cert.EnableConsole(dir); err != nil {
+		t.Fatal(err)
+	}
+	ctl, err := New(Options{Scenario: scenario.Phase1("certificate-change"), DataDir: dir, Certificate: cert})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	api := newAPIClient(t, ctl)
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("SOAP login failed")
+	}
+	before := cert.Info()
+	if _, err = ctl.UploadCertificate("not a certificate", "not a key"); err == nil {
+		t.Fatal("invalid pair accepted")
+	}
+	if cert.Info().Fingerprint != before.Fingerprint {
+		t.Fatal("invalid upload changed certificate")
+	}
+	status, _ := api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != 200 {
+		t.Fatal("invalid upload ended session")
+	}
+	info, err := ctl.RegenerateCertificate([]string{"localhost", "new.example.test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Fingerprint == before.Fingerprint || len(info.Names) != 2 {
+		t.Fatalf("certificate metadata not updated: %+v", info)
+	}
+	status, _ = api.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != 500 {
+		t.Fatal("certificate change did not end SOAP session")
+	}
+	newClient := newAPIClient(t, ctl)
+	if !newClient.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("login after rotation failed")
+	}
+	uploadDir := filepath.Join(dir, "upload-source")
+	if _, err := serve.LoadOrCreateCertificate(uploadDir, []string{"uploaded.example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	certPEM, err := os.ReadFile(filepath.Join(uploadDir, "cert.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM, err := os.ReadFile(filepath.Join(uploadDir, "key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploaded, err := ctl.UploadCertificate(string(certPEM), string(keyPEM))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploaded.Fingerprint == info.Fingerprint || len(uploaded.Names) != 1 || uploaded.Names[0] != "uploaded.example.test" {
+		t.Fatal("uploaded certificate not selected")
+	}
+	status, _ = newClient.perf(ctl.applied().sim.Clusters[0].Ref.Value, "vsan-pnic-net")
+	if status != 500 {
+		t.Fatal("certificate upload did not end SOAP session")
+	}
+}
+
+func TestCaptureRealUnansweredSOAPAndMissingPath(t *testing.T) {
+	dir := t.TempDir()
+	ctl, err := New(Options{Scenario: scenario.Phase1("capture-faults"), DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Full: true, Unanswered: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(capture.Wrap(ctl))
+	defer srv.Close()
+	jar, _ := cookiejar.New(nil)
+	api := &apiClient{t: t, srv: srv, hc: &http.Client{Jar: jar, Timeout: 20 * time.Second}}
+	fetch := `<Fetch xmlns="urn:vim25"><_this type="Folder">group-d1</_this><prop>name</prop></Fetch>`
+	if code, _ := api.post("/sdk", fetch); code != 500 {
+		t.Fatalf("unauthenticated Fetch: %d", code)
+	}
+	if !api.login(DefaultUsername, DefaultPassword) {
+		t.Fatal("login failed")
+	}
+	cases := []struct{ body, fault, property string }{
+		{`<DefinitelyUnknown xmlns="urn:vim25"><_this type="ServiceInstance">ServiceInstance</_this></DefinitelyUnknown>`, "InvalidRequest", ""},
+		{`<Fetch xmlns="urn:vim25"><_this type="HostSystem">not-present</_this><prop>name</prop></Fetch>`, "ManagedObjectNotFound", "name"},
+		{`<Fetch xmlns="urn:vim25"><_this type="Folder">group-d1</_this><prop>notARealProperty</prop></Fetch>`, "InvalidProperty", "notARealProperty"},
+	}
+	for _, tc := range cases {
+		if code, _ := api.post("/sdk", tc.body); code != 500 {
+			t.Fatalf("%s: %d", tc.fault, code)
+		}
+	}
+	if code, _ := api.post("/ls/sdk", fetch); code != 404 {
+		t.Fatalf("missing path: %d", code)
+	}
+	records := capture.Records(true)
+	if len(records) != 5 {
+		t.Fatalf("got %d unanswered records", len(records))
+	}
+	if records[0].Fault != "NotAuthenticated" || len(records[0].Properties) != 1 || records[0].Properties[0] != "name" {
+		t.Fatalf("unauthenticated Fetch missing details: %+v", records[0])
+	}
+	for i, tc := range cases {
+		record := records[i+1]
+		if record.Fault != tc.fault || record.Request == "" {
+			t.Fatalf("fault %s not captured: %+v", tc.fault, record)
+		}
+		if tc.property != "" && (len(record.Properties) != 1 || record.Properties[0] != tc.property) {
+			t.Fatalf("property not captured for %s", tc.fault)
+		}
+	}
+	if records[4].Path != "/ls/sdk" || records[4].Status != 404 {
+		t.Fatalf("missing path: %+v", records[4])
+	}
+	u, _ := url.Parse(srv.URL)
+	cookies := jar.Cookies(u)
+	if len(cookies) == 0 {
+		t.Fatal("missing SOAP session")
+	}
+	logged, err := os.ReadFile(capture.State().Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(logged), DefaultPassword) || strings.Contains(string(logged), cookies[0].Value) {
+		t.Fatal("full query log leaked a credential or session")
+	}
+}
+
+func TestLegacyTimelineUsesPlainDescriptions(t *testing.T) {
+	ctl, err := New(Options{Scenario: scenario.Phase1("legacy-timeline"), DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	ctl.mu.Lock()
+	ctl.timeline = []TimelineEntry{{Text: "Topology v3 built: 1 cluster", Area: "Topology"}, {Text: "Apply failed: v3 still serving", Area: "Service"}}
+	ctl.mu.Unlock()
+	timeline := ctl.Timeline()
+	if timeline[0].Text != "Apply failed; previous settings are still serving" || timeline[1].Text != "Topology built: 1 cluster" {
+		t.Fatalf("legacy descriptions: %+v", timeline)
+	}
+	for _, event := range ctl.State().Events {
+		if strings.Contains(event.Text, "v3") {
+			t.Fatal("overview exposes a legacy revision")
+		}
+	}
+}
+
+func TestScenarioUserRoleIsExplicit(t *testing.T) {
+	t.Setenv("VCSIM_READONLY_PASSWORD", "reader-secret")
+	sc := scenario.Phase1("roles")
+	sc.Auth.Users = []scenario.User{
+		{Name: "admin@vsphere.local", Password: "admin-secret"},
+		{Name: "reader@vsphere.local", PasswordEnv: "VCSIM_READONLY_PASSWORD", Role: "read-only"},
+		{Name: "named-like-readonly@vsphere.local", PasswordEnv: "VCSIM_READONLY_PASSWORD"},
+	}
+	ctl, err := New(Options{Scenario: sc, DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	roles := map[string]string{}
+	for _, u := range ctl.CredentialsView().Users {
+		roles[u.Name] = u.Role
+	}
+	if roles["admin@vsphere.local"] != "administrator" || roles["reader@vsphere.local"] != "read-only" || roles["named-like-readonly@vsphere.local"] != "administrator" {
+		t.Fatalf("roles: %v", roles)
+	}
+	bad := scenario.Phase1("roles")
+	bad.Auth.Users = []scenario.User{{Name: "x", Password: "y", Role: "superuser"}}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("unknown role accepted")
+	}
+}
+
+// Deleting a cluster must not strand a host version set for one of its hosts:
+// the review drops it and the draft stays applicable.
+func TestReviewDropsHostVersionsOfDeletedHosts(t *testing.T) {
+	c := newCtl(t, tenClusters(t), "", "t")
+	raw, err := json.Marshal(c.applied().sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["hostVersions"] = map[string]any{"dc-01/cluster-05/esx01": map[string]any{"preset": "9.0"}}
+	raw, _ = json.Marshal(doc)
+	if _, err := c.SetDraft(raw, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DeleteCluster("dc-01/cluster-05"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Review(); err != nil {
+		t.Fatalf("review of a draft with a stale host version: %v", err)
+	}
+	if len(c.DraftState().Scenario.HostVersions) != 0 {
+		t.Fatal("version set for a deleted host survived in the draft")
+	}
+	if _, err := c.Apply("now"); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+}
+
+func TestCredentialRoleAppliesToFlagUser(t *testing.T) {
+	ctl, err := New(Options{Scenario: scenario.Phase1("flag-role"), DataDir: t.TempDir(),
+		Credentials: map[string]string{"viewer": "pw"}, CredentialRole: "read-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctl.Close()
+	for _, u := range ctl.CredentialsView().Users {
+		if u.Name == "viewer" && u.Role != "read-only" {
+			t.Fatalf("flag user role %q", u.Role)
+		}
 	}
 }

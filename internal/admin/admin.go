@@ -18,6 +18,8 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/control"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
+	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
 //go:embed ui
@@ -25,13 +27,71 @@ var uiFiles embed.FS
 
 // Handler returns the admin plane's handler. Requests are served only for the
 // Host names localhost, 127.0.0.1 and ::1 (any port) and for allowedHosts.
-func Handler(c *control.Controller, allowedHosts []string) http.Handler {
+func Handler(c *control.Controller, allowedHosts []string, captures ...*querylog.Capture) http.Handler {
 	a := &api{c: c}
 	mux := http.NewServeMux()
 	get := func(p string, h func(*http.Request) (any, error)) { mux.HandleFunc("GET "+p, a.wrap(h)) }
 	send := func(m, p string, h func(*http.Request) (any, error)) { mux.HandleFunc(m+" "+p, a.wrap(h)) }
 
 	get("/api/state", func(r *http.Request) (any, error) { return c.State(), nil })
+	get("/api/settings", func(r *http.Request) (any, error) { return c.RuntimeSettings(), nil })
+	get("/api/certificate", func(r *http.Request) (any, error) { return c.CertificateInfo() })
+	send("POST", "/api/certificate/regenerate", func(r *http.Request) (any, error) {
+		var req struct {
+			Names []string `json:"names"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.RegenerateCertificate(req.Names)
+	})
+	send("PUT", "/api/certificate", func(r *http.Request) (any, error) {
+		var req struct {
+			Certificate string `json:"certificate"`
+			PrivateKey  string `json:"privateKey"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.UploadCertificate(req.Certificate, req.PrivateKey)
+	})
+	send("PUT", "/api/settings", func(r *http.Request) (any, error) {
+		var req control.RuntimeSettings
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.SetRuntimeSettings(req)
+	})
+	get("/api/credentials", func(r *http.Request) (any, error) { return c.CredentialsView(), nil })
+	send("PUT", "/api/credentials/user", func(r *http.Request) (any, error) {
+		var req struct {
+			Name     string `json:"name"`
+			Password string `json:"password"`
+			Role     string `json:"role"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.PutUser(req.Name, req.Password, req.Role)
+	})
+	send("DELETE", "/api/credentials/user", func(r *http.Request) (any, error) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.DeleteUser(req.Name)
+	})
+	send("PUT", "/api/credentials/mode", func(r *http.Request) (any, error) {
+		var req struct {
+			AnyLogin bool `json:"anyLogin"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.SetAnyLogin(req.AnyLogin)
+	})
 	get("/api/tree", func(r *http.Request) (any, error) { return c.Tree(), nil })
 	get("/api/clusters/{dc}/{name}", func(r *http.Request) (any, error) {
 		return c.Cluster(r.PathValue("dc") + "/" + r.PathValue("name"))
@@ -63,6 +123,10 @@ func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 		return c.PreviewGenerate(p)
 	})
 	get("/api/presets", func(r *http.Request) (any, error) { return c.Presets(), nil })
+	get("/api/version-presets", func(r *http.Request) (any, error) {
+		vcenter, esx := scenario.VersionPresets()
+		return map[string]any{"vcenter": vcenter, "esx": esx}, nil
+	})
 	send("POST", "/api/draft/preset", func(r *http.Request) (any, error) {
 		var req struct {
 			Name string `json:"name"`
@@ -131,9 +195,59 @@ func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 		return call, nil
 	})
 
+	if len(captures) > 0 && captures[0] != nil {
+		capture := captures[0]
+		get("/api/capture", func(r *http.Request) (any, error) { return capture.State(), nil })
+		send("PUT", "/api/capture", func(r *http.Request) (any, error) {
+			var settings querylog.Settings
+			if err := decode(r, &settings); err != nil {
+				return nil, err
+			}
+			if err := capture.Set(settings); err != nil {
+				return nil, err
+			}
+			return capture.State(), nil
+		})
+		send("DELETE", "/api/capture", func(r *http.Request) (any, error) {
+			if err := capture.Clear(); err != nil {
+				return nil, err
+			}
+			return capture.State(), nil
+		})
+		get("/api/capture/unanswered", func(r *http.Request) (any, error) { return capture.Records(true), nil })
+		get("/api/capture/full", func(r *http.Request) (any, error) { return capture.Records(false), nil })
+		for _, kind := range []string{"full", "unanswered"} {
+			kind := kind
+			mux.HandleFunc("GET /api/capture/"+kind+".jsonl", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-ndjson")
+				w.Header().Set("Cache-Control", "no-store")
+				w.Header().Set("Content-Disposition", "attachment; filename="+kind+"-requests.jsonl")
+				_ = capture.WriteJSONL(w, kind == "unanswered")
+			})
+		}
+	}
+
+	for _, path := range []string{"/claim", "/login"} {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			content, _ := uiFiles.ReadFile("ui/auth.html")
+			_, _ = w.Write(content)
+		})
+	}
 	sub, _ := fs.Sub(uiFiles, "ui")
 	mux.Handle("GET /", noCache(http.FileServerFS(sub)))
 	return guard(mux, allowedHosts)
+}
+
+// ProtectedHandler requires a console session and keeps host and origin checks
+// on the authentication routes as well as the rest of the console.
+func ProtectedHandler(c *control.Controller, hosts []string, dir, seed string, secureCookie bool, capture *querylog.Capture) (http.Handler, error) {
+	a, err := newConsoleAuth(dir, seed)
+	if err != nil {
+		return nil, err
+	}
+	return guard(a.protectConsole(Handler(c, hosts, capture), secureCookie), hosts), nil
 }
 
 type api struct{ c *control.Controller }

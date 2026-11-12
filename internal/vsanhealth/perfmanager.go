@@ -109,7 +109,7 @@ func (m *PerfManager) VsanPerfQueryNodeInformation(ctx *simulator.Context, req *
 		sinceCollect := int64(now.Sub(now.Truncate(perf.Interval)) / time.Second)
 		for i, h := range cl.Hosts {
 			n := vsantypes.VsanPerfNodeInformation{
-				Version:        m.env.Catalog.About.EsxiVersion,
+				Version:        h.Version.Version,
 				Hostname:       h.Name,
 				IsCmmdsMaster:  i == 0,
 				IsStatsMaster:  i == 0 && primary,

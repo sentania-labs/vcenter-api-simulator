@@ -2,6 +2,8 @@
 
 A configurable, deployable vCenter and vSAN ESA/OSA API simulator for **VCF Operations management-pack compatibility and scale testing**.
 
+The built-in vCenter adapter in a licensed VCF Operations 9.1 instance will not collect from the simulator today: the reported adapter start was rejected because it had no VCF license, before Operations sent a collection request. Custom management packs with their own adapter kinds can still collect. License states and the license service at `/ls/sdk` are not modelled; the Operations exchange and license association behavior needed to reproduce them have not yet been captured. On a real vCenter, assigned-license records contained properties named `entitlementId`, `licenseServerId`, `licenseServerName`, `signedEntitlement`, and `vcScopeId`; an advanced setting named `config.OPERATIONS.vcf.sso.ops.cluster.id` and extensions referencing the licensing Operations instance were also observed. Their role in the licensing decision is unknown and they are not modelled.
+
 > Project status: Phase 3 (first real Operations collection verified with the Python vSAN Host Metrics pack) with the Phase 5 control console. No production-grade vCenter emulation is claimed.
 
 ## Mission
@@ -41,13 +43,54 @@ go build ./cmd/vcsimulator
 | `-scenario FILE` | the scenario ([reference](docs/SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
 | `-data DIR` | holds `registry.json` (identities) and `tls/` (the self-signed certificate, created once); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
-| `-query-log PATH` | append one JSON line per request (method, path, operation, status, bytes, duration) to `PATH`, created owner-only; SOAP request bodies are included except for `SessionManager` operations, so it can hold inventory identifiers; see [scale replay](tools/bench/README.md) |
+| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. Console capture settings override this default after they are changed. |
+| `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; console capture settings can override this default |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
+| `-any-login` | explicitly allow any non-empty vCenter username and password |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
-| `-admin ADDR` | the control console (plain HTTP, no login); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
+| `-admin ADDR` | the password-protected control console (plain HTTP); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
 | `-admin-allowed-hosts NAMES` | comma-separated Host names the console answers to besides `localhost`, `127.0.0.1` and `::1` (any port); every other Host gets 403, which stops a web page from reaching the console through DNS rebinding. Add the name your proxy or ingress forwards; env `VCSIM_ADMIN_ALLOWED_HOSTS` |
+
+To capture what a client asks for, enable the full request log in the console
+or start with `-query-log /data/query-log.jsonl`, then repeat the action in the
+client. In API Activity, choose **Unanswered** and download the records, or
+download the full log from the capture settings. The chart's
+`simulator.capture.queryLog` and `simulator.capture.unansweredStdout` set the
+initial defaults. SOAP credentials, session operations and headers are omitted
+or redacted, but request bodies can contain inventory identifiers. Treat the
+records accordingly. Unanswered records are bounded in memory; the full file
+continues growing until cleared.
+
+The console uses a separate password from vCenter. On first access, claim it
+with a password, or set `VCSIM_ADMIN_PASSWORD` (the chart's
+`admin.existingSecret` points to a Secret with key `password`). A claim persists
+as a bcrypt hash in `console-password` under the data directory. A password
+supplied by the deployment wins: if it differs from the stored hash, the hash is
+replaced at start, existing sessions end, and one log line (never the value)
+says so; the console then shows that the password is managed by the deployment.
+Sessions expire after 30 minutes without a person using the console (the
+console's own background refresh does not count) and after 12 hours in any
+case; they do not survive restart. An ended session returns to the sign-in page
+with a notice. To reset the console, stop it,
+remove that file or run `-admin-reset` against its data directory, then restart
+and claim it again. Remove the pre-seed first if you want a new claim. The chart
+keeps the console on loopback unless `admin.service.enabled` is set; an optional
+`admin.ingress` exposes that Service. Use TLS outside loopback. For a
+TLS-terminating proxy, set `-admin-secure-cookie` so cookies require HTTPS; the
+chart sets it automatically for its TLS ingress.
+
+| Where to set it | Settings |
+|---|---|
+| Console | vCenter users and roles (administrator or read-only; set `role: read-only` on an `auth.users` entry, `VCSIM_ROLE`/`-role` for the `VCSIM_USERNAME` user, or the chart's `credentials.role`; an environment variable's name never changes a role), idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
+| Start-up | API and console listen addresses and ports, data directory, and console allowed hosts. These are needed to locate and reach the console. |
+
+An uploaded or regenerated console certificate is kept in the data directory.
+Changing it ends sessions, and clients must trust the new certificate. A
+certificate supplied through `-tls-cert`/`-tls-key`, scenario `tls`, or the
+chart's existing Secret or cert-manager takes precedence and is read-only in
+the console. If the chart's supply is removed, the previously configured console certificate is used again.
 
 What the scenario controls, and what the simulator guarantees:
 
@@ -69,8 +112,9 @@ What the scenario controls, and what the simulator guarantees:
 - **Auth and TLS.** Configured users are enforced on `/sdk` (password
   login; the token and certificate logins vcsim would accept from anyone
   are refused), and `/vsanHealth` shares the session (no cookie,
-  `NotAuthenticated`). With no users configured any name and password log
-  in. The certificate persists,
+  `NotAuthenticated`). With no users configured, the published default is
+  `administrator@vsphere.local` / `VMware123!VMware123!`. Set
+  `auth.anyLogin: true` or `-any-login` to accept arbitrary non-empty credentials. The certificate persists,
   so the 2.0.0 pack's certificate pin survives restarts.
 - **Faults and latency.** Per-family or per-method SOAP faults
   (`invalid-argument`, `not-supported`, `system-error`, `timeout`) by
@@ -121,17 +165,12 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
   `<data>/console.json`; the next start resumes it unless the scenario file
   changed, in which case the file wins and the console says so in its
   timeline.
-- **No login.** The console binds to loopback by default; the container
-  image listens on 9090 inside the container and `docker-compose.yml`
-  publishes it on `127.0.0.1` only; the Helm chart exposes no Service for it
-  (use `kubectl port-forward`). Put your own authentication in front of it
-  before reaching it from anywhere else. It never serves the simulator's API
-  and the API never serves it; state-changing requests must be same-origin
-  JSON.
-- **The request log is redacted.** It keeps method, family, cluster, client
-  address, duration, size and result, plus the request body of a
-  `/vsanHealth` call; never a header, cookie or `/sdk` body (a login carries
-  a password). It holds the last 20,000 calls in memory.
+- **Console login.** The console binds to loopback by default and uses its own
+  password. The chart's console Service and Ingress are opt-in. Use TLS when
+  reaching it beyond loopback. State-changing requests must be same-origin JSON.
+- **The request log is redacted.** The activity log holds the last 20,000 calls
+  in memory. Unanswered requests can retain redacted SOAP bodies, including
+  inventory identifiers; session operations and credentials are omitted.
 
 Projections (entities, series, calls and bytes per cycle) are computed from
 the topology and the catalog, labelled as projections, and never presented
@@ -209,11 +248,12 @@ credentials (what the compose file and the chart's defaults assume), set it to
 public once under the package's settings on GitHub. To keep it private, give
 the chart an `imagePullSecrets` entry naming a registry pull secret.
 
-Login accepts any user name and password unless credentials are
-configured: the scenario's `auth.users`, or `VCSIM_USERNAME` and
-`VCSIM_PASSWORD` (`-username`/`-password`), which add one more user. Then only
-the configured users log in. Use placeholders: this is a simulator, never point real
-credentials at it.
+The published vCenter login is `administrator@vsphere.local` /
+`VMware123!VMware123!`. The scenario's `auth.users`, or `VCSIM_USERNAME` and
+`VCSIM_PASSWORD` (`-username`/`-password`; `VCSIM_ROLE`/`-role` makes that user `read-only`), replace that default. Console
+credential changes take precedence until the scenario file changes. Explicitly
+opt into arbitrary credentials with `auth.anyLogin: true` or `-any-login`.
+Use simulator-only credentials and never point real credentials at it.
 
 ### docker run
 
@@ -256,8 +296,8 @@ read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
 ServiceAccount with no token mounted, a PVC for the state directory (identity registry, certificate and console state), and
 optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
 and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
-outside the cluster until `ingress.enabled` or a LoadBalancer Service asks
-for it.
+outside the cluster until `ingress.enabled`, `admin.service.enabled` or a
+LoadBalancer Service asks for it.
 
 ```sh
 helm install vcsim-01 charts/vcenter-api-simulator \

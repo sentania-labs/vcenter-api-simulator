@@ -37,9 +37,12 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
+	"github.com/sentania/vcenter-api-simulator/internal/credentials"
 	"github.com/sentania/vcenter-api-simulator/internal/perf"
+	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/sim"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
@@ -57,8 +60,13 @@ type Options struct {
 	Regenerate bool
 	// Credentials are extra logins (flag or environment) added to the
 	// scenario's users.
-	Credentials    map[string]string
+	Credentials map[string]string
+	// CredentialRole is "administrator" (default) or "read-only" for every
+	// user in Credentials.
+	CredentialRole string
 	SessionTimeout time.Duration
+	AnyLogin       bool
+	Certificate    *serve.Certificate
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 
@@ -81,13 +89,14 @@ type running struct {
 
 // Draft is the operator's pending change.
 type Draft struct {
-	Scenario   *scenario.Scenario
-	Regenerate []string // cluster keys whose identities are replaced
-	Scope      string
-	BasedOn    int
-	Origin     string // edit | generator | preset:<name>
-	Discarded  string // what a generated draft replaced
-	Created    time.Time
+	Scenario    *scenario.Scenario
+	Regenerate  []string // cluster keys whose identities are replaced
+	Credentials *credentials.Snapshot
+	Scope       string
+	BasedOn     int
+	Origin      string // edit | generator | preset:<name>
+	Discarded   string // what a generated draft replaced
+	Created     time.Time
 }
 
 // Scheduled is a draft waiting for its bucket boundary.
@@ -117,6 +126,7 @@ type Controller struct {
 	cur    atomic.Pointer[running]
 	paused atomic.Bool
 	Log    *activity.Log
+	auth   *credentials.Store
 
 	mu        sync.Mutex // guards everything below
 	reg       *registry.Registry
@@ -144,6 +154,9 @@ func New(opts Options) (*Controller, error) {
 	now := opts.Now
 	c := &Controller{opts: opts, cat: cat, now: func() time.Time { return now().UTC() }, base: opts.Scenario, scope: ScopeAll}
 	c.started = c.now()
+	if err := c.loadRuntimeSettings(); err != nil {
+		return nil, fmt.Errorf("runtime settings: %w", err)
+	}
 	c.Log = activity.New(activity.DefaultSize, c.started)
 	c.Log.EmptyKind = func(f string) bool { fam, ok := cat.Families[f]; return ok && fam.Behaviour != catalog.Data }
 
@@ -182,6 +195,25 @@ func New(opts Options) (*Controller, error) {
 				Text: "Scenario file changed; started from the file", History: "preserved", Identities: "per registry"})
 		}
 	}
+	baseCredentials, err := c.credentials(sc)
+	if err != nil {
+		return nil, err
+	}
+	var readonly []string
+	for _, user := range sc.Auth.Users {
+		if user.Role == "read-only" {
+			readonly = append(readonly, user.Name)
+		}
+	}
+	if opts.CredentialRole == "read-only" {
+		for name := range opts.Credentials {
+			readonly = append(readonly, name)
+		}
+	}
+	c.auth, err = credentials.New(opts.DataDir, opts.SourceHash, baseCredentials, opts.AnyLogin || sc.Auth.AnyLogin, readonly)
+	if err != nil {
+		return nil, err
+	}
 	c.reg, err = registry.Open(filepath.Join(opts.DataDir, "registry.json"), sc.Seed, opts.Regenerate)
 	if err != nil {
 		return nil, err
@@ -197,7 +229,7 @@ func New(opts Options) (*Controller, error) {
 	c.cur.Store(r)
 	if st == nil {
 		c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: version, Area: "Topology",
-			Text: fmt.Sprintf("Topology v%d built: %s", version, countsLine(r.topo)), History: "seeded", Identities: "new registry"})
+			Text: fmt.Sprintf("Topology built: %s", countsLine(r.topo)), History: "seeded", Identities: "new registry"})
 	}
 	_ = c.persist()
 	return c, nil
@@ -217,18 +249,11 @@ func bucket(t time.Time) time.Time { return t.UTC().Truncate(perf.Interval) }
 func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, version int) (*running, error) {
 	start := time.Now()
 	topo := topology.Generate(sc, reg)
-	creds, err := sc.Credentials()
-	if err != nil {
+	if err := validateHostVersionTargets(sc, topo); err != nil {
 		return nil, err
 	}
-	for n, p := range c.opts.Credentials {
-		if creds == nil {
-			creds = map[string]string{}
-		}
-		creds[n] = p
-	}
 	s, err := sim.New(sim.Options{
-		Topology: topo, Registry: reg, Credentials: creds, SessionTimeout: c.opts.SessionTimeout,
+		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Now: c.now,
 	})
 	if err != nil {
@@ -236,6 +261,60 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	}
 	c.buildMs = time.Since(start).Milliseconds()
 	return &running{version: version, at: c.now(), sc: sc, topo: topo, sim: s}, nil
+}
+
+const DefaultUsername = "administrator@vsphere.local"
+const DefaultPassword = "VMware123!VMware123!"
+
+// credentials applies the explicit any-login opt-out and configured users
+// before falling back to the published built-in administrator account.
+func (c *Controller) credentials(sc *scenario.Scenario) (map[string]string, error) {
+	if c.opts.AnyLogin || sc.Auth.AnyLogin {
+		return map[string]string{}, nil
+	}
+	creds, err := sc.Credentials()
+	if err != nil {
+		return nil, err
+	}
+	for name, password := range c.opts.Credentials {
+		creds[name] = password
+	}
+	if len(creds) == 0 {
+		creds[DefaultUsername] = DefaultPassword
+	}
+	return creds, nil
+}
+
+func validateHostVersionTargets(sc *scenario.Scenario, topo *topology.Topology) error {
+	hosts := map[string]bool{}
+	for _, cluster := range topo.Clusters() {
+		for _, host := range cluster.Hosts {
+			hosts[host.Key] = true
+		}
+	}
+	for key := range sc.HostVersions {
+		if !hosts[key] {
+			return fmt.Errorf("host version override %q does not match a host", key)
+		}
+	}
+	return nil
+}
+
+func dropVanishedHostVersions(sc *scenario.Scenario, topo *topology.Topology) {
+	hosts := map[string]bool{}
+	for _, cluster := range topo.Clusters() {
+		for _, host := range cluster.Hosts {
+			hosts[host.Key] = true
+		}
+	}
+	for key := range sc.HostVersions {
+		if !hosts[key] {
+			delete(sc.HostVersions, key)
+		}
+	}
+	if len(sc.HostVersions) == 0 {
+		sc.HostVersions = nil
+	}
 }
 
 // Close stops the running vCenter and any scheduled apply.
@@ -287,7 +366,8 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	env := cur.sim.Env
 	if surface == "vsanHealth" {
 		call.Family, call.Cluster = env.Target(body)
-		call.Body = string(body[:min(len(body), activity.MaxBody)])
+		safeBody := querylog.Redact(body)
+		call.Body = safeBody[:min(len(safeBody), activity.MaxBody)]
 	}
 	if c.paused.Load() {
 		call.Result, call.Status = activity.ResultRefused, 0
@@ -302,6 +382,11 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	call.Result = activity.ResultOK
 	typ, msg, faulted := cap.Fault()
 	if faulted || cap.Status >= 400 {
+		// A server fault can echo input. Do not keep its text when the request
+		// contained credentials, a session value, or an unparseable body.
+		if len(body) > 0 && querylog.Redact(body) != string(body) {
+			msg = ""
+		}
 		call.Result, call.Fault, call.Message = activity.ResultFault, typ, msg
 		if typ == "NotAuthenticated" || typ == "InvalidLogin" {
 			call.Result = activity.ResultDenied
@@ -375,13 +460,17 @@ func normal(sc *scenario.Scenario, parts ...string) string {
 		switch p {
 		case "topology":
 			v = struct {
-				Seed, Tel string
-				DC        []scenario.Datacenter
-				Def       scenario.ClusterSpec
-				Vary      scenario.Vary
-				Cl        []scenario.ClusterOverride
-				Rm        []string
-			}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed}
+				Seed, Tel       string
+				DC              []scenario.Datacenter
+				Def             scenario.ClusterSpec
+				Vary            scenario.Vary
+				Cl              []scenario.ClusterOverride
+				Rm              []string
+				VCenter         scenario.Version
+				ESX             scenario.Version
+				HostVersions    map[string]scenario.Version
+				ForceNewerHosts bool
+			}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed, s.VCenter, s.ESX, s.HostVersions, s.ForceNewerHosts}
 		case "telemetry":
 			v = struct {
 				F []scenario.Fault

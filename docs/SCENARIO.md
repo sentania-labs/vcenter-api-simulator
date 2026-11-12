@@ -139,12 +139,14 @@ removed:                    # generated clusters left out (the console's Delete)
   - dc-01/cluster-07        #   the others keep their numbers and the removed
                             #   cluster's identities stay reserved
 
-auth:                       # no users: any non-empty name and password log in
+auth:                       # no users: published administrator default
+  # anyLogin: true          # explicit opt-out: accept any non-empty pair
   users:
     - name: administrator@vsphere.local
       password: VMware1!
     - name: readonly@vsphere.local
       passwordEnv: VCSIM_READONLY_PASSWORD   # read from the environment at start
+      role: read-only                        # administrator (default) or read-only
 
 tls:                        # a provided pair, or a self-signed one kept in dir
   certFile: /etc/vcsimulator/tls/tls.crt
@@ -270,9 +272,12 @@ The console (`-admin`, default `http://127.0.0.1:9090/`) edits the same
 model without touching the file. Edits collect in one pending draft and
 apply at the next five-minute bucket boundary (or at once). The applied
 scenario is saved in `<data>/console.json` without the `auth` and `tls`
-sections (those always come from the file, so no password is ever written
-there). On the next start the saved state resumes unless the scenario file
-changed since, in which case the file wins.
+sections. Console user changes are stored separately as password hashes in
+`<data>/vcenter-users.json`; they take precedence over scenario and environment
+credentials until the scenario file changes. Changing or removing a user ends
+that user's SOAP and REST sessions. Read-only users can query inventory and
+telemetry, but mutation calls are refused. On the next start the saved state
+resumes unless the scenario file changed since, in which case the file wins.
 
 | Console action | Scenario effect | Identities |
 |---|---|---|
@@ -283,3 +288,45 @@ changed since, in which case the file wins.
 | Reset cluster seed | `seedEpoch` + 1 on the cluster | unchanged; every sample of the cluster changes |
 | generator / new global seed | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new seed replaces every identity |
 | latency, fault rules | `latency:`, `faults:` | none; the running vCenter is not rebuilt |
+
+## Product versions
+
+`vcenterVersion` and `esxVersion` accept presets `8.0u3`, `9.0`, and
+`9.1.1`. ESX defaults to the selected vCenter release; a cluster can set
+`esxVersion` and `hostVersions` can override a host by its topology key.
+A custom version supplies `version`, `build`, `apiVersion`, and `fullName`.
+When ESX matches a custom vCenter, it uses the same version, build, and API
+version; its ESXi product name is synthesized from the supplied values.
+Hosts newer than vCenter are rejected unless `forceNewerHosts: true` is set;
+the review lists each forced mismatch. Version changes rebuild the simulator
+at apply, preserve inventory identities, and end sessions.
+
+```yaml
+vcenterVersion: {preset: "9.0"}
+esxVersion: {preset: "9.0"}
+clusters:
+  - key: dc-01/cluster-01
+    esxVersion: {preset: "8.0u3"}
+hostVersions:
+  dc-01/cluster-01/esx01: {preset: "9.0"}
+```
+
+The release and build pairs come from Broadcom's [vCenter build table](https://knowledge.broadcom.com/external/article/326316/build-numbers-and-versions-of-vmware-vcen.html)
+ and [ESX build table](https://knowledge.broadcom.com/external/article/316595/build-numbers-and-versions-of-vmware-esxi.html).
+The 9.1.1 names and API versions also come from the repository's live capture.
+For 8.0 U3 and 9.0 the full product names are synthesized. Every preset
+carries an API version (8.0.3.0, 9.0.0.0 and 9.1.1.0), which hosts report as
+their own `about.apiVersion` and `licenseProductVersion` (major.minor of the
+host release), so a mixed cluster shows each host's release, not the
+vCenter's. The vSAN service-version document is the captured 9.1.1 document cut
+back to the newest namespace the selected vCenter can speak: 9.1.1.0, 9.0.0.0,
+or, for 8.0 U3, 8.0.0.4, the newest 8.0 entry in the capture. That mapping is
+inferred from the capture's ordering and has not been checked against a real
+8.0 U3 vCenter. The REST host list keeps the vSphere Automation shape
+(`host`, `name`, `connection_state`, `power_state`), which has no product
+version; the vCenter version is served at `/api/appliance/system/version` and
+host versions through `/sdk` (`config.product`) and the vSAN health surfaces.
+Apart from selected version metadata and the advertised API versions,
+release-specific namespaces, properties, and vSAN behavior are not modelled.
+`tools/smoke/smoke.sh` checks a 9.0 vCenter with an 8.0 U3 cluster and one 9.0
+host through govc and REST; `tools/smoke/smoke.ps1` repeats it through PowerCLI.

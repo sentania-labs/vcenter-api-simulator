@@ -66,12 +66,12 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 			sum.ClusterVersions = &vsantypes.VsanClusterHealthSystemVersionResult{VcVersion: s.env.Catalog.About.Version, UpgradePossible: vim25types.NewBool(false)}
 			for _, h := range cl.Hosts {
 				sum.ClusterStatus.TrackedHostsStatus = append(sum.ClusterStatus.TrackedHostsStatus, vsantypes.VsanHostHealthSystemStatusResult{Hostname: h.Name, Status: "green"})
-				sum.ClusterVersions.HostResults = append(sum.ClusterVersions.HostResults, vsantypes.VsanHostHealthSystemVersionResult{Hostname: h.Name, Version: s.env.Catalog.About.EsxiVersion})
+				sum.ClusterVersions.HostResults = append(sum.ClusterVersions.HostResults, vsantypes.VsanHostHealthSystemVersionResult{Hostname: h.Name, Version: h.Version.Version})
 			}
 		}
 		hcl := &vsantypes.VsanClusterHclInfo{HclDbLastUpdate: &hclDbLastUpdate, HclDbAgeHealth: "green"}
 		for _, h := range cl.Hosts {
-			hr := vsantypes.VsanHostHclInfo{Hostname: h.Name, HclChecked: true, ReleaseName: "ESXi " + majorMinor(s.env.Catalog.About.EsxiVersion)}
+			hr := vsantypes.VsanHostHclInfo{Hostname: h.Name, HclChecked: true, ReleaseName: "ESXi " + majorMinor(h.Version.Version)}
 			for _, d := range h.Devices {
 				c := vsantypes.VsanHclControllerInfo{
 					DeviceName:             d.HBA,
@@ -110,7 +110,7 @@ func (s *ClusterHealthSystem) VsanQueryVcClusterHealthSummary(ctx *simulator.Con
 	if cl != nil && cl.Spec.Architecture == "osa" {
 		versions := healthVersions{VcVersion: s.env.Catalog.About.Version, VcBuild: s.env.Catalog.About.Build}
 		for _, host := range cl.Hosts {
-			versions.Hosts = append(versions.Hosts, healthHostVersion{Hostname: host.Name, Version: s.env.Catalog.About.EsxiVersion, Build: s.env.Catalog.About.EsxiBuild})
+			versions.Hosts = append(versions.Hosts, healthHostVersion{Hostname: host.Name, Version: host.Version.Version, Build: host.Version.Build})
 		}
 		return &osaHealthBody{Res: &osaHealthResponse{Returnval: osaHealthSummary{VsanClusterHealthSummary: sum, Versions: versions, HealthScore: 95}}}
 	}

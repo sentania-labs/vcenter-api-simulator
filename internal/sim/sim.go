@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -36,6 +37,7 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
+	"github.com/vmware/govmomi/vim25/xml"
 
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -58,7 +60,9 @@ type Options struct {
 	Username, Password string
 	// Credentials are the accepted logins (name -> password). Empty means
 	// any non-empty user name and password log in, as vcsim does.
-	Credentials map[string]string
+	Credentials  map[string]string
+	Authenticate func(string, string) bool
+	UserRole     func(string) string
 	// SessionTimeout is the idle timeout of a session; zero means never.
 	SessionTimeout time.Duration
 	// Faults and Latency are the scenario's failure and latency knobs.
@@ -113,6 +117,15 @@ func New(opts Options) (*Simulator, error) {
 		return nil, err
 	}
 	topo := opts.Topology
+	// The embedded catalog is shared; only the per-instance copy may change.
+	instanceCatalog := *cat
+	cat = &instanceCatalog
+	if v := topo.VCenterVersion; v.Version != "" {
+		cat.About.Version, cat.About.Build, cat.About.ApiVersion, cat.About.FullName = v.Version, v.Build, v.APIVersion, v.FullName
+		cat.About.LicenseVer = v.LicenseVersion()
+		cat.VimServiceVersions = selectVimVersions(cat.VimServiceVersions, v.APIVersion)
+		cat.VsanServiceVersions = selectVsanVersions(cat.VsanServiceVersions, v.APIVersion)
+	}
 
 	content := vpx.ServiceContent
 	content.About = aboutInfo(cat, topo)
@@ -143,14 +156,19 @@ func New(opts Options) (*Simulator, error) {
 			creds[n] = p
 		}
 	}
-	installAuth(m, creds, opts.SessionTimeout)
+	installAuth(m, creds, opts.Authenticate, 0)
+	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
+	m.Service.Context.Map.Put(&authorization{AuthorizationManager: am, role: opts.UserRole})
 	if err := s.build(); err != nil {
 		s.Close()
 		return nil, err
 	}
 	s.server = m.Service.NewServer()
 	vsanhealth.Install(m.Service, s.Env)
-	s.Handler = &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0, rest: restSessions{tokens: map[string]bool{}, credentials: creds, registry: m.Service.Context.Map, catalog: cat}}
+	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}}
+	h.timeout.Store(int64(opts.SessionTimeout))
+	h.rest.timeout = &h.timeout
+	s.Handler = h
 	return s, nil
 }
 
@@ -732,7 +750,7 @@ func (s *Simulator) finishCluster(ctx *simulator.Context, refs *ClusterRefs) {
 		hc := vsanHostConfig(ref, cl, h)
 		cfg.VsanHostConfig = append(cfg.VsanHostConfig, hc)
 		hs.Config.VsanHostConfig = &hc
-		shapeHostProduct(hs, s.Catalog)
+		shapeHostProduct(hs, h)
 		shapeHostRuntime(hs, cl, h, s.Env.Now)
 	}
 	for i, vref := range refs.VMs {
@@ -774,16 +792,89 @@ type handler struct {
 	cat         *catalog.Catalog
 	env         *vsanhealth.Env
 	strictLogin bool
+	accessMu    sync.RWMutex
+	timeout     atomic.Int64
+	role        func(string) string
+	registry    *simulator.Registry
 	rest        restSessions
+}
+
+// UpdateCredentials serializes a policy change with requests and revokes
+// affected SOAP and REST sessions without rebuilding the simulator.
+func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
+	h := s.Handler.(*handler)
+	h.accessMu.Lock()
+	defer h.accessMu.Unlock()
+	changed, err := update()
+	if err != nil {
+		return err
+	}
+	affected := map[string]bool{}
+	for _, name := range changed {
+		affected[name] = true
+	}
+	reg := s.model.Service.Context.Map
+	probe := &simulator.Session{Map: reg, Registry: simulator.NewRegistry()}
+	sm := reg.SessionManager()
+	view := probe.Get(sm.Reference()).(*simulator.SessionManager)
+	var ids []string
+	for _, session := range view.SessionList {
+		if affected["*"] || affected[session.UserName] {
+			ids = append(ids, session.Key)
+		}
+	}
+	if len(ids) > 0 {
+		sm.TerminateSession(&simulator.Context{Session: &simulator.Session{}, Map: reg}, &types.TerminateSession{SessionId: ids})
+	}
+	h.rest.mu.Lock()
+	for token, session := range h.rest.tokens {
+		if affected["*"] || affected[session.user] {
+			delete(h.rest.tokens, token)
+		}
+	}
+	h.rest.mu.Unlock()
+	return nil
+}
+
+// SetSessionTimeout changes the idle timeout for both existing and new sessions.
+func (s *Simulator) SetSessionTimeout(timeout time.Duration) {
+	s.Handler.(*handler).timeout.Store(int64(timeout))
+}
+
+func (h *handler) expireSOAPSession(r *http.Request) {
+	timeout := time.Duration(h.timeout.Load())
+	if timeout <= 0 {
+		return
+	}
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	if err != nil {
+		return
+	}
+	sm := h.registry.SessionManager()
+	probe := &simulator.Session{Map: h.registry, Registry: simulator.NewRegistry()}
+	view := probe.Get(sm.Reference()).(*simulator.SessionManager)
+	for _, session := range view.SessionList {
+		if session.Key == cookie.Value && time.Since(session.LastActiveTime) >= timeout {
+			sm.TerminateSession(&simulator.Context{Session: &simulator.Session{}, Map: h.registry}, &types.TerminateSession{SessionId: []string{session.Key}})
+			return
+		}
+	}
 }
 
 // otherLogins are vcsim's alternative login methods: LoginByToken takes
 // any unsigned SAML assertion and LoginExtensionByCertificate any client
 // certificate the listener would present, neither of which a vCenter with
 // real users accepts from a stranger.
-var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)`)
+var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginBySSPI|LoginExtensionByCertificate|LoginExtensionBySubjectName)\b`)
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Serialize session creation with credential changes, without making a
+	// slow inventory or performance query delay an administrative update.
+	if r.URL.Path == "/api/session" && r.Method == http.MethodPost {
+		h.accessMu.RLock()
+		defer h.accessMu.RUnlock()
+	}
+	h.expireSOAPSession(r)
 	if h.rest.serve(w, r) {
 		return
 	}
@@ -816,6 +907,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
+			if strings.HasPrefix(r.URL.Path, "/sdk") && bytes.Contains(body, []byte("SessionManager")) {
+				h.accessMu.RLock()
+				defer h.accessMu.RUnlock()
+			}
+			if h.readOnlyRequest(r, body) {
+				noPermission(w)
+				return
+			}
 			switch {
 			case strings.HasPrefix(r.URL.Path, "/sdk"):
 				if h.strictLogin && otherLogins.Match(body) {
@@ -837,6 +936,81 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		h.mux.ServeHTTP(w, r)
 	}
+}
+
+// A read-only user may query inventory, create ephemeral views and log out;
+// unrecognized operations are refused until classified as safe.
+func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
+	if h.role == nil {
+		return false
+	}
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	if err != nil {
+		return false
+	}
+	probe := &simulator.Session{Map: h.registry, Registry: simulator.NewRegistry()}
+	view := probe.Get(h.registry.SessionManager().Reference()).(*simulator.SessionManager)
+	user := ""
+	for _, session := range view.SessionList {
+		if session.Key == cookie.Value {
+			user = session.UserName
+			break
+		}
+	}
+	if h.role(user) != "read-only" {
+		return false
+	}
+	op := soapOperation(body)
+	for _, prefix := range []string{"Retrieve", "Query", "Fetch", "Find", "Has", "List", "Search", "Get", "VsanPerfQuery", "VsanPerfGet", "VsanQuery", "VsanGet", "VsanClusterGet", "VsanHealthQuery", "VsanHealthGet", "VsanHealthIs", "VsanVitGet", "VsanVitQuery"} {
+		if strings.HasPrefix(op, prefix) {
+			return false
+		}
+	}
+	switch op {
+	case "Login", "LoginByToken", "Logout", "CurrentTime", "SessionIsActive", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates", "CreateFilter", "CreatePropertyCollector", "DestroyPropertyFilter", "DestroyPropertyCollector", "CreateCollectorForEvents", "CreateCollectorForTasks", "ReadNextEvents", "ReadNextTasks", "ReadPreviousEvents", "ReadPreviousTasks", "DestroyCollector", "ResetCollector", "RewindCollector", "SetCollectorPageSize":
+		return false
+	}
+	return true
+}
+
+// soapOperation follows the same Envelope and deferred Body decoding as
+// simulator.UnmarshalBody. In particular, comments and header content cannot
+// select the operation that the simulator executes. Invalid XML fails closed.
+func soapOperation(data []byte) string {
+	var body soapBody
+	env := soap.Envelope{Header: &soap.Header{Security: new(simulator.Element)}, Body: &body}
+	if err := xml.Unmarshal(data, &env); err != nil {
+		return ""
+	}
+	decoder := xml.NewDecoder(strings.NewReader(body.inner))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return ""
+		}
+		if start, ok := token.(xml.StartElement); ok {
+			return start.Name.Local
+		}
+	}
+}
+
+type soapBody struct{ inner string }
+
+func (b *soapBody) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var inner struct {
+		Content string `xml:",innerxml"`
+	}
+	if err := d.DecodeElement(&inner, &start); err != nil {
+		return err
+	}
+	b.inner = inner.Content
+	return nil
+}
+
+func noPermission(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	fmt.Fprint(w, `<?xml version="1.0"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><soapenv:Fault><faultcode>ServerFaultCode</faultcode><faultstring>Permission denied</faultstring><detail><NoPermissionFault xmlns="urn:vim25"/></detail></soapenv:Fault></soapenv:Body></soapenv:Envelope>`)
 }
 
 // invalidLogin answers a refused login the way vcsim's Login does.

@@ -49,8 +49,8 @@ export default {
           <dt>Profile</dt><dd class="sans">${st.profile.fullName}</dd>
           <dt>Build string</dt><dd class="sans">${badge('captured')} ${st.profile.build}</dd>
           <dt>Accepted logins</dt><dd class="sans" title="${users}">${users}</dd>
-          <dt>Topology</dt><dd>v${st.topology.version} · applied ${dateTime(st.topology.appliedAt)}</dd>
-          <dt>Seed</dt><dd>${st.topology.seed} · cfg ${st.topology.config}</dd>
+          <dt>Topology</dt><dd>Applied ${dateTime(st.topology.appliedAt)}</dd>
+          <dt>Seed</dt><dd>${st.topology.seed}</dd>
           <dt>Process</dt><dd>RSS ${bytes(st.process.rssBytes)} · ${st.process.cores.toFixed(1)} cores</dd>
         </dl>
         <div class="divider"></div>
@@ -62,7 +62,7 @@ export default {
         </dl>
       </section>
 
-      <section class="lat-card" aria-labelledby="ov-inv"><h2 class="lat-card-title" id="ov-inv">Inventory <span class="aside">topology v${st.topology.version} · ${int(st.topology.datacenters)} datacenter${st.topology.datacenters === 1 ? '' : 's'}</span></h2>
+      <section class="lat-card" aria-labelledby="ov-inv"><h2 class="lat-card-title" id="ov-inv">Inventory <span class="aside">${int(st.topology.datacenters)} datacenter${st.topology.datacenters === 1 ? '' : 's'}</span></h2>
         <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
           ${tile('Clusters', int(p.clusters), `${p.osaClusters === 0 ? 'vSAN ESA' : p.osaClusters === p.clusters ? 'vSAN OSA' : `vSAN mixed · ${p.osaClusters} OSA, ${p.clusters - p.osaClusters} ESA`}${st.overriddenClusters ? ' · ' + st.overriddenClusters + ' overridden' : ''}`)}
           ${tile('Hosts', int(p.hosts), p.clusters ? `${(p.hosts / p.clusters).toFixed(1)} per cluster` : '')}

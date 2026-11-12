@@ -19,14 +19,18 @@ tools/smoke/smoke.ps1 -Server vcsim.example.test -User operator -Password placeh
 param(
     [string]$Server = '127.0.0.1',
     [int]$Port = 8443,
-    [string]$User = 'user',
-    [string]$Password = 'pass',
+    [string]$User = 'administrator@vsphere.local',
+    [string]$Password = 'VMware123!VMware123!',
     [int]$Hosts = 4,
     [int]$VMs = 4,
     # Check examples/scenarios/storage.yaml, including its failed paths.
     [switch]$Storage,
     # Seconds to wait for /sdk/vimServiceVersions.xml before connecting.
     [int]$Wait = 60,
+    # Optional version checks: the vCenter version, and "name=version" pairs
+    # for hosts (tools/smoke/versions.yaml: 9.0.0, esx01.cluster-01...=9.0.0).
+    [string]$ExpectedVCenterVersion = '',
+    [string[]]$ExpectedHostVersions = @(),
     # Install VMware.PowerCLI (pinned) if it is not available.
     [switch]$Install,
     [string]$PowerCLIVersion = '13.3.0.24145083'
@@ -69,6 +73,12 @@ try {
     $hostList = @(Get-VMHost -Server $vi | Sort-Object Name)
     $hostList | ForEach-Object { Write-Host "smoke:   $($_.Name) $($_.ConnectionState) $($_.PowerState) cpu=$($_.NumCpu) mem=$([math]::Round($_.MemoryTotalGB, 1))GB" }
     if ($hostList.Count -ne $Hosts) { Fail "expected $Hosts hosts, got $($hostList.Count)" }
+    if ($ExpectedVCenterVersion -and $vi.Version -ne $ExpectedVCenterVersion) { Fail "expected vCenter $ExpectedVCenterVersion, got $($vi.Version)" }
+    foreach ($pair in @($ExpectedHostVersions | ForEach-Object { $_ -split ',' })) {
+        $name, $version = $pair -split '=', 2
+        $h = $hostList | Where-Object { $_.Name -eq $name }
+        if (-not $h -or $h.Version -ne $version) { Fail "expected host $name at $version, got $($h.Version)" }
+    }
 
     Write-Host 'smoke: Get-VM'
     $vmList = @(Get-VM -Server $vi | Sort-Object Name)

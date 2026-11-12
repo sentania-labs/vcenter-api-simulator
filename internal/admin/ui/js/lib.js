@@ -41,6 +41,11 @@ export function ms(n) {
   return n.toFixed(1) + ' ms';
 }
 const p2 = (n) => String(n).padStart(2, '0');
+export function localTime(iso) { if (!iso) return '—'; return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(iso)); }
+export function scheduledMessage(p) {
+  const what = p.topologyChanges ? 'A topology change' : 'A change';
+  return html`<b>${what} is scheduled for <span title="${p.at}">${localTime(p.at)}</span>.</b> Changes are locked until then.`;
+}
 export function hms(iso) { if (!iso) return '—'; const d = new Date(iso); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}Z`; }
 export function hm(iso) { if (!iso) return '—'; const d = new Date(iso); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`; }
 export function hmsms(iso) { const d = new Date(iso); return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())}.${String(d.getUTCMilliseconds()).padStart(3, '0')}`; }
@@ -70,8 +75,10 @@ export const familyBehaviourLabel = { data: 'data', empty: 'empty', 'invalid-arg
 export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
+export const polling = { active: false };
 export async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: { 'X-Console': '1' }, cache: 'no-store' };
+  if (polling.active && init.method === 'GET') init.headers['X-Console-Poll'] = '1';
   if (opts.body !== undefined) {
     init.method = opts.method || 'POST';
     init.headers['Content-Type'] = 'application/json';
@@ -83,6 +90,7 @@ export async function api(path, opts = {}) {
   const res = await fetch('/api' + path, init);
   let data = null;
   try { data = await res.json(); } catch (e) { /* empty body */ }
+  if (res.status === 401) { location.assign('/login?expired=1'); throw new ApiError(401, 'Please sign in again.'); }
   if (!res.ok) throw new ApiError(res.status, (data && data.error) || res.statusText);
   return data;
 }

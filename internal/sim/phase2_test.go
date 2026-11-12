@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/view"
@@ -1420,5 +1422,124 @@ func TestOSAHealthDetails(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A nonexistent session grants no privileges, as documented by the
+// AuthorizationManager API and observed on the 9.1.1 reference server.
+func TestPrivilegeChecksRequireValidSession(t *testing.T) {
+	password := uuid.NewString()
+	e := startWith(t, topology.Phase1("privileges"), sim.Options{})
+	if err := e.login("administrator@vsphere.local", password); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	auth := *e.client.ServiceContent.AuthorizationManager
+	root := e.client.ServiceContent.RootFolder
+	for _, tc := range []struct {
+		name, session string
+		want          bool
+	}{
+		{"empty", "", false}, {"invalid", "not-a-session", false}, {"administrator", e.cookie, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			single, err := methods.HasPrivilegeOnEntity(ctx, e.client, &types.HasPrivilegeOnEntity{This: auth, Entity: root, SessionId: tc.session, PrivId: []string{"Global.Licenses"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(single.Returnval) != 1 || single.Returnval[0] != tc.want {
+				t.Errorf("single privilege: %v, want %v", single.Returnval, tc.want)
+			}
+			multiple, err := methods.HasPrivilegeOnEntities(ctx, e.client, &types.HasPrivilegeOnEntities{This: auth, Entity: []types.ManagedObjectReference{root}, SessionId: tc.session, PrivId: []string{"Global.Licenses"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(multiple.Returnval) != 1 || len(multiple.Returnval[0].PrivAvailability) != 1 || multiple.Returnval[0].PrivAvailability[0].IsGranted != tc.want {
+				t.Errorf("multiple privilege: %+v, want %v", multiple.Returnval, tc.want)
+			}
+		})
+	}
+	// Privilege checks can name another active session, and stop granting it
+	// as soon as that session logs out.
+	firstClient := e.client
+	if err := e.login("other@vsphere.local", password); err != nil {
+		t.Fatal(err)
+	}
+	otherKey, otherClient := e.cookie, e.client
+	check := func(want bool) {
+		t.Helper()
+		r, err := methods.HasPrivilegeOnEntity(ctx, firstClient, &types.HasPrivilegeOnEntity{This: auth, Entity: root, SessionId: otherKey, PrivId: []string{"Global.Licenses"}})
+		if err != nil || len(r.Returnval) != 1 || r.Returnval[0] != want {
+			t.Fatalf("other session privilege: %+v, %v; want %v", r, err, want)
+		}
+	}
+	check(true)
+	if err := session.NewManager(otherClient).Logout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
+
+}
+
+func TestMixedProductVersionsAcrossAPIs(t *testing.T) {
+	password := uuid.NewString()
+	sc := scenario.Phase1("mixed-version")
+	sc.VCenter = scenario.Version{Preset: "9.0"}
+	sc.Clusters = []scenario.ClusterOverride{{Key: "dc-01/cluster-01", ESX: scenario.Version{Preset: "8.0u3"}}}
+	sc.HostVersions = map[string]scenario.Version{"dc-01/cluster-01/esx01": {Preset: "9.0"}}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	topo := topology.Generate(sc, registry.InMemory(sc.Seed))
+	e := startWith(t, topo, sim.Options{})
+	if err := e.login("administrator@vsphere.local", password); err != nil {
+		t.Fatal(err)
+	}
+	about := e.client.ServiceContent.About
+	if about.Version != "9.0.0" || about.Build != "24755230" || about.ApiVersion != "9.0.0.0" {
+		t.Fatalf("vCenter about: %+v", about)
+	}
+	pc := property.DefaultCollector(e.client)
+	for i, ref := range e.sim.Clusters[0].Hosts {
+		var host mo.HostSystem
+		if err := pc.RetrieveOne(context.Background(), ref, []string{"config.product", "summary.config.product"}, &host); err != nil {
+			t.Fatal(err)
+		}
+		wantVersion, wantBuild, wantAPI, wantLicense := "8.0.3", "24022510", "8.0.3.0", "8.0"
+		if i == 0 {
+			wantVersion, wantBuild, wantAPI, wantLicense = "9.0.0", "24755229", "9.0.0.0", "9.0"
+		}
+		if host.Config.Product.ApiVersion != wantAPI || host.Config.Product.LicenseProductVersion != wantLicense {
+			t.Fatalf("host %d api/license version: %+v", i, host.Config.Product)
+		}
+		if host.Config.Product.Version != wantVersion || host.Config.Product.Build != wantBuild || host.Summary.Config.Product.Version != wantVersion {
+			t.Fatalf("host %d product: %+v", i, host.Config.Product)
+		}
+	}
+	for _, path := range []string{"/sdk/vimServiceVersions.xml", "/sdk/vsanServiceVersions.xml", "/api/appliance/system/version"} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
+		if strings.HasPrefix(path, "/api/") {
+			login, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+			login.SetBasicAuth("administrator@vsphere.local", password)
+			res, err := http.DefaultClient.Do(login)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var token string
+			if err = json.NewDecoder(res.Body).Decode(&token); err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			req.Header.Set("vmware-api-session-id", token)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != 200 || !bytes.Contains(b, []byte("9.0.0")) || bytes.Contains(b, []byte("9.1.1")) {
+			t.Errorf("%s: %d %s", path, res.StatusCode, b)
+		}
 	}
 }

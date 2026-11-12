@@ -25,16 +25,17 @@ services:
       # start, for example the hostname collectors use to reach this machine.
       - -tls-names=${VCSIM_TLS_NAMES:-}
     environment:
-      # Leave both unset to accept any user name and password (the default).
+      # Leave both unset to use the published administrator default.
       # Set both to restrict login to one pair; placeholders only, never real
       # vCenter credentials.
       VCSIM_USERNAME: ${VCSIM_USERNAME:-}
       VCSIM_PASSWORD: ${VCSIM_PASSWORD:-}
+      # administrator (default) or read-only, for that user.
+      VCSIM_ROLE: ${VCSIM_ROLE:-}
     ports:
       - "${VCSIM_PORT:-8443}:8443"
-      # The control console has no login: it is published on loopback only.
-      # Open http://localhost:9090/ . Put your own authentication in front of
-      # it before publishing it anywhere else.
+      # The password-protected control console is published on loopback only.
+      # Open http://localhost:9090/ . Use TLS before publishing it elsewhere.
       - "127.0.0.1:${VCSIM_ADMIN_PORT:-9090}:9090"
     volumes:
       - data:/data

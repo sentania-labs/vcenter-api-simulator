@@ -123,11 +123,12 @@ function dcGroup(dc, key) {
     ${open ? html`<ul class="lat-tree">${rows.length ? rows : html`<li class="more">No cluster matches.</li>`}</ul>` : ''}</div>`;
 }
 
-function treeCard(d) {
+function treeCard(ctx, d) {
   const t = d.tree;
+  const scheduled = !!ctx.state?.pending?.scheduled;
   const pill = (id, label, n) => html`<button type="button" class="lat-pill${ui.pill === id ? ' is-on' : ''}" data-act="topo.pill" data-arg="${id}" aria-pressed="${ui.pill === id}" data-k="pill:${id}">${label} <b>${int(n)}</b></button>`;
   return html`<section class="lat-card tree-card" aria-labelledby="tp-clusters"><h2 class="lat-card-title" id="tp-clusters">Clusters <span class="aside">${int(t.clusters)} · ${int(t.hosts)} hosts</span></h2>
-    <div class="row"><a class="lat-btn lat-btn--sm" href="#/topology/generator" style="text-decoration:none">Quick generator…</a><button type="button" class="lat-btn lat-btn--sm" data-act="topo.add" data-k="add-cluster">Add cluster</button></div>
+    <div class="row">${scheduled ? html`<button type="button" class="lat-btn lat-btn--sm" disabled>Quick generator…</button>` : html`<a class="lat-btn lat-btn--sm" href="#/topology/generator" style="text-decoration:none">Quick generator…</a>`}<button type="button" class="lat-btn lat-btn--sm" data-act="topo.add" data-k="add-cluster" ${raw(scheduled ? 'disabled' : '')}>Add cluster</button></div>
     <div class="row"><input class="lat-input grow" value="${ui.filter}" placeholder="Filter, e.g. cluster-1   ( / )" aria-label="Filter clusters" data-k="tree-filter" data-inp="topo.filter" autocomplete="off" spellcheck="false"></div>
     <div class="pill-row">${pill('all', 'All', t.clusters)}${pill('overridden', 'Overridden', t.overridden)}${pill('pending', 'Pending', t.pendingClusters)}${pill('warnings', 'Warnings', t.warningClusters)}</div>
     <div class="tree-scroll" data-scroll="tree">${t.datacenters.map((dc) => dcGroup(dc, d.key))}</div></section>`;
@@ -348,8 +349,10 @@ function editorCard(ctx, d) {
   const n = Math.max(v.state === 'pending' ? 1 : 0, changeCount(v, regen) + (d.draft.scenario.clusters || []).filter((c) => c.key === v.key && c.seedEpoch > ((overrideOf(d.draft.applied, v.key) || {}).seedEpoch || 0)).length);
   const stateBadge = removed ? badge('deleted in draft', 'bad') : v.state === 'new' ? badge('new cluster', 'warn') : n ? badge(`${n} unapplied change${n === 1 ? '' : 's'}`, 'warn') : '';
   const pending = ctx.state.pending && ctx.state.pending.exists;
+  const canReview = pending && !sched;
   const vsan = v.datastores.find((x) => x.type.startsWith('vSAN'));
   return html`<section class="lat-card" aria-labelledby="ed-title">
+    <fieldset ${raw(sched ? 'disabled' : '')} style="border:0;padding:0;margin:0;min-width:0">
     <div class="row">
       <h2 class="page-title mono" id="ed-title" style="font-size:16px;white-space:nowrap;margin:0">${v.name} <span class="muted" style="font-size:12px;font-weight:400">${v.datacenter}</span></h2>
       ${badge(v.spec.architecture === 'osa' ? 'vSAN OSA' : 'vSAN ESA')}${stateBadge}${regen ? badge('new identity generation', 'warn') : ''}${v.seedEpoch > 0 ? badge(`seed epoch ${v.seedEpoch}`, 'warn') : ''}
@@ -375,13 +378,13 @@ function editorCard(ctx, d) {
     <h2 class="lat-card-title">Hosts <span class="aside">${v.state === 'removed' ? 0 : v.spec.hosts} after apply · identities derive from seed ${ctx.state.topology.seed} + cluster + host ordinal</span></h2>
     ${hostsTable(v)}
     <div class="row" style="margin-top:auto;border-top:1px solid var(--line-soft);padding-top:10px">
-      <button type="button" class="lat-btn" data-act="topo.discard" ${raw(pending ? '' : 'disabled')} data-k="discard">Discard…</button>
-      <a class="lat-btn lat-btn--primary" href="#/topology/review" style="text-decoration:none${pending ? '' : ';opacity:.5;pointer-events:none'}" ${raw(pending ? '' : 'aria-disabled="true" tabindex="-1"')} data-k="review">Review &amp; apply…</a>
+      <button type="button" class="lat-btn" data-act="topo.discard" ${raw(pending && !sched ? '' : 'disabled')} data-k="discard">Discard…</button>
+      <button type="button" class="lat-btn lat-btn--primary" data-act="topo.review" ${raw(canReview ? '' : 'disabled')} data-k="review">Review &amp; Apply…</button>${canReview ? '' : html`<span class="anno">${sched ? 'Changes are scheduled' : 'No pending changes'}</span>`}
       <span class="grow"></span><span class="anno" style="white-space:nowrap">Changes identities:</span>
       <button type="button" class="lat-btn" data-act="topo.regenerate" ${raw(locked ? 'disabled' : '')} data-k="regen">Regenerate…</button>
       <button type="button" class="lat-btn" data-act="topo.resetSeed" ${raw(locked ? 'disabled' : '')} data-k="reset-seed">Reset cluster seed…</button>
       <button type="button" class="lat-btn lat-btn--danger" style="margin-left:6px" data-act="topo.delete" ${raw(locked ? 'disabled' : '')} data-k="delete">Delete cluster…</button>
-    </div></section>`;
+    </div></fieldset></section>`;
 }
 
 // ---- right: impact -----------------------------------------------------------------
@@ -443,6 +446,7 @@ async function post(ctx, path, key, ok) {
 }
 
 const actions = {
+  review(ctx) { ctx.go('#/topology/review'); },
   expand(ctx, el) { ui.expanded[el.dataset.arg] = true; ctx.rerender(); },
   toggleDC(ctx, el) { ui.closed[el.dataset.arg] = !ui.closed[el.dataset.arg]; ctx.rerender(); },
   pill(ctx, el) { ui.pill = el.dataset.arg; ctx.rerender(); },
@@ -551,11 +555,11 @@ const actions = {
   },
   async discard(ctx, el, ev, data) {
     const p = ctx.state.pending || {};
-    const n = (p.topologyChanges || 0) + (p.telemetryChanges || 0);
+    const n = (p.topologyChanges || 0) + (p.telemetryChanges || 0) + (p.settingsChanges || 0);
     const ok = await ctx.confirm({
       title: 'Discard the pending draft?',
-      body: html`<ul><li>Drops all ${n || ''} unapplied change${n === 1 ? '' : 's'} in the draft: every cluster${p.telemetryChanges ? ', and the latency and fault edits' : ''}, not only ${data.key.split('/')[1]}.</li>
-        <li>The API is untouched; it keeps serving topology v${ctx.state.topology.version}. A discarded draft cannot be restored.</li></ul>`,
+      body: html`<ul><li>Drops all ${n || ''} unapplied change${n === 1 ? '' : 's'} in the draft: every cluster${p.telemetryChanges ? ', latency and fault edits' : ''}${p.settingsChanges ? ', and user settings' : ''}, not only ${data.key.split('/')[1]}.</li>
+        <li>The current settings keep serving. A discarded draft cannot be restored.</li></ul>`,
       confirmLabel: 'Discard draft', danger: true,
     });
     if (!ok) return;
@@ -631,7 +635,7 @@ export default {
   render(ctx, data) {
     current = mode(ctx);
     if (current !== 'editor') return flow[current].render(ctx, data);
-    return html`<div class="topo-grid">${treeCard(data)}${editorCard(ctx, data)}${impactCard(ctx, data)}</div>`;
+    return html`<div class="topo-grid">${treeCard(ctx, data)}${editorCard(ctx, data)}${impactCard(ctx, data)}</div>`;
   },
   mounted(ctx, data, page) { if (current !== 'editor' && flow[current].mounted) flow[current].mounted(ctx, data, page); },
   actions: Object.assign({}, flowActions, Object.fromEntries(Object.entries(actions).map(([k, f]) => ['topo.' + k, f]))),

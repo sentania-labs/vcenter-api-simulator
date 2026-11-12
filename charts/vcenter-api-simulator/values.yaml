@@ -31,28 +31,43 @@ simulator:
   tlsNames: []
   # Additional command-line arguments passed to vcsimulator.
   extraArgs: []
+  # Defaults for live capture settings. The console can override these.
+  capture:
+    # Write the full, redacted query log to /data/query-log.jsonl. It can
+    # contain inventory identifiers and grows until cleared.
+    queryLog: false
+    # Also emit unanswered requests as JSON lines to container stdout.
+    unansweredStdout: false
 
-# The control console: topology editor, scenario presets and request log.
-# Plain HTTP and no login, so no Service or Ingress exposes it. By default it
-# listens on the pod's loopback only; reach it with `kubectl port-forward`
-# (see NOTES.txt).
+# The control console listens on loopback unless explicitly exposed.
 admin:
   enabled: true
   port: 9090
-  # Listen on the pod network (0.0.0.0) instead of the pod's loopback. The
-  # console has NO LOGIN: with this on, every workload that can reach the pod
-  # can pause the API or rewrite the topology. Turn it on only behind your own
-  # authenticated proxy, and keep network policy around the pod.
   exposeToPodNetwork: false
-  # Host names the console answers to besides localhost, 127.0.0.1 and ::1
-  # (any other Host header gets 403, which stops DNS rebinding). Add the name
-  # your proxy forwards, for example [vcsim-console.example.net].
   allowedHosts: []
+  # Existing Secret containing the console password under key password. The
+  # password it holds wins: a changed value replaces the stored console
+  # password at the next start and ends console sessions.
+  existingSecret: ""
+  service:
+    enabled: false
+    port: 9090
+    annotations: {}
+  ingress:
+    enabled: false
+    host: ""
+    className: ""
+    annotations: {}
+    tls:
+      enabled: false
+      secretName: ""
 
 credentials:
-  # When false, any user name and password log in (vcsim's default).
+  # When false, the built-in administrator credential is used.
   # When true, only the pair in the Secret below logs in.
   enabled: false
+  # Access of that user: administrator or read-only.
+  role: administrator
   # Name of an existing Secret with keys `username` and `password`. Preferred.
   existingSecret: ""
   # Placeholders used to create a Secret when existingSecret is empty. Never
@@ -61,6 +76,8 @@ credentials:
   password: change-me
 
 tls:
+  # Supplying a certificate (existingSecret or certManager) makes it
+  # deployment-managed: the console shows it read-only.
   # Name of an existing kubernetes.io/tls Secret (tls.crt, tls.key) to serve.
   # Takes precedence over certManager and over the generated certificate.
   existingSecret: ""

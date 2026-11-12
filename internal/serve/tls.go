@@ -34,11 +34,13 @@ type Certificate struct {
 	// every handshake.
 	Interval time.Duration
 
-	mu      sync.Mutex
-	current *tls.Certificate
-	certMod time.Time
-	keyMod  time.Time
-	checked time.Time
+	mu         sync.Mutex
+	current    *tls.Certificate
+	certMod    time.Time
+	keyMod     time.Time
+	checked    time.Time
+	managed    bool
+	consoleDir string
 }
 
 // LoadOrCreateCertificate returns the key pair in dir, creating a

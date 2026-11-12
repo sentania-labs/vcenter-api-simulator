@@ -157,3 +157,64 @@ func TestDelayDuration(t *testing.T) {
 		t.Errorf("%v %v", d.Duration(0), d.Duration(1))
 	}
 }
+
+func TestVersionPresetsAndNewerHostValidation(t *testing.T) {
+	s := Phase1("version-test")
+	s.VCenter = Version{Preset: "8.0u3"}
+	s.ESX = Version{Preset: "9.0"}
+	if err := s.Validate(); err == nil {
+		t.Fatal("newer ESX was accepted without an override")
+	}
+	s.ForceNewerHosts = true
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	vc, err := s.VCenterVersion()
+	if err != nil || vc.Build != "24022515" {
+		t.Fatalf("vCenter preset: %+v %v", vc, err)
+	}
+	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
+	if err != nil || host.Build != "24755229" {
+		t.Fatalf("ESX preset: %+v %v", host, err)
+	}
+	s.HostVersions = map[string]Version{"dc-01/cluster-01/esx01": {Preset: "invalid"}}
+	if err := s.Validate(); err == nil {
+		t.Fatal("unknown preset accepted")
+	}
+}
+
+func TestCustomVCenterCanBeMatchedByESX(t *testing.T) {
+	s := Phase1("custom-match")
+	s.VCenter = Version{Version: "8.0.2", Build: "23504390", APIVersion: "8.0.2.0", FullName: "VMware vCenter Server 8.0.2"}
+	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
+	if err != nil || host.Version != s.VCenter.Version || host.Build != s.VCenter.Build || host.APIVersion != s.VCenter.APIVersion {
+		t.Fatalf("custom match: %+v, %v", host, err)
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEveryPresetCarriesItsOwnAPIVersionAndLicenseVersion(t *testing.T) {
+	vcenters, esxes := VersionPresets()
+	for i, esx := range esxes {
+		if esx.APIVersion == "" || vcenters[i].APIVersion == "" {
+			t.Errorf("preset %s lacks an apiVersion: vCenter %q ESX %q", esx.Preset, vcenters[i].APIVersion, esx.APIVersion)
+		}
+	}
+	s := Phase1("version-api")
+	s.VCenter = Version{Preset: "9.1.1"}
+	s.ESX = Version{Preset: "8.0u3"}
+	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host.APIVersion != "8.0.3.0" {
+		t.Errorf("an 8.0 U3 host in a 9.1.1 inventory reports apiVersion %q, want 8.0.3.0", host.APIVersion)
+	}
+	for version, want := range map[string]string{"8.0.3": "8.0", "9.0.0": "9.0", "9.1.1": "9.1"} {
+		if got := (Version{Version: version}).LicenseVersion(); got != want {
+			t.Errorf("LicenseVersion(%s) = %q, want %q", version, got, want)
+		}
+	}
+}

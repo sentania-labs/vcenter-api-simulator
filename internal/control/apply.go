@@ -44,7 +44,7 @@ func (c *Controller) Apply(when string) (*ApplyResult, error) {
 		s.timer = time.AfterFunc(at.Sub(c.now()), func() { c.fire(s) })
 		c.scheduled, c.draft = s, nil
 		return &ApplyResult{Scheduled: true, At: at, Version: c.applied().version + 1,
-			Message: "Scheduled for the " + at.Format("15:04") + " bucket"}, nil
+			Message: "Change scheduled"}, nil
 	}
 	return nil, invalid("when must be %q or %q", "boundary", "now")
 }
@@ -71,10 +71,10 @@ func (c *Controller) applyLocked(d *Draft) (*ApplyResult, error) {
 		if strings.Contains(err.Error(), "FileFault") || strings.Contains(err.Error(), "no space") || strings.Contains(err.Error(), "quota") {
 			hint = " The new vCenter could not write its datastore files: check the free space under TMPDIR."
 		}
-		c.lastErr = fmt.Sprintf("The change failed to apply at %s and was not applied; v%d is still serving. %s%s", c.now().Format("15:04:05Z"), old.version, err.Error(), hint)
+		c.lastErr = fmt.Sprintf("The change failed to apply at %s; the previous settings are still serving. %s%s", c.now().Format("15:04:05Z"), err.Error(), hint)
 		c.lastErrAt = c.now()
 		c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: old.version, Area: "Service",
-			Text: "Apply failed: v" + fmt.Sprint(old.version) + " still serving", History: "preserved", Identities: "unchanged"})
+			Text: "Apply failed; previous settings are still serving", History: "preserved", Identities: "unchanged"})
 		_ = c.persist()
 		return nil, err
 	}
@@ -94,6 +94,7 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 	}
 	var nr *running
 	var newReg *registry.Registry
+	oldReg := c.reg
 	if topoChanged {
 		if d.Scenario.Seed != old.sc.Seed {
 			newReg, err = registry.Open(c.regPath(), d.Scenario.Seed, true)
@@ -116,9 +117,23 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 		}
 		c.reg = newReg
 	} else {
-		// telemetry only: swap the knobs in place, keep the vCenter
-		old.sim.Env.Knobs.Set(d.Scenario.Faults, d.Scenario.Latency)
+		// Keep the live knobs unchanged until credential persistence succeeds.
 		nr = &running{version: next, at: c.now(), sc: clone(d.Scenario), topo: old.topo, sim: old.sim}
+	}
+	if d.Credentials != nil {
+		if err := nr.sim.UpdateCredentials(func() ([]string, error) { return c.auth.Commit(*d.Credentials) }); err != nil {
+			if topoChanged {
+				nr.sim.Close()
+				c.reg = oldReg
+				if restoreErr := oldReg.Save(); restoreErr != nil {
+					return nil, fmt.Errorf("apply credentials: %v; restore registry: %w", err, restoreErr)
+				}
+			}
+			return nil, fmt.Errorf("apply credentials: %w", err)
+		}
+	}
+	if !topoChanged {
+		old.sim.Env.Knobs.Set(d.Scenario.Faults, d.Scenario.Latency)
 	}
 	c.cur.Store(nr)
 	if topoChanged {
@@ -133,7 +148,7 @@ func (c *Controller) applyOnce(d *Draft, old *running) (*ApplyResult, error) {
 	if err := c.persist(); err != nil {
 		c.lastErr = "state not saved: " + err.Error()
 	}
-	return &ApplyResult{At: c.now(), Version: next, Message: fmt.Sprintf("Applied as v%d", next)}, nil
+	return &ApplyResult{At: c.now(), Version: next, Message: "Changes applied"}, nil
 }
 
 func (c *Controller) regPath() string { return c.opts.DataDir + "/registry.json" }
@@ -143,6 +158,9 @@ func (c *Controller) timelineEntry(rv *Review, d *Draft, version int) TimelineEn
 	area := "Topology"
 	if !rv.RebuildsVCenter {
 		area = "Telemetry"
+		if rv.SettingsCount > 0 {
+			area = "Settings"
+		}
 	}
 	var parts []string
 	for i, ch := range rv.Changes {

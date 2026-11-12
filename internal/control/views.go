@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -126,7 +127,7 @@ func (c *Controller) State() *State {
 	r := c.applied()
 	now := c.now()
 	s := &State{Version: c.opts.Version, Commit: c.opts.Commit, Endpoint: c.opts.Endpoint, API: c.opts.APIAddrs, Admin: c.opts.AdminAddr}
-	s.Profile.FullName, s.Profile.Version, s.Profile.Build = c.cat.About.FullName, c.cat.About.Version, c.cat.About.Build
+	s.Profile.FullName, s.Profile.Version, s.Profile.Build = r.topo.VCenterVersion.FullName, r.topo.VCenterVersion.Version, r.topo.VCenterVersion.Build
 	s.Profile.Source = c.cat.Source
 	s.Clock.Now, s.Clock.Bucket, s.Clock.Next = now.UTC(), bucket(now), nextBoundary(now)
 	s.Running = !c.paused.Load()
@@ -154,13 +155,9 @@ func (c *Controller) State() *State {
 	s.Scenario.FaultRules = len(r.sc.Faults)
 	s.Scenario.Latency = latencyLine(r.sc.Latency)
 	s.Auth.Users = []string{}
-	creds, _ := r.sc.Credentials()
-	for n := range creds {
-		s.Auth.Users = append(s.Auth.Users, n)
-	}
-	for n := range c.opts.Credentials {
-		if _, dup := creds[n]; !dup {
-			s.Auth.Users = append(s.Auth.Users, n)
+	if !c.auth.Snapshot().AnyLogin {
+		for _, user := range c.auth.Users() {
+			s.Auth.Users = append(s.Auth.Users, user.Name)
 		}
 	}
 	sort.Strings(s.Auth.Users)
@@ -200,7 +197,7 @@ func (c *Controller) events(a activity.Summary) []Event {
 	var out []Event
 	for i := len(c.timeline) - 1; i >= 0 && len(out) < 4; i-- {
 		t := c.timeline[i]
-		out = append(out, Event{At: t.At, Text: t.Text, Detail: fmt.Sprintf("%s · history %s · identities %s", t.Area, t.History, t.Identities)})
+		out = append(out, Event{At: t.At, Text: plainTimelineText(t.Text), Detail: fmt.Sprintf("%s · history %s · identities %s", t.Area, t.History, t.Identities)})
 	}
 	for _, f := range a.Cycle.Findings {
 		if f.Severity == "warn" || f.Severity == "bad" || f.Severity == "info" {
@@ -211,12 +208,21 @@ func (c *Controller) events(a activity.Summary) []Event {
 	return out
 }
 
+var legacyBuiltVersion = regexp.MustCompile(`^Topology v[0-9]+ built:`)
+var legacyFailedVersion = regexp.MustCompile(`^Apply failed: v[0-9]+ still serving$`)
+
+func plainTimelineText(text string) string {
+	text = legacyBuiltVersion.ReplaceAllString(text, "Topology built:")
+	return legacyFailedVersion.ReplaceAllString(text, "Apply failed; previous settings are still serving")
+}
+
 // Timeline returns the applied changes, newest first.
 func (c *Controller) Timeline() []TimelineEntry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := make([]TimelineEntry, len(c.timeline))
 	for i, t := range c.timeline {
+		t.Text = plainTimelineText(t.Text)
 		out[len(c.timeline)-1-i] = t
 	}
 	return out
@@ -834,7 +840,7 @@ func (c *Controller) Banner(took time.Duration) []string {
 	r := c.applied()
 	cl, h, v, d := r.topo.Counts()
 	out := []string{
-		fmt.Sprintf("vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s", c.cat.About.Version, r.topo.InstanceUUID, r.sc.Seed, c.reg.Len(), took.Round(time.Millisecond)),
+		fmt.Sprintf("vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s", r.topo.VCenterVersion.Version, r.topo.InstanceUUID, r.sc.Seed, c.reg.Len(), took.Round(time.Millisecond)),
 		fmt.Sprintf("%d clusters, %d hosts, %d vms, %d devices", cl, h, v, d),
 	}
 	for _, ref := range r.sim.Clusters {
@@ -846,16 +852,12 @@ func (c *Controller) Banner(took time.Duration) []string {
 
 // LoginUsers lists the accepted user names (empty: anyone).
 func (c *Controller) LoginUsers() []string {
-	creds, _ := c.applied().sc.Credentials()
+	if c.auth.Snapshot().AnyLogin {
+		return nil
+	}
 	var out []string
-	for n := range creds {
-		out = append(out, n)
+	for _, user := range c.auth.Users() {
+		out = append(out, user.Name)
 	}
-	for n := range c.opts.Credentials {
-		if _, dup := creds[n]; !dup {
-			out = append(out, n)
-		}
-	}
-	sort.Strings(out)
 	return out
 }
