@@ -71,6 +71,16 @@ spec:
             {{- if and .Values.admin.ingress.enabled .Values.admin.ingress.tls.enabled }}
             - -admin-secure-cookie
             {{- end }}
+            {{- $public := .Values.simulator.publicUrl }}
+            {{- if and (not $public) .Values.hostname }}
+            {{- $public = printf "https://%s%s" .Values.hostname (ternary "" (printf ":%v" .Values.service.port) (eq (int .Values.service.port) 443)) }}
+            {{- end }}
+            {{- if $public }}
+            - -public-url={{ $public }}
+            {{- end }}
+            {{- if .Values.simulator.reportUrl }}
+            - -report-url={{ .Values.simulator.reportUrl }}
+            {{- end }}
             {{- range .Values.simulator.extraArgs }}
             - {{ . | quote }}
             {{- end }}

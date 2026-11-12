@@ -16,7 +16,7 @@ Emulate enough of a vCenter-managed inventory and the **vSAN Performance Service
 - Add vSAN /vsanHealth API handling grounded in live read-only API captures, especially `VsanPerfQueryPerf`, `VsanPerfQueryNodeInformation`, supported entity types, hardware/inventory joins, and correct SOAP fault behavior.
 - Use one Helm release / public hostname per simulated vCenter initially. Many clusters may exist inside each instance; no runtime Kubernetes/ingress administration required.
 - Produce stable inventory UUIDs / MoRefs and deterministic, 5-minute-bucket ESA telemetry. Support scale from a tiny compatibility fixture to 100+ clusters as a **test target**, not a claimed capacity.
-- A small **Lattice**-styled control console with topology editor, generators, performance controls and API/collector observability (built from owner-approved mockups after an independent end-user UX evaluation).
+- A small **Lattice**-styled control console organised by the jobs a person does with it: clusters, storage, versions, users, security, slowness and faults, and what connected tools ask for (built from an owner-approved design that independent reviewers walked job by job).
 
 ## Phase 2: a functional simulator
 
@@ -49,22 +49,27 @@ go build ./cmd/vcsimulator
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
 | `-any-login` | explicitly allow any non-empty vCenter username and password |
+| `-username`, `-password`, `-role` | one vCenter account supplied at start (env `VCSIM_USERNAME`, `VCSIM_PASSWORD`, `VCSIM_ROLE`); with no account supplied here or in the scenario, the console's first-run set-up chooses the password |
+| `-public-url URL` | the address tools should use, shown in the console (env `VCSIM_PUBLIC_URL`); default `https://<name>:<port>` from the first `-tls-names` entry or the machine's name. Set it when a proxy or ingress gives the simulator another name |
+| `-report-url URL` | where the console sends people to report a request the simulator cannot answer (env `VCSIM_REPORT_URL`); default this project's new-issue page |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
 | `-admin ADDR` | the password-protected control console (plain HTTP); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
 | `-admin-allowed-hosts NAMES` | comma-separated Host names the console answers to besides `localhost`, `127.0.0.1` and `::1` (any port); every other Host gets 403, which stops a web page from reaching the console through DNS rebinding. Add the name your proxy or ingress forwards; env `VCSIM_ADMIN_ALLOWED_HOSTS` |
 
-To capture what a client asks for, enable the full request log in the console
-or start with `-query-log /data/query-log.jsonl`, then repeat the action in the
-client. In API Activity, choose **Unanswered** and download the records, or
-download the full log from the capture settings. The chart's
-`simulator.capture.queryLog` and `simulator.capture.unansweredStdout` set the
-initial defaults. SOAP credentials, session operations and headers are omitted
-or redacted, but request bodies can contain inventory identifiers. Treat the
-records accordingly. Unanswered records are bounded in memory; the full file
-continues growing until cleared.
+To capture what a client asks for, open **Requests** in the console. Requests
+the simulator has no answer for are captured from the start; "Capture every
+request in full" keeps everything while it is on (or start with
+`-query-log /data/query-log.jsonl`). Repeat the action in the client, then
+download from the same screen. The chart's `simulator.capture.queryLog` and
+`simulator.capture.unansweredStdout` set the initial defaults; sending
+unanswered requests to stdout is an install-time choice and has no switch in
+the console. SOAP credentials, session operations and headers are omitted or
+redacted, but request bodies can contain inventory identifiers. Treat the
+records accordingly. Unanswered records are bounded in memory and kept until
+deleted; turning full capture off deletes what it captured.
 
-Debug capture is on by default and can be switched off in the console's capture
-settings. It writes one JSON line to stdout (`"event":"request-capture"`) for
+Debug capture is on by default and has no switch in the console; start with
+`-debug-capture=false` to turn it off. It writes one JSON line to stdout (`"event":"request-capture"`) for
 every request to `/ls/`, with the method, path, query, the names of all
 headers, the values of Content-Type, SOAPAction, User-Agent, Accept and
 Content-Length, and the request body. Before
@@ -79,28 +84,52 @@ logged. A body over 64 KiB is cut and flagged. Every request to `/ls/`,
 `/lookupservice/` and the REST paths above is captured with its operation name,
 whether the simulator answered it locally or the vcsim mux did.
 
-The console uses a separate password from vCenter. On first access, claim it
-with a password, or set `VCSIM_ADMIN_PASSWORD` (the chart's
-`admin.existingSecret` points to a Secret with key `password`). A claim persists
-as a bcrypt hash in `console-password` under the data directory. A password
+The console uses a separate password from vCenter. The first time it is
+opened it asks for two things: a password for the console itself (at least 8
+characters), then, when the deployment supplied no vCenter account, the
+password of the first account tools sign in with,
+`administrator@vsphere.local`. There is no published default password: until
+that step is done nothing can sign in to the simulated vCenter. A deployment
+that supplies an account (the scenario's `auth.users`, `-username` and
+`-password`, or `-any-login`) skips the step.
+
+**Upgrading from 0.3.x.** Earlier versions accepted a published default
+password for `administrator@vsphere.local` when no account was supplied. That
+password is retired. After the upgrade a simulator with no supplied account
+refuses every sign-in until the console's set-up step chooses a password (a
+saved account that still had the old default is removed at start, and the log
+says so). Tools that used the default need the new password, or supply an
+account at install: `VCSIM_USERNAME` and `VCSIM_PASSWORD`, the chart's
+`credentials`, or the scenario's `auth.users`. With the console turned off
+(`VCSIM_ADMIN=`) supplying an account is the only way to sign in.
+
+Set `VCSIM_ADMIN_PASSWORD` to supply the console password instead (the chart's
+`admin.existingSecret` points to a Secret with key `password`). A chosen
+password persists as a bcrypt hash in `console-password` under the data
+directory and can be changed on the console's Security screen. A password
 supplied by the deployment wins: if it differs from the stored hash, the hash is
 replaced at start, existing sessions end, and one log line (never the value)
-says so; the console then shows that the password is managed by the deployment.
+says so; the console then shows it as read-only.
 Sessions expire after 30 minutes without a person using the console (the
 console's own background refresh does not count) and after 12 hours in any
 case; they do not survive restart. An ended session returns to the sign-in page
-with a notice. To reset the console, stop it,
-remove that file or run `-admin-reset` against its data directory, then restart
-and claim it again. Remove the pre-seed first if you want a new claim. The chart
-keeps the console on loopback unless `admin.service.enabled` is set; an optional
-`admin.ingress` exposes that Service. Use TLS outside loopback. For a
-TLS-terminating proxy, set `-admin-secure-cookie` so cookies require HTTPS; the
-chart sets it automatically for its TLS ingress.
+with a notice.
+
+**Reset the console password.** It cannot be reset from the sign-in page. On
+the machine the simulator runs on, stop it, remove `console-password` from the
+data directory or run `vcsimulator -admin-reset -data <dir>`, then start it
+again and choose a new password. Remove `VCSIM_ADMIN_PASSWORD` first if the
+deployment supplies one.
+
+The chart keeps the console on loopback unless `admin.service.enabled` is set;
+an optional `admin.ingress` exposes that Service. Use TLS outside loopback. For
+a TLS-terminating proxy, set `-admin-secure-cookie` so cookies require HTTPS;
+the chart sets it automatically for its TLS ingress.
 
 | Where to set it | Settings |
 |---|---|
-| Console | vCenter users and roles (administrator or read-only; set `role: read-only` on an `auth.users` entry, `VCSIM_ROLE`/`-role` for the `VCSIM_USERNAME` user, or the chart's `credentials.role`; an environment variable's name never changes a role), idle session timeout, request capture, product versions, topology, telemetry, and an unmanaged certificate |
-| Start-up | API and console listen addresses and ports, data directory, and console allowed hosts. These are needed to locate and reach the console. |
+| Console | clusters, hosts and shared storage; vCenter and ESX versions; vCenter users and what they may do (full access or read-only; a deployment sets `role: read-only` on an `auth.users` entry, `VCSIM_ROLE`/`-role` for the `VCSIM_USERNAME` user, or the chart's `credentials.role`; an environment variable's name never changes a role); idle sign-out; request capture; slowness and faults; an unmanaged certificate; the console password |
+| Start-up | API and console listen addresses and ports, data directory, console allowed hosts, the address shown to tools (`-public-url`), where unanswered requests are reported (`-report-url`), and sending unanswered requests to stdout. |
 
 An uploaded or regenerated console certificate is kept in the data directory.
 Changing it ends sessions, and clients must trust the new certificate. A
@@ -128,8 +157,9 @@ What the scenario controls, and what the simulator guarantees:
 - **Auth and TLS.** Configured users are enforced on `/sdk` (password
   login; the token and certificate logins vcsim would accept from anyone
   are refused), and `/vsanHealth` shares the session (no cookie,
-  `NotAuthenticated`). With no users configured, the published default is
-  `administrator@vsphere.local` / `VMware123!VMware123!`. Set
+  `NotAuthenticated`). With no users configured there is no default
+  password: the console's first-run set-up chooses the password of
+  `administrator@vsphere.local`, and nothing signs in before then. Set
   `auth.anyLogin: true` or `-any-login` to accept arbitrary non-empty credentials. The certificate persists,
   so the 2.0.0 pack's certificate pin survives restarts.
 - **License and lookup services.** `/ls/sdk` answers `Login` and `Logout` of
@@ -170,32 +200,44 @@ The simulator serves the captured service descriptor but does not serve
 ### Control console
 
 Open `http://127.0.0.1:9090/` (the `-admin` address). The console is the
-way to change a running simulator without editing YAML: it shows the
-service, projects what a topology costs a collector per five-minute cycle,
-edits clusters and the generator, loads scenario presets, sets latency and
-fault rules, and shows every request the simulator served. It follows the
-Lattice design system, in light and dark. It answers only to the Host names
-`localhost`, `127.0.0.1` and `::1` (any port, so a port-forward and
+way to change a running simulator without editing YAML. It has eight tabs,
+named for what you want to do: **Home, Clusters, Storage, Versions, Users,
+Security, Slowness and faults, Requests**. It follows the Lattice design
+system, in light and dark, and works at phone width. It answers only to the
+Host names `localhost`, `127.0.0.1` and `::1` (any port, so a port-forward and
 `docker compose` work) plus those in `-admin-allowed-hosts`; behind a proxy,
 add the name the proxy forwards. Helm: `admin.allowedHosts`; the console
 listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
 
-- **Nothing reaches the API by accident.** Every edit goes into one pending
-  draft. *Review & apply* shows what is kept, added and removed (hosts,
-  disks, VMs, cluster identities) and applies at the next five-minute
-  bucket boundary, or immediately if you ask. Latency and fault edits swap
-  in place: the vCenter, its sessions and its history are untouched. A
-  topology change builds a new vCenter next to the old one and swaps them;
-  sessions end at the swap, as after a vCenter restart.
-- **Identity actions are separate and confirmed.** *Regenerate* gives one
-  cluster new identities under the same seed; *Reset cluster seed* changes
-  every sample of that cluster and no identity; *Delete cluster* removes it
-  (its identities remain reserved for a later re-add). The global seed
-  changes only in the generator.
+- **Every change works the same way.** A short screen asks a few questions
+  that are already answered. Beside them "What will happen" says in sentences
+  what the change will do, and one button makes it: right away, or at a time
+  later the same day. There is no shared draft and no separate apply step.
+  A scheduled change shows as a bar on every screen with "Do it now" and
+  "Cancel it", locks nothing, and does not survive a restart (the history
+  says so when that happens).
+- **Changes to clusters, hosts, storage and versions build a new vCenter**
+  next to the running one and swap them, so connected tools are signed out
+  and sign in again, as after a vCenter restart. Every identity the change
+  keeps is unchanged. Users, the certificate, idle sign-out, and slowness and
+  faults change in place.
+- **The simulator names clusters** (`cluster-12`) and invents storage
+  connection details; hosts are removed by name and a removed host's number
+  is not reused. "Replace everything with a new environment" is the one
+  action that starts a new identity registry.
+- **Home says what is true.** Whether a tool is connected, as which account,
+  what it calls itself, and if it is not connected, since when and why (its
+  user was removed, the certificate was replaced, the simulator is paused, or
+  it has gone quiet). A tool counts as connected while it has been answered
+  within the last 15 minutes.
+- **Requests says why each request was answered as it was.** "Not answered"
+  means only requests the simulator has no answer for; a refused sign-in, a
+  refusal a real vCenter makes too, and a fault you switched on are each
+  counted separately.
 - **Applied state survives a restart.** The console writes
   `<data>/console.json`; the next start resumes it unless the scenario file
-  changed, in which case the file wins and the console says so in its
-  timeline.
+  changed, in which case the file wins and the history says so. Accounts
+  made in the console survive that too when the deployment supplies none.
 - **Console login.** The console binds to loopback by default and uses its own
   password. The chart's console Service and Ingress are opt-in. Use TLS when
   reaching it beyond loopback. State-changing requests must be same-origin JSON.
@@ -217,7 +259,7 @@ Host Metrics 2.0.0 pack; its scope, procedure and measured result are in
 |---|---|---|
 | Contract: every captured request replayed against the Phase 1 shape, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `go` job |
 | Phase 2: the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality, overrides), restart and edit identity stability through the registry, credentials, fault and latency knobs, inventory realism against the trimmed live inventory capture, gauge values inside the live envelopes, `Raw` counters monotonic | `go test ./...` | CI `go` job |
-| Control plane: draft, review and apply keep identities (and rebuild only for topology changes), Delete / Regenerate / Reset seed, saved state across a restart and a changed scenario file, scheduled apply, request log classification of ok / injected / unexpected / refused calls, redaction, admin API guards | `go test ./...` | CI `go` job |
+| Control plane: every console task keeps the identities it should (and rebuilds only for cluster, storage and version changes), hosts removed by name, faults switched on and off in place, scheduled changes without a lock, first-run account set-up, connected tools across a pause, a removed user and a new certificate, saved state across a restart and a changed scenario file, the reason recorded for each request (with every live capture replayed and never called "not answered"), redaction, admin API guards, the console's screens | `go test ./...` | CI `go` job |
 | Smoke: a plain vSphere client (govc) connects with the scenario's credentials (and is refused with a wrong password), lists clusters, hosts and VMs and compares the counts with what the simulator built, dumps every identity, restarts the simulator on the same data directory and checks the dump is identical | `tools/smoke/smoke.sh` | CI `smoke` job |
 | Chart: `helm lint --strict` with every `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template` and `kubeconform` of the rendered manifests and the Argo CD example | `.github/workflows/package.yml` | CI `package` workflow, `chart` job |
 | Image: build, OCI label and non-root check, `docker compose` boot, then a vSphere client smoke ([`tools/smoke/smoke.ps1`](tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, expected hosts and VMs back, wrong password refused | PowerCLI on `pwsh` | CI `package` workflow, `image` job |
@@ -279,10 +321,12 @@ credentials (what the compose file and the chart's defaults assume), set it to
 public once under the package's settings on GitHub. To keep it private, give
 the chart an `imagePullSecrets` entry naming a registry pull secret.
 
-The published vCenter login is `administrator@vsphere.local` /
-`VMware123!VMware123!`. The scenario's `auth.users`, or `VCSIM_USERNAME` and
-`VCSIM_PASSWORD` (`-username`/`-password`; `VCSIM_ROLE`/`-role` makes that user `read-only`), replace that default. Console
-credential changes take precedence until the scenario file changes. Explicitly
+There is no published vCenter login. Supply one with the scenario's
+`auth.users`, or `VCSIM_USERNAME` and `VCSIM_PASSWORD` (`-username`/`-password`;
+`VCSIM_ROLE`/`-role` makes that user `read-only`); otherwise the console's
+first-run set-up chooses the password of `administrator@vsphere.local`, and
+nothing can sign in before then. Console changes to supplied accounts take
+precedence until the scenario file changes. Explicitly
 opt into arbitrary credentials with `auth.anyLogin: true` or `-any-login`.
 Use simulator-only credentials and never point real credentials at it.
 
@@ -295,8 +339,9 @@ docker run -d --name vcsim -p 8443:8443 -p 127.0.0.1:9090:9090 -v vcsim-data:/da
 curl -sk https://localhost:8443/sdk/vimServiceVersions.xml
 ```
 
-The second `-p` publishes the control console on loopback only (it has no
-login). The identity registry, the certificate and the console's applied
+The second `-p` publishes the control console on loopback only. Open it to
+choose the console password and, since this command supplies no account, the
+password tools sign in with. The identity registry, the certificate and the console's applied
 scenario are created on first start and kept
 in the volume mounted at `/data`, so identities and the fingerprint a
 management pack pinned survive restarts.

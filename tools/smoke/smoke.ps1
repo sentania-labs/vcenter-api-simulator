@@ -12,15 +12,17 @@ The Phase 1 topology has four hosts and four VMs; pass -Hosts/-VMs for
 another seed.
 
 .EXAMPLE
-tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install
+tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install -User operator -Password placeholder
 tools/smoke/smoke.ps1 -Server vcsim.example.test -User operator -Password placeholder
 #>
 [CmdletBinding()]
 param(
     [string]$Server = '127.0.0.1',
     [int]$Port = 8443,
+    # The simulator has no default password: pass the account it was
+    # started with (VCSIM_USERNAME/VCSIM_PASSWORD or the scenario's users).
     [string]$User = 'administrator@vsphere.local',
-    [string]$Password = 'VMware123!VMware123!',
+    [Parameter(Mandatory = $true)][string]$Password,
     [int]$Hosts = 4,
     [int]$VMs = 4,
     # Check examples/scenarios/storage.yaml, including its failed paths.

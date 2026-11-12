@@ -12,9 +12,9 @@ vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 
 
 NFS and iSCSI entries describe simulated inventory and do not connect to the named
 server. Capacity and free space are bytes. The configured name must be unique within
-its datacenter, and the remote path must be absolute. In Topology, choose a
-datacenter under NFS datastores to add, edit, or remove mounts in the draft.
-Review lists these changes before apply, including removals from presets.
+its datacenter, and the remote path must be absolute. In the console, the
+Storage screen adds, resizes, disconnects and removes shared datastores; it
+asks for a name, a size and how full, and invents the connection details.
 
 See [`storage.yaml`](../examples/scenarios/storage.yaml) for an NFS mount
 failure and a near-full shared VMFS datastore whose iSCSI paths are all down
@@ -32,15 +32,15 @@ datastore names are stable keys; changing a datastore name creates a new
 datastore identity. Round robin is
 the default policy; `VMW_PSP_FIXED` and `VMW_PSP_MRU` are also accepted.
 
-In Topology, select a cluster to edit its iSCSI storage and host-specific
-NFS mounts. Save to the draft, review, and apply. Applying topology changes
-rebuilds the simulated vCenter and drops existing sessions; clients must
-reconnect. MoRefs and other identities of unchanged datastores are retained.
-Deleting a cluster removes its iSCSI configuration and its NFS scope and
-host-fault references. An NFS datastore limited only to deleted clusters is
-removed rather than made available everywhere. Reducing a host count removes
-fault and path overrides for removed hosts; a LUN with no paths left is removed.
-Review and apply validate the resulting scenario. On startup, a previously
+A storage change in the console rebuilds the simulated vCenter and drops
+existing sessions; clients sign in again. MoRefs and other identities of
+unchanged datastores are retained. "Disconnect some hosts" writes
+`inaccessibleHosts` for NFS and a dead per-host path for iSCSI.
+Removing a cluster removes its iSCSI configuration and its NFS scope and
+host-fault references. An NFS datastore limited only to removed clusters is
+removed rather than made available everywhere. Removing hosts removes
+fault and path overrides for them; a LUN with no paths left is removed.
+Every change validates the resulting scenario. On startup, a previously
 saved console state with dangling storage references is repaired and the
 removal is logged; unrelated invalid settings still prevent startup.
 
@@ -139,7 +139,7 @@ removed:                    # generated clusters left out (the console's Delete)
   - dc-01/cluster-07        #   the others keep their numbers and the removed
                             #   cluster's identities stay reserved
 
-auth:                       # no users: published administrator default
+auth:                       # no users: the console's first-run set-up chooses the password
   # anyLogin: true          # explicit opt-out: accept any non-empty pair
   users:
     - name: administrator@vsphere.local
@@ -269,25 +269,40 @@ the source cluster.
 ## Editing a running simulator: the control console
 
 The console (`-admin`, default `http://127.0.0.1:9090/`) edits the same
-model without touching the file. Edits collect in one pending draft and
-apply at the next five-minute bucket boundary (or at once). The applied
+model without touching the file. Each change is made when its button is
+pressed, or at a time later the same day. The served
 scenario is saved in `<data>/console.json` without the `auth` and `tls`
 sections. Console user changes are stored separately as password hashes in
 `<data>/vcenter-users.json`; they take precedence over scenario and environment
-credentials until the scenario file changes. Changing or removing a user ends
+credentials until the scenario file changes (accounts made when the deployment
+supplies none are kept even then). Changing or removing a user ends
 that user's SOAP and REST sessions. Read-only users can query inventory and
 telemetry, but mutation calls are refused. On the next start the saved state
 resumes unless the scenario file changed since, in which case the file wins.
 
 | Console action | Scenario effect | Identities |
 |---|---|---|
-| edit a cluster | an entry under `clusters:` | kept; new hosts and VMs get new serials |
-| Add cluster | `datacenters[].clusters` + 1 | existing unchanged |
-| Delete cluster | the key under `removed:` | the cluster's serials remain reserved |
-| Regenerate | none (an apply-time action) | the cluster's serials are retired and new ones minted, same seed |
-| Reset cluster seed | `seedEpoch` + 1 on the cluster | unchanged; every sample of the cluster changes |
-| generator / new global seed | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new seed replaces every identity |
-| latency, fault rules | `latency:`, `faults:` | none; the running vCenter is not rebuilt |
+| Add a cluster | `datacenters[].clusters` + N, and an entry under `clusters:` with its hosts, VMs per host and vSAN type | existing unchanged |
+| Add hosts, Change host hardware | the cluster's entry under `clusters:` | kept; new hosts and VMs get new serials |
+| Remove hosts | `removedHosts` on the cluster's entry: the host numbers left out | the other hosts keep their names and serials; a removed number is not reused |
+| Remove a cluster | the key under `removed:` | the cluster's serials remain reserved |
+| Replace everything with a new environment | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new registry: every identity is replaced (the same layout name and sizes build the same identities again) |
+| Storage | `nfs:` and `iscsi:` under the datacenter | unchanged datastores keep theirs |
+| Versions | `vcenterVersion`, `esxVersion`, a cluster's `esxVersion`, `hostVersions`, `forceNewerHosts` | none |
+| Slowness and faults | `conditions:` | none; the running vCenter is not rebuilt |
+
+`conditions:` is the console's one list of what is switched on. Each entry
+has a `kind` (`slow`, `error`, `missing`, `timeout`, `perfdown`), `which`
+requests it applies to (`perf`: every performance query; `one`: the queries
+of one `family`; `inv`: inventory requests on `/sdk`, slowness only; `method`:
+one other `/vsanHealth` method), optional `clusters`, `fixedMs` and `jitterMs`
+for slowness, and an optional `to` when it turns itself off. When the simulator
+starts, the file's own `faults:`, `latency:` and `statsPrimary: false` are
+turned into conditions, so the console lists and can turn off everything that
+is on. A scenario file may also write `conditions:` directly.
+
+The console no longer offers "Regenerate" or "Reset cluster seed"; `seedEpoch`
+on a cluster and `-regenerate` remain available to a scenario file.
 
 ## Product versions
 
@@ -298,8 +313,11 @@ A custom version supplies `version`, `build`, `apiVersion`, and `fullName`.
 When ESX matches a custom vCenter, it uses the same version, build, and API
 version; its ESXi product name is synthesized from the supplied values.
 Hosts newer than vCenter are rejected unless `forceNewerHosts: true` is set;
-the review lists each forced mismatch. Version changes rebuild the simulator
-at apply, preserve inventory identities, and end sessions.
+the console says how many hosts a choice would leave newer than vCenter and
+asks for a tick before it goes ahead. A version typed into the console that is
+not a preset gets a build number, API version and product name derived from
+the number: plausible strings, not ones a real release carries. Version
+changes rebuild the simulator, preserve inventory identities, and end sessions.
 
 ```yaml
 vcenterVersion: {preset: "9.0"}

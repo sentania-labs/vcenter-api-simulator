@@ -1,20 +1,19 @@
-// Package control is the simulator's live control plane: it owns the applied
-// scenario, the running simulated vCenter, the operator's pending draft and
-// the request log, and applies a draft by building a new vCenter next to the
-// old one and swapping them at a five-minute bucket boundary. The admin API
+// Package control is the simulator's live control plane: it owns the served
+// scenario, the running simulated vCenter, the request log, the list of
+// connected tools and the changes scheduled for later. The admin API
 // (package admin) is a thin JSON layer over it.
 //
 // Rules the console relies on:
 //
-//   - Nothing reaches the API by accident. Every edit goes to the draft;
-//     Apply is the only way a draft becomes the served topology.
-//   - A draft applies at the next five-minute bucket boundary unless the
-//     operator asks for "now".
-//   - Identities (registry serials) survive an apply for every entity the
-//     draft keeps. Regenerate retires a cluster's identities;
-//     a new seed replaces them all.
-//   - A telemetry-only change (latency, faults) swaps the knobs in place and
-//     leaves the running vCenter, its sessions and its history alone.
+//   - A change takes effect when it is asked for, one change at a time, or
+//     at a time later the same day. There is no shared draft and no lock:
+//     a scheduled change never stops another change from being made.
+//   - Identities (registry serials) survive a change for every entity the
+//     change keeps. Only "Replace everything" starts a new registry.
+//   - Slowness and faults (conditions) swap in place and leave the running
+//     vCenter, its sessions and its history alone.
+//   - Every screen reads what is true from here: whether a tool is
+//     connected, as whom, and if not, since when and why.
 //   - The admin plane is separate from the API plane and is never exposed on
 //     the API listeners.
 package control
@@ -30,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,7 +38,6 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/credentials"
-	"github.com/sentania/vcenter-api-simulator/internal/perf"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -73,10 +72,23 @@ type Options struct {
 	Version, Commit string
 	// Endpoint is the host name the API is advertised under.
 	Endpoint string
-	// APIAddrs and AdminAddr are the listeners, for display.
+	// PublicURL, when set, is the address tools should use, as one string
+	// (a deployment behind an ingress knows it; the simulator does not).
+	PublicURL string
+	// ReportURL is where the console sends people to report a request the
+	// simulator cannot answer.
+	ReportURL string
+	// APIAddrs and AdminAddr are the listeners.
 	APIAddrs  []string
 	AdminAddr string
 }
+
+// DefaultReportURL is the simulator project's "new issue" page.
+const DefaultReportURL = "https://github.com/sentania-labs/vcenter-api-simulator/issues/new"
+
+// DefaultUsername is the first vCenter account. The console's first-run
+// set-up gives it a password; nothing accepts it before then.
+const DefaultUsername = "administrator@vsphere.local"
 
 // running is one built vCenter.
 type running struct {
@@ -87,34 +99,10 @@ type running struct {
 	sim     *sim.Simulator
 }
 
-// Draft is the operator's pending change.
-type Draft struct {
-	Scenario    *scenario.Scenario
-	Regenerate  []string // cluster keys whose identities are replaced
-	Credentials *credentials.Snapshot
-	Scope       string
-	BasedOn     int
-	Origin      string // edit | generator | preset:<name>
-	Discarded   string // what a generated draft replaced
-	Created     time.Time
-}
-
-// Scheduled is a draft waiting for its bucket boundary.
-type Scheduled struct {
-	Draft *Draft
-	At    time.Time
-	timer *time.Timer
-}
-
-// TimelineEntry is one applied change.
+// TimelineEntry is one line of the history: something that was changed.
 type TimelineEntry struct {
-	At         time.Time `json:"at"`
-	Bucket     time.Time `json:"bucket"`
-	Version    int       `json:"version"`
-	Area       string    `json:"area"` // Topology | Telemetry | Service
-	Text       string    `json:"text"`
-	History    string    `json:"history"`
-	Identities string    `json:"identities"`
+	At   time.Time `json:"at"`
+	Text string    `json:"text"`
 }
 
 // Controller is the control plane.
@@ -127,19 +115,36 @@ type Controller struct {
 	paused atomic.Bool
 	Log    *activity.Log
 	auth   *credentials.Store
+	tools  *toolbook
 
-	mu        sync.Mutex // guards everything below
-	reg       *registry.Registry
-	base      *scenario.Scenario
-	scope     string
-	draft     *Draft
-	scheduled *Scheduled
-	timeline  []TimelineEntry
-	started   time.Time
-	pausedAt  time.Time // when the API last started or stopped serving
-	buildMs   int64
-	lastErr   string
-	lastErrAt time.Time
+	// Capture is the request capture, when the process has one. The
+	// Requests screen and Home read it.
+	Capture *querylog.Capture
+
+	// ConsolePassword changes the console's own password; the admin plane
+	// sets it. session is the caller's, which stays signed in.
+	ConsolePassword func(current, next, session string) error
+	// ConsoleManaged reports whether the console password comes from the
+	// deployment, so it cannot be changed here.
+	ConsoleManaged func() bool
+
+	mu       sync.Mutex // guards everything below
+	reg      *registry.Registry
+	base     *scenario.Scenario
+	timeline []TimelineEntry
+	started  time.Time
+	pausedAt time.Time // when the API last stopped serving
+	buildMs  int64
+	seq      int // ids of scheduled changes and conditions
+	sched    []*Scheduled
+	failure  *Failure
+	unsaved  string // why the state file could not be written, while it cannot
+	ended    []EndedCondition
+	expiry   *time.Timer
+
+	signMu    sync.Mutex // guards the two below; taken after mu when both are held, never the other way round
+	signins   map[string]time.Time
+	signinsAt time.Time // when signins was last written
 }
 
 // New builds the simulated vCenter and the control plane around it.
@@ -151,14 +156,18 @@ func New(opts Options) (*Controller, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	if opts.ReportURL == "" {
+		opts.ReportURL = DefaultReportURL
+	}
 	now := opts.Now
-	c := &Controller{opts: opts, cat: cat, now: func() time.Time { return now().UTC() }, base: opts.Scenario, scope: ScopeAll}
+	c := &Controller{opts: opts, cat: cat, now: func() time.Time { return now().UTC() }, base: opts.Scenario, signins: map[string]time.Time{}}
 	c.started = c.now()
+	c.tools = newToolbook()
 	if err := c.loadRuntimeSettings(); err != nil {
 		return nil, fmt.Errorf("runtime settings: %w", err)
 	}
+	c.loadSignins()
 	c.Log = activity.New(activity.DefaultSize, c.started)
-	c.Log.EmptyKind = func(f string) bool { fam, ok := cat.Families[f]; return ok && fam.Behaviour != catalog.Data }
 
 	sc := clone(opts.Scenario)
 	version := 1
@@ -166,11 +175,10 @@ func New(opts Options) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
+	fromFile := true
 	if st != nil {
 		c.timeline = st.Timeline
-		if st.Scope != "" {
-			c.scope = st.Scope
-		}
+		c.seq = st.Seq
 		if st.Source == opts.SourceHash && st.Scenario != nil {
 			restored, err := decodeScenarioJSON(st.Scenario, opts.Scenario)
 			var removed int
@@ -186,14 +194,16 @@ func New(opts Options) (*Controller, error) {
 			if removed > 0 {
 				log.Printf("control: recovered saved console state: removed %d dangling storage references", removed)
 			}
-			sc, version = restored, st.Version
+			sc, version, fromFile = restored, st.Version, false
 		} else {
-			// the scenario file changed since the console last applied: the
-			// file wins, and the version moves on
+			// the scenario file changed since the console last changed
+			// anything: the file wins
 			version = st.Version + 1
-			c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: version, Area: "Service",
-				Text: "Scenario file changed; started from the file", History: "preserved", Identities: "per registry"})
 		}
+	}
+	c.lift(sc)
+	if err := sc.Validate(); err != nil {
+		return nil, err
 	}
 	baseCredentials, err := c.credentials(sc)
 	if err != nil {
@@ -227,23 +237,24 @@ func New(opts Options) (*Controller, error) {
 		return nil, err
 	}
 	c.cur.Store(r)
-	if st == nil {
-		c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Bucket: bucket(c.now()), Version: version, Area: "Topology",
-			Text: fmt.Sprintf("Topology built: %s", countsLine(r.topo)), History: "seeded", Identities: "new registry"})
+	c.syncConditions(r)
+	cl, h, v, _ := r.topo.Counts()
+	started := fmt.Sprintf("Simulator started with %s, %s and %s.", plural(cl, "cluster"), plural(h, "host"), plural(v, "VM"))
+	if st != nil && fromFile {
+		started = "The scenario file was changed, so the simulator started again from the file. It has " + plural(cl, "cluster") + ", " + plural(h, "host") + " and " + plural(v, "VM") + "."
 	}
-	_ = c.persist()
+	c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Text: started})
+	if st != nil {
+		for _, s := range st.Scheduled {
+			c.timeline = append(c.timeline, TimelineEntry{At: c.now(), Text: fmt.Sprintf("Not done: the change scheduled for %s (%s) was dropped because the simulator restarted.", timeToken(s.At), lower1(s.Text))})
+		}
+	}
+	c.save()
+	c.armExpiry()
 	return c, nil
 }
 
 func (c *Controller) statePath() string { return filepath.Join(c.opts.DataDir, "console.json") }
-
-func countsLine(t *topology.Topology) string {
-	cl, h, v, d := t.Counts()
-	return fmt.Sprintf("%d clusters, %d hosts, %d VMs, %d devices", cl, h, v, d)
-}
-
-// bucket is the five-minute bucket a time falls in.
-func bucket(t time.Time) time.Time { return t.UTC().Truncate(perf.Interval) }
 
 // build generates a topology from sc against reg and starts a simulator.
 func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, version int) (*running, error) {
@@ -254,7 +265,7 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	}
 	s, err := sim.New(sim.Options{
 		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
-		Faults: sc.Faults, Latency: sc.Latency, Now: c.now, Certificate: c.opts.Certificate,
+		Faults: sc.Faults, Latency: sc.Latency, Conditions: sc.Conditions, Now: c.now, Certificate: c.opts.Certificate,
 	})
 	if err != nil {
 		return nil, err
@@ -263,11 +274,10 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	return &running{version: version, at: c.now(), sc: sc, topo: topo, sim: s}, nil
 }
 
-const DefaultUsername = "administrator@vsphere.local"
-const DefaultPassword = "VMware123!VMware123!"
-
-// credentials applies the explicit any-login opt-out and configured users
-// before falling back to the published built-in administrator account.
+// credentials are the accounts the deployment supplies: the scenario's
+// users and the flag or environment user. With none, and without any-login,
+// there is no account until the console's first-run set-up makes one: the
+// simulator has no published default password.
 func (c *Controller) credentials(sc *scenario.Scenario) (map[string]string, error) {
 	if c.opts.AnyLogin || sc.Auth.AnyLogin {
 		return map[string]string{}, nil
@@ -278,9 +288,6 @@ func (c *Controller) credentials(sc *scenario.Scenario) (map[string]string, erro
 	}
 	for name, password := range c.opts.Credentials {
 		creds[name] = password
-	}
-	if len(creds) == 0 {
-		creds[DefaultUsername] = DefaultPassword
 	}
 	return creds, nil
 }
@@ -300,11 +307,19 @@ func validateHostVersionTargets(sc *scenario.Scenario, topo *topology.Topology) 
 	return nil
 }
 
-func dropVanishedHostVersions(sc *scenario.Scenario, topo *topology.Topology) {
+// dropVanishedHostVersions removes per-host versions of hosts sc no longer
+// generates (a removed host or cluster).
+func dropVanishedHostVersions(sc *scenario.Scenario) {
+	if len(sc.HostVersions) == 0 {
+		return
+	}
 	hosts := map[string]bool{}
-	for _, cluster := range topo.Clusters() {
-		for _, host := range cluster.Hosts {
-			hosts[host.Key] = true
+	for _, key := range sc.ClusterKeys() {
+		gone := sc.RemovedHosts(key)
+		for n := 1; n <= sc.HostNumbers(key); n++ {
+			if !gone[n] {
+				hosts[fmt.Sprintf("%s/esx%02d", key, n)] = true
+			}
 		}
 	}
 	for key := range sc.HostVersions {
@@ -317,13 +332,21 @@ func dropVanishedHostVersions(sc *scenario.Scenario, topo *topology.Topology) {
 	}
 }
 
-// Close stops the running vCenter and any scheduled apply.
+// Close stops the running vCenter and every scheduled change.
 func (c *Controller) Close() {
 	c.mu.Lock()
-	if c.scheduled != nil && c.scheduled.timer != nil {
-		c.scheduled.timer.Stop()
+	for _, s := range c.sched {
+		if s.timer != nil {
+			s.timer.Stop()
+		}
+	}
+	if c.expiry != nil {
+		c.expiry.Stop()
 	}
 	c.mu.Unlock()
+	c.signMu.Lock()
+	c.saveSignins(true)
+	c.signMu.Unlock()
 	if r := c.cur.Load(); r != nil {
 		r.sim.Close()
 	}
@@ -332,83 +355,155 @@ func (c *Controller) Close() {
 // ---------------------------------------------------------------------------
 // the API plane
 
+// checkAgent is what the console's own "Check the address works" calls
+// itself. Its requests are answered and not recorded: it is not a tool.
+const checkAgent = "vcsimulator-console-check"
+
+func surfaceOf(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/vsanHealth"):
+		return activity.SurfaceVsan
+	case strings.HasPrefix(path, "/sdk"):
+		return activity.SurfaceSDK
+	case path == "/api" || strings.HasPrefix(path, "/api/") || path == "/rest" || strings.HasPrefix(path, "/rest/"):
+		return activity.SurfaceREST
+	}
+	return activity.SurfaceOther
+}
+
 // ServeHTTP is the API listeners' handler: it routes to the running vCenter,
-// records each request, and refuses the connection while paused.
+// records each request with the reason it was answered as it was, keeps the
+// list of connected tools, and refuses every connection while paused.
 func (c *Controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cur := c.cur.Load()
-	surface := ""
-	switch {
-	case strings.HasPrefix(r.URL.Path, "/vsanHealth"):
-		surface = "vsanHealth"
-	case strings.HasPrefix(r.URL.Path, "/sdk"):
-		surface = "sdk"
-	}
-	if surface == "" {
+	if r.UserAgent() == checkAgent {
+		if c.paused.Load() {
+			panic(http.ErrAbortHandler)
+		}
 		cur.sim.Handler.ServeHTTP(w, r)
 		return
 	}
 	start := c.now()
 	client, _, _ := net.SplitHostPort(r.RemoteAddr)
-	call := activity.Call{Time: start, Surface: surface, Client: client}
+	surface := surfaceOf(r.URL.Path)
+	call := activity.Call{Time: start, Surface: surface, Client: client, Agent: r.UserAgent()}
+	soapSurface := surface == activity.SurfaceSDK || surface == activity.SurfaceVsan
 	var body []byte
-	if r.Method == http.MethodPost {
+	if r.Method == http.MethodPost && r.Body != nil {
 		var err error
 		if body, err = io.ReadAll(io.LimitReader(r.Body, 32<<20)); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		call.Method = activity.SDKMethod(body)
+		if soapSurface {
+			call.Method = activity.SDKMethod(body)
+		}
 	}
+	soapOp := call.Method
 	if call.Method == "" {
-		call.Method = r.Method + " " + strings.TrimPrefix(r.URL.Path, "/")
+		call.Method = r.Method + " " + r.URL.Path
+	}
+	call.User = cur.sim.SessionUser(r)
+	signIn := false
+	switch {
+	case soapOp == "Login":
+		call.User, signIn = activity.LoginUser(body), true
+	case surface == activity.SurfaceREST && r.URL.Path == "/api/session" && r.Method == http.MethodPost:
+		call.User, _, _ = r.BasicAuth()
+		signIn = true
 	}
 	env := cur.sim.Env
-	if surface == "vsanHealth" {
+	if surface == activity.SurfaceVsan {
 		call.Family, call.Cluster = env.Target(body)
+	}
+	if soapSurface && len(body) > 0 {
 		safeBody := querylog.Redact(body)
 		call.Body = safeBody[:min(len(safeBody), activity.MaxBody)]
 	}
 	if c.paused.Load() {
-		call.Result, call.Status = activity.ResultRefused, 0
-		c.Log.Add(call)
-		panic(http.ErrAbortHandler) // drop the connection: the pack's cycle fails instead of reading empty data
+		call.Reason = activity.ReasonPaused
+		c.record(r, call, false)
+		panic(http.ErrAbortHandler) // drop the connection: a collection fails instead of reading empty data
 	}
-	cap := activity.NewCapture(w, call.Method == "VsanPerfQueryPerf")
-	cur.sim.Handler.ServeHTTP(cap, r)
+	capture := activity.NewCapture(w, soapOp == "VsanPerfQueryPerf")
+	cur.sim.Handler.ServeHTTP(capture, r)
 	call.DurationMs = float64(c.now().Sub(start)) / float64(time.Millisecond)
-	call.Bytes, call.Status = cap.Bytes, cap.Status
-	call.Entities, call.Empty = cap.Entities, cap.Empty
-	call.Result = activity.ResultOK
-	typ, msg, faulted := cap.Fault()
-	if faulted || cap.Status >= 400 {
+	call.Bytes, call.Status = capture.Bytes, capture.Status
+	call.Entities, call.Empty = capture.Entities, capture.Empty
+	typ, msg, faulted := capture.Fault()
+	if faulted || capture.Status >= 400 {
 		// A server fault can echo input. Do not keep its text when the request
 		// contained credentials, a session value, or an unparseable body.
 		if len(body) > 0 && querylog.Redact(body) != string(body) {
 			msg = ""
 		}
-		call.Result, call.Fault, call.Message = activity.ResultFault, typ, msg
-		if typ == "NotAuthenticated" || typ == "InvalidLogin" {
-			call.Result = activity.ResultDenied
-		}
+		call.Fault, call.Message = typ, msg
 	}
-	if surface == "vsanHealth" && call.Cluster != "" {
-		var inj *scenario.Fault
-		if call.Family != "" && call.Method == "VsanPerfQueryPerf" {
-			inj = env.Knobs.FamilyFault(call.Family, call.Cluster)
-		} else {
-			inj = env.Knobs.MethodFault(call.Method, call.Cluster)
-		}
-		// only the fault the rule injects counts as injected: an unauthenticated
-		// request is refused before any rule is consulted
-		if inj != nil && (inj.Fault == scenario.FaultTimeout || (faulted && injectedType(inj.Fault) == typ)) {
-			call.Result = activity.ResultInjected
+	facts := activity.Facts{Surface: surface, HTTPMethod: r.Method, Path: r.URL.Path, Method: soapOp, Status: capture.Status,
+		FaultType: typ, Faulted: faulted, ObjectType: activity.ObjectType(body), Entities: capture.Entities, Empty: capture.Empty}
+	if surface == activity.SurfaceVsan && call.Cluster != "" {
+		// only the fault a rule injects counts as switched on: a request that
+		// is not signed in is refused before any rule is consulted
+		switchedOn := func(inj *scenario.Fault) bool {
+			if inj == nil || !(inj.Fault == scenario.FaultTimeout || (faulted && injectedType(inj.Fault) == typ)) {
+				return false
+			}
+			facts.Injected, call.Cause = true, inj.Cause
 			if call.Fault == "" {
 				call.Fault = inj.Fault
 			}
+			return true
+		}
+		if soapOp == "VsanPerfQueryPerf" {
+			// one query can name several kinds; the fault may be on any of them
+			for _, family := range env.Families(body) {
+				if switchedOn(env.Knobs.FamilyFault(family, call.Cluster)) {
+					call.Family = family
+					break
+				}
+			}
+		} else {
+			switchedOn(env.Knobs.MethodFault(soapOp, call.Cluster))
+		}
+		if !facts.Injected && faulted && typ == "NotFound" {
+			if id, off := perfOffCause(cur.sc, call.Cluster, start); off {
+				facts.PerfOff, call.Cause = true, id
+			}
 		}
 	}
+	call.Reason = activity.Classify(facts)
+	c.record(r, call, signIn)
+}
+
+// record files one finished request everywhere that needs to know of it.
+func (c *Controller) record(r *http.Request, call activity.Call, signIn bool) {
 	c.Log.Add(call)
+	querylog.Note(r, call.Reason == activity.ReasonUnknown, call.Client, call.Agent)
+	back := c.tools.note(call, signIn)
+	if signIn && call.Reason == activity.ReasonAnswered && call.User != "" {
+		c.noteSignin(call.User, call.Time)
+	}
+	if back != "" {
+		// not on the request's own time: a change in progress holds the lock
+		go func() {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			c.addHistory(fmt.Sprintf("The tool at %s reconnected.", back))
+			c.save()
+		}()
+	}
+}
+
+// perfOffCause finds the condition that has the performance service of a
+// cluster switched off.
+func perfOffCause(sc *scenario.Scenario, cluster string, at time.Time) (int, bool) {
+	for _, cond := range sc.Conditions {
+		if cond.Kind == scenario.CondPerfDown && cond.Selects(cluster) && cond.ActiveAt(at) {
+			return cond.ID, true
+		}
+	}
+	return 0, false
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +521,7 @@ func clone(sc *scenario.Scenario) *scenario.Scenario {
 	return &out
 }
 
-// Strip returns a copy without the parts the console never edits or shows:
+// Strip returns a copy without the parts the console never shows or saves:
 // the users (passwords) and the certificate paths.
 func Strip(sc *scenario.Scenario) *scenario.Scenario {
 	out := clone(sc)
@@ -446,53 +541,42 @@ func decodeScenarioJSON(b []byte, base *scenario.Scenario) (*scenario.Scenario, 
 	return &sc, nil
 }
 
-// normal is a canonical form for comparing scenarios: the JSON of the
-// stripped copy.
-func normal(sc *scenario.Scenario, parts ...string) string {
+// topologyForm is a canonical form of everything that needs a new vCenter
+// when it changes. Faults, latency and conditions are left out: they swap
+// in place.
+func topologyForm(sc *scenario.Scenario) string {
 	s := Strip(sc)
-	if len(parts) == 0 {
-		b, _ := json.Marshal(s)
-		return string(b)
-	}
-	var out []string
-	for _, p := range parts {
-		var v any
-		switch p {
-		case "topology":
-			v = struct {
-				Seed, Tel       string
-				DC              []scenario.Datacenter
-				Def             scenario.ClusterSpec
-				Vary            scenario.Vary
-				Cl              []scenario.ClusterOverride
-				Rm              []string
-				VCenter         scenario.Version
-				ESX             scenario.Version
-				HostVersions    map[string]scenario.Version
-				ForceNewerHosts bool
-			}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed, s.VCenter, s.ESX, s.HostVersions, s.ForceNewerHosts}
-		case "telemetry":
-			v = struct {
-				F []scenario.Fault
-				L scenario.Latency
-			}{s.Faults, s.Latency}
-		}
-		b, _ := json.Marshal(v)
-		out = append(out, string(b))
-	}
-	return strings.Join(out, "|")
+	b, _ := json.Marshal(struct {
+		Seed, Tel       string
+		DC              []scenario.Datacenter
+		Def             scenario.ClusterSpec
+		Vary            scenario.Vary
+		Cl              []scenario.ClusterOverride
+		Rm              []string
+		VCenter         scenario.Version
+		ESX             scenario.Version
+		HostVersions    map[string]scenario.Version
+		ForceNewerHosts bool
+	}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed, s.VCenter, s.ESX, s.HostVersions, s.ForceNewerHosts})
+	return string(b)
 }
 
 // ---------------------------------------------------------------------------
 // persistence
 
+type persistedSchedule struct {
+	At   time.Time `json:"at"`
+	Text string    `json:"text"`
+}
+
 type persisted struct {
-	Version   int             `json:"version"`
-	AppliedAt time.Time       `json:"appliedAt"`
-	Source    string          `json:"source"`
-	Scenario  json.RawMessage `json:"scenario"`
-	Scope     string          `json:"scope"`
-	Timeline  []TimelineEntry `json:"timeline"`
+	Version   int                 `json:"version"`
+	AppliedAt time.Time           `json:"appliedAt"`
+	Source    string              `json:"source"`
+	Scenario  json.RawMessage     `json:"scenario"`
+	Seq       int                 `json:"seq,omitempty"`
+	Scheduled []persistedSchedule `json:"scheduled,omitempty"`
+	Timeline  []TimelineEntry     `json:"timeline"`
 }
 
 func loadState(path string) (*persisted, error) {
@@ -510,8 +594,10 @@ func loadState(path string) (*persisted, error) {
 	return &p, nil
 }
 
-// persist writes the applied scenario and the timeline atomically. Called
-// with c.mu held or from New.
+// persist writes the served scenario and the history atomically. Called with
+// c.mu held or from New. Scheduled changes are saved as their time and words
+// only: they do not survive a restart, and the history says so when one
+// happens.
 func (c *Controller) persist() error {
 	r := c.cur.Load()
 	b, err := json.Marshal(Strip(r.sc))
@@ -522,8 +608,12 @@ func (c *Controller) persist() error {
 	if len(tl) > 500 {
 		tl = tl[len(tl)-500:]
 	}
+	var waiting []persistedSchedule
+	for _, s := range c.sched {
+		waiting = append(waiting, persistedSchedule{At: s.At, Text: s.Text})
+	}
 	out, err := json.MarshalIndent(persisted{Version: r.version, AppliedAt: r.at, Source: c.opts.SourceHash,
-		Scenario: b, Scope: c.scope, Timeline: tl}, "", " ")
+		Scenario: b, Seq: c.seq, Scheduled: waiting, Timeline: tl}, "", " ")
 	if err != nil {
 		return err
 	}
@@ -537,7 +627,7 @@ func (c *Controller) persist() error {
 	return os.Rename(tmp, c.statePath())
 }
 
-// injectedType is the SOAP fault type a rule's fault kind produces.
+// injectedType is the SOAP fault type a fault kind produces.
 func injectedType(kind string) string {
 	switch kind {
 	case scenario.FaultInvalidArgument:
@@ -549,3 +639,94 @@ func injectedType(kind string) string {
 	}
 	return ""
 }
+
+// ---------------------------------------------------------------------------
+// last sign-in of each user
+
+func (c *Controller) signinsPath() string { return filepath.Join(c.opts.DataDir, "last-signin.json") }
+
+func (c *Controller) loadSignins() {
+	b, err := os.ReadFile(c.signinsPath())
+	if err != nil {
+		return
+	}
+	var m map[string]time.Time
+	if json.Unmarshal(b, &m) == nil && m != nil {
+		c.signins = m
+	}
+}
+
+// noteSignin remembers when a user last signed in. The file is written at
+// most once a minute and when the simulator stops.
+func (c *Controller) noteSignin(user string, at time.Time) {
+	c.signMu.Lock()
+	defer c.signMu.Unlock()
+	c.signins[user] = at
+	c.saveSignins(false)
+}
+
+// lastSignin is when a user last signed in.
+func (c *Controller) lastSignin(user string) (time.Time, bool) {
+	c.signMu.Lock()
+	defer c.signMu.Unlock()
+	t, ok := c.signins[user]
+	return t, ok
+}
+
+// saveSignins writes the file; signMu is held.
+func (c *Controller) saveSignins(force bool) {
+	if !force && c.now().Sub(c.signinsAt) < time.Minute {
+		return
+	}
+	c.signinsAt = c.now()
+	b, err := json.Marshal(c.signins)
+	if err != nil || os.MkdirAll(c.opts.DataDir, 0o700) != nil {
+		return
+	}
+	tmp := c.signinsPath() + ".tmp"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		_ = os.Rename(tmp, c.signinsPath())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// start-up summary
+
+// Banner is the start-up summary, one line per item.
+func (c *Controller) Banner(took time.Duration) []string {
+	r := c.applied()
+	cl, h, v, d := r.topo.Counts()
+	out := []string{
+		fmt.Sprintf("vCenter %s instanceUuid=%s seed=%q registry=%d ids built in %s", r.topo.VCenterVersion.Version, r.topo.InstanceUUID, r.sc.Seed, c.reg.Len(), took.Round(time.Millisecond)),
+		fmt.Sprintf("%d clusters, %d hosts, %d vms, %d devices", cl, h, v, d),
+	}
+	for _, ref := range r.sim.Clusters {
+		k := ref.Cluster
+		out = append(out, fmt.Sprintf("%s (%s) vsan uuid=%s hosts=%d vms=%d dedup=%v", k.Key, ref.Ref.Value, k.VsanUUID, len(k.Hosts), len(k.VMs), k.Dedup))
+	}
+	return out
+}
+
+// LoginUsers lists the accepted user names. anyone is true when every user
+// name and password is accepted.
+func (c *Controller) LoginUsers() (users []string, anyone bool) {
+	snapshot := c.auth.Snapshot()
+	if snapshot.AnyLogin {
+		return nil, true
+	}
+	for _, user := range snapshot.Users() {
+		users = append(users, user.Name)
+	}
+	sort.Strings(users)
+	return users, false
+}
+
+// applied is the running vCenter; callers hold c.mu or only read.
+func (c *Controller) applied() *running { return c.cur.Load() }
+
+// Invalid wraps a message the operator can fix (a 422, not a 500).
+type Invalid struct{ Msg string }
+
+func (e *Invalid) Error() string { return e.Msg }
+
+func invalid(format string, a ...any) error { return &Invalid{fmt.Sprintf(format, a...)} }

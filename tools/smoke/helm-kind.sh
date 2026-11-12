@@ -66,14 +66,17 @@ fi
 kind load docker-image --name "$cluster" "$image"
 kubectl --context "kind-$cluster" create namespace "$ns" --dry-run=client -o yaml | kubectl --context "kind-$cluster" apply -f -
 
-echo "helm-kind: 1/4 install with default values (generated certificate on a PVC, open login)"
+# The simulator has no default password, so the first install supplies a
+# placeholder account through the chart, as a deployment would.
+echo "helm-kind: 1/4 install with a generated certificate on a PVC and a placeholder login"
 h upgrade --install "$release" "$chart" --wait --timeout 180s \
   --set image.repository="${image%%:*}" --set image.tag="${image##*:}" \
-  --set image.pullPolicy=Never --set hostname=vcsim.example.test
+  --set image.pullPolicy=Never --set hostname=vcsim.example.test \
+  --set credentials.enabled=true --set credentials.username=first-operator --set credentials.password=first-placeholder
 wait_ready
 k get pod,svc,pvc -l app.kubernetes.io/instance="$release"
 forward
-smoke
+smoke -User first-operator -Password first-placeholder
 fp1="$(fingerprint)"
 echo "helm-kind:   certificate $fp1"
 
@@ -84,7 +87,7 @@ forward
 fp2="$(fingerprint)"
 echo "helm-kind:   certificate $fp2"
 [ "$fp1" = "$fp2" ] || fail "certificate changed across a restart: $fp1 -> $fp2"
-smoke >/dev/null && echo "helm-kind:   smoke PASS after restart"
+smoke -User first-operator -Password first-placeholder >/dev/null && echo "helm-kind:   smoke PASS after restart"
 
 echo "helm-kind: 3/4 upgrade: restricted login and a CA-issued certificate from tls.existingSecret"
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 30 -subj '/CN=vcsim smoke CA' \

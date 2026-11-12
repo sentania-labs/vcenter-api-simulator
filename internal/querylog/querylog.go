@@ -3,6 +3,7 @@ package querylog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"io"
@@ -28,6 +29,8 @@ type record struct {
 	PathTruncated       bool      `json:"pathTruncated,omitempty"`
 	Fault               string    `json:"fault,omitempty"`
 	Unanswered          bool      `json:"unanswered,omitempty"`
+	Client              string    `json:"client,omitempty"`
+	Agent               string    `json:"agent,omitempty"`
 	Status              int       `json:"status"`
 	Bytes               int       `json:"bytes"`
 	DurationMS          float64   `json:"durationMs"`
@@ -83,6 +86,8 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, enabled fu
 	start := time.Now()
 	rw := &response{ResponseWriter: w}
 	rec := record{Time: start.UTC(), Path: r.URL.Path, Method: r.Method}
+	verdict := &noted{}
+	r = r.WithContext(context.WithValue(r.Context(), notedKey{}, verdict))
 	defer func() {
 		if rw.status == 0 {
 			rw.status = http.StatusOK
@@ -92,6 +97,11 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, enabled fu
 		rec.DurationMS = float64(time.Since(start)) / float64(time.Millisecond)
 		rec.Fault = fault(rw.head)
 		rec.Unanswered = rw.status == 404 || rw.status == 405 || isUnansweredFault(rec.Fault) || (rw.status >= 500 && rec.Fault == "")
+		if verdict.set {
+			// the handler knows why it answered as it did: a refused sign-in,
+			// a deliberate refusal and a switched-on fault are not unanswered
+			rec.Unanswered, rec.Client, rec.Agent = verdict.unanswered, verdict.client, verdict.agent
+		}
 		save(rec)
 	}()
 	if r.Body != nil {
@@ -111,6 +121,22 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, enabled fu
 }
 
 var sensitiveWords = []string{"password", "passwd", "secret", "token", "cookie", "ticket", "credential", "authorization", "session", "hash", "assertion", "privatekey", "licensekey", "signedentitlement"}
+
+type notedKey struct{}
+
+type noted struct {
+	set, unanswered bool
+	client, agent   string
+}
+
+// Note tells the capture wrapped around a handler whether the request it is
+// serving went unanswered (the simulator has no answer for it) and which
+// tool sent it. Without a note the capture judges by status and fault alone.
+func Note(r *http.Request, unanswered bool, client, agent string) {
+	if v, ok := r.Context().Value(notedKey{}).(*noted); ok {
+		v.set, v.unanswered, v.client, v.agent = true, unanswered, client, agent
+	}
+}
 
 // sensitive recognizes credential-bearing elements and attributes regardless
 // of case and namespace. Unknown or malformed bodies are omitted entirely.

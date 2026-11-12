@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -88,6 +89,29 @@ type Cluster struct {
 	Hosts         []*Host
 	VMs           []*VM
 	Spec          scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
+
+	// perfOff is the console's "performance service switched off" switch.
+	// It is a pointer so that a copy of the cluster shares it, and atomic
+	// because the console flips it while requests are being answered.
+	perfOff *atomic.Bool
+}
+
+// PrimaryOnline reports whether the cluster's vSAN performance service
+// answers: the scenario's statsPrimary, unless the console switched the
+// service off.
+func (c *Cluster) PrimaryOnline() bool {
+	if c.perfOff != nil && c.perfOff.Load() {
+		return false
+	}
+	return c.Spec.StatsPrimary == nil || *c.Spec.StatsPrimary
+}
+
+// SetPerfOff switches the cluster's performance service off (true) or back
+// on while the simulator runs. It changes no identity and no history.
+func (c *Cluster) SetPerfOff(off bool) {
+	if c.perfOff != nil {
+		c.perfOff.Store(off)
+	}
 }
 
 // VsanCapacity and VsanUsed are shared by datastore and vSAN capacity reads.
@@ -323,6 +347,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		Dedup:         *spec.Dedup && spec.Architecture != "osa",
 		Compression:   *spec.Compression && spec.Architecture != "osa",
 		Spec:          spec,
+		perfOff:       new(atomic.Bool),
 	}
 	if e := s.SeedEpoch(key); e > 0 {
 		cl.TelemetrySeed = fmt.Sprintf("%s/%s#%d", telemetrySeed, key, e)
@@ -338,12 +363,18 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 	} else {
 		cl.Datastore = fmt.Sprintf("vsanDatastore (%d)", n-1)
 	}
+	removed := s.RemovedHosts(key)
 	for hi := 1; hi <= spec.Hosts; hi++ {
+		if removed[hi] {
+			// a host the console removed by name: its number is not reused
+			continue
+		}
 		host := generateHost(r, cl, hi)
+		host.Index = len(cl.Hosts)
 		host.Version, _ = s.HostVersion(cl.Key, host.Key)
 		cl.Hosts = append(cl.Hosts, host)
 	}
-	nvms := spec.Hosts * scenario.Int(spec.VMs.PerHost)
+	nvms := len(cl.Hosts) * scenario.Int(spec.VMs.PerHost)
 	for vi := 1; vi <= nvms; vi++ {
 		cl.VMs = append(cl.VMs, generateVM(r, cl, vi))
 	}

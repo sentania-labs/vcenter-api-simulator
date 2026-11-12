@@ -13,7 +13,7 @@ body {
   font: 14px/1.5 var(--font-sans);
 }
 
-a { color: var(--accent); }
+a { color: var(--link); }
 
 :focus-visible {
   outline: 2px solid var(--focus);
@@ -80,7 +80,7 @@ a { color: var(--accent); }
   font-size: 13px;
   padding: 6px 9px;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--ink-subtle);
   border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--ink);

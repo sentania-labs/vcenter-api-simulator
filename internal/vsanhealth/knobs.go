@@ -31,9 +31,10 @@ import (
 type Knobs struct {
 	now func() time.Time
 
-	cfg     sync.RWMutex // guards faults and latency, which Set replaces live
+	cfg     sync.RWMutex // guards faults, latency and conds, which Set replaces live
 	faults  []scenario.Fault
 	latency scenario.Latency
+	conds   []scenario.Condition
 
 	mu  sync.Mutex
 	rng *rand.Rand
@@ -47,14 +48,36 @@ func (k *Knobs) Set(faults []scenario.Fault, latency scenario.Latency) {
 	k.cfg.Unlock()
 }
 
-// SDKDelay is the /sdk latency setting, if any.
+// SetConditions replaces the console's conditions while the service runs.
+func (k *Knobs) SetConditions(conds []scenario.Condition) {
+	k.cfg.Lock()
+	k.conds = append([]scenario.Condition(nil), conds...)
+	k.cfg.Unlock()
+}
+
+// SDKDelay is the /sdk latency in force, if any: the scenario's setting
+// plus every inventory slowness condition that is on.
 func (k *Knobs) SDKDelay() *scenario.Delay {
 	if k == nil {
 		return nil
 	}
+	now := k.now().UTC()
 	k.cfg.RLock()
 	defer k.cfg.RUnlock()
-	return k.latency.SDK
+	var d scenario.Delay
+	if k.latency.SDK != nil {
+		d = *k.latency.SDK
+	}
+	for _, c := range k.conds {
+		if c.Kind == scenario.CondSlow && c.Which == scenario.WhichInv && c.ActiveAt(now) {
+			d.FixedMs += c.FixedMs
+			d.JitterMs += c.JitterMs
+		}
+	}
+	if d.FixedMs == 0 && d.JitterMs == 0 {
+		return nil
+	}
+	return &d
 }
 
 // NewKnobs builds the knobs from the scenario sections.
@@ -65,13 +88,45 @@ func NewKnobs(faults []scenario.Fault, latency scenario.Latency, now func() time
 // FamilyFault returns the fault to inject for a wildcard query of family
 // on cluster key, if one is active now.
 func (k *Knobs) FamilyFault(family, cluster string) *scenario.Fault {
-	return k.active(func(f scenario.Fault) bool { return f.Family == family }, cluster)
+	if f := k.active(func(f scenario.Fault) bool { return f.Family == family }, cluster); f != nil {
+		return f
+	}
+	return k.condFault(cluster, func(c scenario.Condition) bool {
+		return c.Which == scenario.WhichPerf || (c.Which == scenario.WhichOne && c.Family == family)
+	}, family, "")
 }
 
 // MethodFault returns the fault to inject for a method on cluster key, if
 // one is active now.
 func (k *Knobs) MethodFault(method, cluster string) *scenario.Fault {
-	return k.active(func(f scenario.Fault) bool { return f.Method == method }, cluster)
+	if f := k.active(func(f scenario.Fault) bool { return f.Method == method }, cluster); f != nil {
+		return f
+	}
+	return k.condFault(cluster, func(c scenario.Condition) bool {
+		return c.Which == scenario.WhichMethod && c.Method == method
+	}, "", method)
+}
+
+// condFault is the fault of the first error, missing or timeout condition
+// that is on for the cluster and matches. Its Cause names the condition.
+func (k *Knobs) condFault(cluster string, match func(scenario.Condition) bool, family, method string) *scenario.Fault {
+	if k == nil {
+		return nil
+	}
+	now := k.now().UTC()
+	k.cfg.RLock()
+	defer k.cfg.RUnlock()
+	for _, c := range k.conds {
+		kind := c.FaultKind()
+		if kind == "" || c.Kind == scenario.CondSlow || c.Kind == scenario.CondPerfDown {
+			continue
+		}
+		if !match(c) || !c.Selects(cluster) || !c.ActiveAt(now) {
+			continue
+		}
+		return &scenario.Fault{Family: family, Method: method, Fault: kind, Cause: c.ID}
+	}
+	return nil
 }
 
 func (k *Knobs) active(match func(scenario.Fault) bool, cluster string) *scenario.Fault {
@@ -120,17 +175,30 @@ func selects(keys []string, cluster string) bool {
 
 // delay is the family's latency: the per-family entry, else the perfQuery
 // default, else zero.
-func (k *Knobs) delay(family string) time.Duration {
+func (k *Knobs) delay(family, cluster string) time.Duration {
+	now := k.now().UTC()
 	k.cfg.RLock()
 	d, ok := k.latency.Families[family]
-	if !ok {
-		if k.latency.PerfQuery == nil {
-			k.cfg.RUnlock()
-			return 0
-		}
+	if !ok && k.latency.PerfQuery != nil {
 		d = *k.latency.PerfQuery
 	}
+	for _, c := range k.conds {
+		if c.Kind != scenario.CondSlow || !c.ActiveAt(now) {
+			continue
+		}
+		if c.Which == scenario.WhichPerf || (c.Which == scenario.WhichOne && c.Family == family) {
+			// a condition narrowed to clusters applies only when the
+			// request names one of them
+			if len(c.Clusters) == 0 || (cluster != "" && c.Selects(cluster)) {
+				d.FixedMs += c.FixedMs
+				d.JitterMs += c.JitterMs
+			}
+		}
+	}
 	k.cfg.RUnlock()
+	if d.FixedMs == 0 && d.JitterMs == 0 {
+		return 0
+	}
 	k.mu.Lock()
 	r := k.rng.Float64()
 	k.mu.Unlock()
@@ -190,6 +258,15 @@ func (e *Env) Target(body []byte) (family, cluster string) {
 	return family, cluster
 }
 
+// Families lists every entity family a performance query names, in order.
+func (e *Env) Families(body []byte) []string {
+	var out []string
+	for _, m := range familyRe.FindAllSubmatch(body, -1) {
+		out = append(out, string(m[1]))
+	}
+	return out
+}
+
 // Hold returns how long a /vsanHealth request must wait before dispatch:
 // the family's latency for a perf query, plus TimeoutHold when a timeout
 // fault is active for the family or method on the targeted cluster.
@@ -206,7 +283,7 @@ func (e *Env) Hold(body []byte) time.Duration {
 	family, cluster := e.Target(body)
 	var hold time.Duration
 	if method == "VsanPerfQueryPerf" {
-		hold += k.delay(family)
+		hold += k.delay(family, cluster)
 		if cluster != "" {
 			if f := k.FamilyFault(family, cluster); f != nil && f.Fault == scenario.FaultTimeout {
 				hold += TimeoutHold

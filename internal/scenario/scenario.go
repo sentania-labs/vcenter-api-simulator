@@ -57,6 +57,10 @@ type Scenario struct {
 	TLS             TLS                `yaml:"tls" json:"tls,omitempty"`
 	Faults          []Fault            `yaml:"faults" json:"faults,omitempty"`
 	Latency         Latency            `yaml:"latency" json:"latency,omitempty"`
+	// Conditions are the slowness and faults the console switched on. The
+	// console also turns Faults, Latency and statsPrimary: false into
+	// conditions when it starts, so there is one list of what is on.
+	Conditions []Condition `yaml:"conditions,omitempty" json:"conditions,omitempty"`
 }
 
 // Datacenter generates Clusters clusters named cluster-01, cluster-02, ...
@@ -231,9 +235,13 @@ type ClusterOverride struct {
 	// SeedEpoch, when above zero, gives the cluster its own telemetry seed
 	// (the console's Reset cluster seed): every synthetic sample and the
 	// whole history of this cluster change, no identity does.
-	SeedEpoch   int     `yaml:"seedEpoch,omitempty" json:"seedEpoch,omitempty"`
-	ESX         Version `yaml:"esxVersion,omitempty" json:"esxVersion,omitempty"`
-	ClusterSpec `yaml:",inline" json:",omitempty"`
+	SeedEpoch int     `yaml:"seedEpoch,omitempty" json:"seedEpoch,omitempty"`
+	ESX       Version `yaml:"esxVersion,omitempty" json:"esxVersion,omitempty"`
+	// RemovedHosts lists host numbers (1 is esx01) the cluster leaves out
+	// (the console's Remove hosts). The numbers of the other hosts do not
+	// shift, and a removed number is not given to a host added later.
+	RemovedHosts []int `yaml:"removedHosts,omitempty" json:"removedHosts,omitempty"`
+	ClusterSpec  `yaml:",inline" json:",omitempty"`
 }
 
 // Auth lists accepted users. AnyLogin explicitly permits arbitrary credentials.
@@ -275,6 +283,9 @@ type Fault struct {
 	Fault    string     `yaml:"fault" json:"fault,omitempty"`
 	From     *time.Time `yaml:"from" json:"from,omitempty"`
 	To       *time.Time `yaml:"to" json:"to,omitempty"`
+	// Cause is set on a fault the simulator made up from a Condition: the
+	// condition's id. It is never read from or written to a file.
+	Cause int `yaml:"-" json:"-"`
 }
 
 // Fault kinds.
@@ -531,6 +542,22 @@ func (s *Scenario) Validate() error {
 			return err
 		}
 	}
+	for _, c := range s.Clusters {
+		if len(c.RemovedHosts) == 0 {
+			continue
+		}
+		total := s.hostNumbers(c.Key)
+		gone := map[int]bool{}
+		for _, n := range c.RemovedHosts {
+			if n < 1 || n > total || gone[n] {
+				return fmt.Errorf("scenario: clusters[%s]: removedHosts: %d is not a host of the cluster, or is listed twice", c.Key, n)
+			}
+			gone[n] = true
+		}
+		if total-len(gone) < MinHosts {
+			return fmt.Errorf("scenario: clusters[%s]: removedHosts leaves fewer than %d hosts (vSAN needs three hosts)", c.Key, MinHosts)
+		}
+	}
 	for _, v := range s.Vary.Hosts {
 		if v < MinHosts {
 			return fmt.Errorf("scenario: vary.hosts values must be at least %d (vSAN needs three hosts)", MinHosts)
@@ -553,7 +580,6 @@ func (s *Scenario) Validate() error {
 	}
 	// Host faults must refer to a host the resolved topology will actually
 	// create. The first draw is the host count, using the same seed as topology.
-	r := registry.InMemory(s.Seed)
 	hostExists := func(key string) bool {
 		i := strings.LastIndexByte(key, '/')
 		if i < 0 || !validStorageHost(key[i+1:]) {
@@ -564,7 +590,7 @@ func (s *Scenario) Validate() error {
 			return false
 		}
 		cluster := key[:i]
-		return ordinal <= s.Resolve(cluster, ClusterSpec{Hosts: s.Vary.DrawHosts(DrawSource(r.Sub(cluster)))}).Hosts
+		return ordinal <= s.hostNumbers(cluster) && !s.RemovedHosts(cluster)[ordinal]
 	}
 	for _, dc := range s.Datacenters {
 		for _, n := range dc.NFS {
@@ -633,6 +659,9 @@ func (s *Scenario) Validate() error {
 		if f.From != nil && f.To != nil && f.To.Before(*f.From) {
 			return fmt.Errorf("scenario: faults[%d]: to is before from", i)
 		}
+	}
+	if err := s.validateConditions(cat, generated); err != nil {
+		return err
 	}
 	for name, d := range map[string]*Delay{"perfQuery": s.Latency.PerfQuery, "sdk": s.Latency.SDK} {
 		if d != nil && (d.FixedMs < 0 || d.JitterMs < 0) {
@@ -769,6 +798,31 @@ func (s *Scenario) Credentials() (map[string]string, error) {
 		out[u.Name] = p
 	}
 	return out, nil
+}
+
+// hostNumbers is how many host numbers a cluster uses: its resolved host
+// count, removed hosts included. The first draw from the cluster's own seed
+// is the host count, as in package topology.
+func (s *Scenario) hostNumbers(key string) int {
+	r := registry.InMemory(s.Seed)
+	return s.Resolve(key, ClusterSpec{Hosts: s.Vary.DrawHosts(DrawSource(r.Sub(key)))}).Hosts
+}
+
+// HostNumbers is the exported form of hostNumbers, for the console.
+func (s *Scenario) HostNumbers(key string) int { return s.hostNumbers(key) }
+
+// RemovedHosts is the set of host numbers a cluster leaves out.
+func (s *Scenario) RemovedHosts(key string) map[int]bool {
+	for _, c := range s.Clusters {
+		if c.Key == key && len(c.RemovedHosts) > 0 {
+			out := make(map[int]bool, len(c.RemovedHosts))
+			for _, n := range c.RemovedHosts {
+				out[n] = true
+			}
+			return out
+		}
+	}
+	return nil
 }
 
 // ClusterKeys lists every cluster the scenario generates, in order.

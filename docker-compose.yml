@@ -25,9 +25,10 @@ services:
       # start, for example the hostname collectors use to reach this machine.
       - -tls-names=${VCSIM_TLS_NAMES:-}
     environment:
-      # Leave both unset to use the published administrator default.
-      # Set both to restrict login to one pair; placeholders only, never real
-      # vCenter credentials.
+      # Set both to supply one account; placeholders only, never real
+      # vCenter credentials. Leave both unset and the control console's
+      # first-run set-up chooses the password of administrator@vsphere.local;
+      # nothing can sign in before then (there is no default password).
       VCSIM_USERNAME: ${VCSIM_USERNAME:-}
       VCSIM_PASSWORD: ${VCSIM_PASSWORD:-}
       # administrator (default) or read-only, for that user.

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Settings are the operator's choices; a saved choice overrides startup defaults.
@@ -24,9 +25,15 @@ type State struct {
 	Settings       Settings `json:"settings"`
 	FullHeld       int      `json:"fullHeld"`
 	UnansweredHeld int      `json:"unansweredHeld"`
-	Path           string   `json:"path"`
-	FileBytes      int64    `json:"fileBytes"`
-	Error          string   `json:"error,omitempty"`
+	// UnansweredKinds counts the different requests among the unanswered
+	// ones (by path and operation).
+	UnansweredKinds int `json:"unansweredKinds"`
+	// FullSince is when full capture was last switched on, if it is on.
+	FullSince *time.Time `json:"fullSince,omitempty"`
+	// Path is the full log's file; the console does not show it.
+	Path      string `json:"-"`
+	FileBytes int64  `json:"fileBytes"`
+	Error     string `json:"error,omitempty"`
 }
 
 const capacity = 1000
@@ -37,6 +44,7 @@ type Capture struct {
 	settingsPath, path string
 	stdout             io.Writer
 	full, unanswered   []record
+	fullSince          time.Time
 	lastError          string
 }
 
@@ -66,6 +74,7 @@ func NewCapture(dir, path string, defaults Settings, stdout io.Writer) (*Capture
 		if err = f.Close(); err != nil {
 			return nil, err
 		}
+		c.fullSince = time.Now()
 	}
 	return c, nil
 }
@@ -76,7 +85,16 @@ func (c *Capture) State() State {
 	if info, err := os.Stat(c.path); err == nil {
 		size = info.Size()
 	}
-	return State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), Path: c.path, FileBytes: size, Error: c.lastError}
+	kinds := map[string]bool{}
+	for _, r := range c.unanswered {
+		kinds[r.Method+" "+r.Path+" "+r.Operation] = true
+	}
+	st := State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), UnansweredKinds: len(kinds), Path: c.path, FileBytes: size, Error: c.lastError}
+	if c.settings.Full {
+		since := c.fullSince
+		st.FullSince = &since
+	}
+	return st
 }
 func (c *Capture) Set(s Settings) error {
 	c.mu.Lock()
@@ -108,6 +126,17 @@ func (c *Capture) Set(s Settings) error {
 	}
 	if err = os.Rename(f.Name(), c.settingsPath); err != nil {
 		return err
+	}
+	switch {
+	case s.Full && !c.settings.Full:
+		c.fullSince = time.Now()
+	case !s.Full && c.settings.Full:
+		// Turning full capture off is the one switch that discards: what it
+		// captured goes with it. Unanswered requests are kept until deleted.
+		if err := os.Truncate(c.path, 0); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		c.full = nil
 	}
 	c.settings = s
 	return nil
@@ -165,6 +194,7 @@ func (c *Capture) save(r record) {
 			c.lastError = ""
 		}
 	}
+	// stdout is an install-time choice and does not depend on the console's switch
 	if c.settings.Unanswered && r.Unanswered {
 		c.unanswered = appendBounded(c.unanswered, stored)
 		if c.settings.Stdout && c.stdout != nil {

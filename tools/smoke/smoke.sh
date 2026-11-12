@@ -79,7 +79,9 @@ stop_sim() {
 ( cd "$here" && go build -o "$work/vcsimulator" ./cmd/vcsimulator )
 
 # credentials: the first user of the scenario (password from the file or,
-# with passwordEnv, from the environment), or the published default
+# with passwordEnv, from the environment). The simulator has no default
+# password, so for a scenario without users the smoke supplies its own
+# placeholder account the way a deployment does (VCSIM_USERNAME/PASSWORD).
 creds=$(python3 - "$scenario" <<'PY'
 import os, re, sys
 text = open(sys.argv[1]).read()
@@ -88,7 +90,7 @@ if not m:
     if re.search(r"(?m)^\s*anyLogin:\s*true\s*$", text):
         print("smoke\tsmoke")
     else:
-        print("administrator@vsphere.local\tVMware123!VMware123!")
+        print("smoke-operator\tsmoke-placeholder-only\tsupply")
 elif m.group(2) == "password":
     print(f"{m.group(1)}\t{m.group(3)}")
 else:
@@ -98,7 +100,10 @@ else:
     print(f"{m.group(1)}\t{pw}")
 PY
 ) || exit 2
-IFS=$'\t' read -r username password <<< "$creds"
+IFS=$'\t' read -r username password supply <<< "$creds"
+if [ "${supply:-}" = supply ]; then
+  export VCSIM_USERNAME=$username VCSIM_PASSWORD=$password
+fi
 
 export GOVC_URL="https://127.0.0.1:$port/sdk"
 export GOVC_INSECURE=1
@@ -240,7 +245,9 @@ fi
 pass "identities identical across restart ($(wc -l < "$work/dump-2.txt") lines)"
 if [ $versions = yes ]; then
   stop_sim
-  username=administrator@vsphere.local password='VMware123!VMware123!'
+  # these scenarios have no users: supply the placeholder account
+  username=smoke-operator password=smoke-placeholder-only
+  export VCSIM_USERNAME=$username VCSIM_PASSWORD=$password
   export GOVC_USERNAME=$username GOVC_PASSWORD=$password
 
   # One vCenter release with hosts that follow it: the vCenter, every host,
@@ -293,6 +300,7 @@ if [ $versions = yes ]; then
   pass "vSAN service versions: 9.0.0.0"
   if [ $powercli = yes ]; then
     pwsh -NoLogo -File "$here/tools/smoke/smoke.ps1" -Server 127.0.0.1 -Port "$port" -Install -Hosts 8 -VMs 16 \
+      -User "$username" -Password "$password" \
       -ExpectedVCenterVersion 9.0.0 \
       -ExpectedHostVersions esx01.cluster-01.dc-01.sim.invalid=9.0.0,esx02.cluster-01.dc-01.sim.invalid=8.0.3,esx01.cluster-02.dc-01.sim.invalid=9.0.0 \
       || fail "PowerCLI does not see the mixed versions"
