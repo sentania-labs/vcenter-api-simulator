@@ -32,7 +32,7 @@ go build ./cmd/vcsimulator
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
 | `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. A start-up default: see the saved capture settings below |
 | `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; a start-up default, and the console has no switch for it |
-| `-debug-capture=false` | initially stop writing license-service requests (`/ls/`) to stdout; on by default, see below. a start-up default: see the saved capture settings below |
+| `-debug-capture=false` | initially stop writing license-service requests (`/ls/`) to stdout; on by default. A start-up default: see the saved capture settings below |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
