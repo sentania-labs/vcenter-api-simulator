@@ -992,7 +992,7 @@ func (c *Controller) ActivityDial(req ActDial) (*ActDone, error) {
 	if err := d.Check(b); err != nil {
 		return nil, &Invalid{upper1(err.Error()) + "."}
 	}
-	if b == life.Moves && d.Exact != nil && d.Exact.N > float64(sc.vms) {
+	if !req.Follow && b == life.Moves && d.Exact != nil && d.Exact.N > float64(sc.vms) {
 		return nil, &Invalid{fmt.Sprintf("The most is %s vMotions a day: one for every VM.", num(sc.vms))}
 	}
 	if !req.Follow {
