@@ -6,7 +6,7 @@
 //
 // One request, /api/home, tells the shell everything it shows on every
 // screen, so the header, the tabs and Home can never disagree.
-import { api, polling, html, raw, join, esc, badge, btn, lbtn, rich, plain, plural, timeText, newPassword } from './lib.js';
+import { api, polling, html, raw, join, esc, badge, btn, lbtn, rich, plain, plural, timeText, newPassword, unknownToolAddress } from './lib.js';
 import home from './home.js';
 import clusters from './clusters.js';
 import storage from './storage.js';
@@ -119,7 +119,7 @@ function header() {
   return html`<header class="lat-header m-hdr">
     <a class="m-brand" href="#/home"><span class="desk">vCenter </span>Simulator</a>
     ${h ? html`<span class="m-status ${paused ? 'paused' : ''}"><i></i>${paused ? 'Paused' : 'Running'}</span>
-    <span class="m-addr">Address for your tool: <code>${h.address}</code></span>` : html`<span class="m-addr">${ctx.homeError ? ctx.homeError.message : 'Loading…'}</span>`}
+    <span class="m-addr">${h.address ? html`Address for your tool: <code>${h.address}</code>` : unknownToolAddress}</span>` : html`<span class="m-addr">${ctx.homeError ? ctx.homeError.message : 'Loading…'}</span>`}
     <span class="m-sp"></span>
     <span class="desk m-row">${h && !paused ? btn('Pause…', 'pause') : ''}${btn(dark() ? 'Light theme' : 'Dark theme', 'theme', 'lat-btn--ghost')}${btn('Sign out', 'signout', 'lat-btn--ghost')}</span>
     <button type="button" class="lat-btn m-menu-btn" data-act="menu" ${n ? raw(`aria-label="Menu, ${n} ${n === 1 ? 'thing needs' : 'things need'} attention"`) : ''}>Menu${n ? html` <span class="lat-badge lat-badge--bad">${n} to check</span>` : ''}</button>

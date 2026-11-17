@@ -7,7 +7,7 @@
 
 image:
   repository: ghcr.io/sentania-labs/vcenter-api-simulator
-  # Empty means the chart's appVersion, which is `main`: the unreleased build.
+  # Empty uses the image matching the packaged chart's appVersion.
   # Set a release such as v0.4.5, or `latest`, and pin it in a deployment
   # repository.
   tag: ""
@@ -181,13 +181,18 @@ ingress:
   #   nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
   # For Traefik, use a ServersTransport with insecureSkipVerify or the CA.
   annotations: {}
-  # Only these paths are exposed. /sdk and /vsanHealth are enough for a
-  # management pack. VCF Operations' own vCenter adapter also needs
-  # /lookupservice, /sso-adminserver, /sts, /ls, /api, /rest and /stats (see
-  # README.md).
+  # Paths served to vSphere clients and the Operations vCenter adapter.
   paths:
     - /sdk
     - /vsanHealth
+    - /lookupservice
+    - /sso-adminserver
+    - /sts
+    - /ls
+    - /api
+    - /rest
+    - /stats
+    - /wcp
   pathType: Prefix
   tls:
     # Terminate TLS at the ingress with this Secret (cert-manager annotations

@@ -1041,7 +1041,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "/sdk", "/sdk/":
 			http.NotFound(w, r)
 			return
-		case "/vsanHealth", "/vsanHealth/", "/vsanHealth/vsanServiceVersions.xml":
+		case "/vsanHealth", "/vsanHealth/":
 			w.WriteHeader(http.StatusNotImplemented)
 			return
 		case "/sdk/vimService.wsdl":
@@ -1054,7 +1054,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/sdk/vimServiceVersions.xml":
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
 		fmt.Fprint(w, h.cat.VimServiceVersions)
-	case "/sdk/vsanServiceVersions.xml":
+	case "/sdk/vsanServiceVersions.xml", "/vsanHealth/vsanServiceVersions.xml":
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
 		fmt.Fprint(w, h.cat.VsanServiceVersions)
 	default:
