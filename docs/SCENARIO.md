@@ -354,9 +354,13 @@ the next time they ask.
 `vcenterVersion` and `esxVersion` accept presets `8.0u3`, `9.0`, and
 `9.1.1`. ESX defaults to the selected vCenter release; a cluster can set
 `esxVersion` and `hostVersions` can override a host by its topology key.
-A custom version supplies `version`, `build`, `apiVersion`, and `fullName`.
-When ESX matches a custom vCenter, it uses the same version, build, and API
-version; its ESXi product name is synthesized from the supplied values.
+A custom version supplies `version`, `build`, `apiVersion`, and `fullName`,
+and may supply `patchLevel` (served as `about.patchLevel`; the Operations
+vCenter card reads `version.patchLevel.build`, so 9.1.1 serves `0100`). A
+preset cannot be combined with custom fields.
+When ESX follows a custom vCenter it takes the vCenter's version (read as
+major.minor.patch, padded or cut to three parts) and API version, but gets its
+own derived build, patch level and ESXi product name, never the vCenter's.
 Hosts newer than vCenter are rejected unless `forceNewerHosts: true` is set;
 the console says how many hosts a choice would leave newer than vCenter and
 asks for a tick before it goes ahead. A version typed into the console that is
@@ -376,8 +380,10 @@ hostVersions:
 
 The release and build pairs come from Broadcom's [vCenter build table](https://knowledge.broadcom.com/external/article/326316/build-numbers-and-versions-of-vmware-vcen.html)
  and [ESX build table](https://knowledge.broadcom.com/external/article/316595/build-numbers-and-versions-of-vmware-esxi.html).
-The 9.1.1 names and API versions also come from the repository's live capture.
-For 8.0 U3 and 9.0 the full product names are synthesized. Every preset
+The 9.1.1 names, patch levels and API versions, and the 9.0 host names and
+patch level, also come from a read-only probe of real 9.1.1 vCenters and their
+hosts. The 8.0 U3 and 9.0 vCenter product names and patch levels have no
+authoritative source and are synthesized. Every preset
 carries an API version (8.0.3.0, 9.0.0.0 and 9.1.1.0), which hosts report as
 their own `about.apiVersion` and `licenseProductVersion` (major.minor of the
 host release), so a mixed cluster shows each host's release, not the
@@ -387,8 +393,9 @@ or, for 8.0 U3, 8.0.0.4, the newest 8.0 entry in the capture. That mapping is
 inferred from the capture's ordering and has not been checked against a real
 8.0 U3 vCenter. The REST host list keeps the vSphere Automation shape
 (`host`, `name`, `connection_state`, `power_state`), which has no product
-version; the vCenter version is served at `/api/appliance/system/version` and
-host versions through `/sdk` (`config.product`) and the vSAN health surfaces.
+version; the vCenter version is served at `/api/appliance/system/version`
+(a patched appliance such as 9.1.1.0100 reads "Patch for VMware vCenter Server
+9.1") and host versions through `/sdk` (`config.product`) and the vSAN health surfaces.
 Apart from selected version metadata and the advertised API versions,
 release-specific namespaces, properties, and vSAN behavior are not modelled.
 `tools/smoke/smoke.sh` checks a 9.0 vCenter with an 8.0 U3 cluster and one 9.0

@@ -146,6 +146,7 @@ func New(opts Options) (*Simulator, error) {
 	cat = &instanceCatalog
 	if v := topo.VCenterVersion; v.Version != "" {
 		cat.About.Version, cat.About.Build, cat.About.ApiVersion, cat.About.FullName = v.Version, v.Build, v.APIVersion, v.FullName
+		cat.About.PatchLevel = v.PatchLevel
 		cat.About.LicenseVer = v.LicenseVersion()
 		cat.VimServiceVersions = selectVimVersions(cat.VimServiceVersions, v.APIVersion)
 		cat.VsanServiceVersions = selectVsanVersions(cat.VsanServiceVersions, v.APIVersion)
@@ -234,6 +235,7 @@ func aboutInfo(cat *catalog.Catalog, topo *topology.Topology) types.AboutInfo {
 	a.Version = cat.About.Version
 	a.Build = cat.About.Build
 	a.ApiVersion = cat.About.ApiVersion
+	a.PatchLevel = cat.About.PatchLevel
 	a.OsType = cat.About.OsType
 	a.ProductLineId = cat.About.ProductLine
 	a.LicenseProductName = cat.About.LicenseName

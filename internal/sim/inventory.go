@@ -158,6 +158,7 @@ func shapeHostProduct(hs *simulator.HostSystem, host *topology.Host) {
 		Vendor:                "VMware, Inc.",
 		Version:               host.Version.Version,
 		Build:                 host.Version.Build,
+		PatchLevel:            host.Version.PatchLevel,
 		LocaleVersion:         "INTL",
 		LocaleBuild:           "000",
 		OsType:                "vmnix-x86",
