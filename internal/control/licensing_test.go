@@ -319,6 +319,27 @@ func TestAToolCanClaimTheLicense(t *testing.T) {
 		}
 	}
 
+	// changes in quick succession settle on what the vCenter holds, and a
+	// report that arrives when nothing is different changes nothing
+	const later = "bbbbbbbb-0000-4000-8000-000000000002"
+	for _, v := range [][2]string{{id, "https://ops-1.example.test"}, {later, "https://ops-2.example.test"}, {id, "https://ops-3.example.test"}, {later, "https://ops-4.example.test"}} {
+		if st, body := tool2.post("/sdk", `<UpdateExtension xmlns="urn:vim25"><_this type="ExtensionManager">ExtensionManager</_this>`+extension(v[0], v[1])+`</UpdateExtension>`); st != http.StatusOK {
+			t.Fatalf("UpdateExtension: %d %s", st, body)
+		}
+	}
+	waitFor(c2, "after four quick updates", func(v LicensingView) bool {
+		return v.ManagerID == later && v.ManagerURL == "https://ops-4.example.test"
+	})
+	time.Sleep(200 * time.Millisecond) // every report has been delivered
+	if v := c2.Security().Licensing; v.ManagerID != later || v.ManagerURL != "https://ops-4.example.test" {
+		t.Errorf("after the reports settled the console shows %+v, the vCenter holds %s", v, later)
+	}
+	lines := strings.Count(history(c2), "A tool marked")
+	c2.licenseManagerChanged(c2.applied().sim)
+	if again := strings.Count(history(c2), "A tool marked"); again != lines {
+		t.Errorf("a report with nothing different added %d history lines", again-lines)
+	}
+
 	// the Operations lets go
 	if st, body := tool2.post("/sdk", `<UnregisterExtension xmlns="urn:vim25"><_this type="ExtensionManager">ExtensionManager</_this><extensionKey>`+markerKey+`</extensionKey></UnregisterExtension>`); st != http.StatusOK {
 		t.Fatalf("UnregisterExtension: %d %s", st, body)

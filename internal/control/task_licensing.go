@@ -204,16 +204,18 @@ func (c *Controller) licensingView() LicensingView {
 // licenseManagerChanged records that a tool registered, changed or removed
 // the "license managed by" marker on the running vCenter, so that the
 // marker is still there after a restart or a change that builds a new
-// vCenter. from is the vCenter the tool spoke to.
-func (c *Controller) licenseManagerChanged(from *sim.Simulator, m *scenario.LicenseManager) {
+// vCenter. from is the vCenter the tool spoke to. What is recorded is the
+// marker that vCenter holds now, whichever change this report was made for:
+// reports can arrive out of order, and the latest state is the true one.
+func (c *Controller) licenseManagerChanged(from *sim.Simulator) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	cur := c.applied()
-	if cur == nil || cur.sim != from {
+	if cur == nil || from == nil || cur.sim != from {
 		return // a vCenter that has since been replaced
 	}
-	have := cur.sc.Licensing.Manager
-	if (have == nil) == (m == nil) && (m == nil || *have == *m) {
+	m := from.LicenseManager()
+	if sim.SameLicenseManager(m, cur.sc.Licensing.Manager) {
 		return
 	}
 	next := clone(cur.sc)

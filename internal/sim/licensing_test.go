@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -501,9 +502,17 @@ func TestLicenseManagedMarkerRoundTrip(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+	var running atomic.Pointer[sim.Simulator]
 	s, srv, _ := signOnSim(t, func(o *sim.Options) {
-		o.LicenseManagerChanged = func(m *scenario.LicenseManager) { mu.Lock(); reports = append(reports, m); mu.Unlock() }
+		// a report carries nothing: the marker is read when it arrives
+		o.LicenseManagerChanged = func() {
+			m := running.Load().LicenseManager()
+			mu.Lock()
+			reports = append(reports, m)
+			mu.Unlock()
+		}
 	})
+	running.Store(s)
 	cookie := &http.Cookie{Name: "vmware_soap_session", Value: sdkLogin(t, srv)}
 	call := func(op, inner string, cookies ...*http.Cookie) (*http.Response, []byte) {
 		return postTo(t, srv, "/sdk", `"urn:vim25/8.0.2.0"`, soapEnvelope(`<`+op+` xmlns="urn:vim25"><_this type="ExtensionManager">ExtensionManager</_this>`+inner+`</`+op+`>`), cookies...)
@@ -598,6 +607,78 @@ func TestLicenseManagedMarkerRoundTrip(t *testing.T) {
 	}
 	if ext := findExtension(t, srv, viewer, scenario.LicenseManagedKey); len(ext.Children) != 0 {
 		t.Error("a read-only account registered the marker")
+	}
+}
+
+// Reports of a changed marker may be delivered in any order. A report that
+// arrives late must leave its reader with the marker as the vCenter holds
+// it then, not as it was when the report was made: otherwise an older
+// marker is put over a newer one, and saved.
+func TestLicenseManagedReportsCarryNoStaleMarker(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		seen    []*scenario.LicenseManager
+		first   = true
+		release = make(chan struct{})
+		running atomic.Pointer[sim.Simulator]
+	)
+	s, srv, _ := signOnSim(t, func(o *sim.Options) {
+		o.LicenseManagerChanged = func() {
+			mu.Lock()
+			held := first
+			first = false
+			mu.Unlock()
+			if held {
+				<-release // the first report is delivered last
+			}
+			m := running.Load().LicenseManager()
+			mu.Lock()
+			seen = append(seen, m)
+			mu.Unlock()
+		}
+	})
+	running.Store(s)
+	cookie := &http.Cookie{Name: "vmware_soap_session", Value: sdkLogin(t, srv)}
+	call := func(op, inner string) {
+		t.Helper()
+		res, out := postTo(t, srv, "/sdk", `"urn:vim25/8.0.2.0"`, soapEnvelope(`<`+op+` xmlns="urn:vim25"><_this type="ExtensionManager">ExtensionManager</_this>`+inner+`</`+op+`>`), cookie)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s: %d %s", op, res.StatusCode, out)
+		}
+	}
+	count := func() int { mu.Lock(); defer mu.Unlock(); return len(seen) }
+	wait := func(n int) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); count() < n; time.Sleep(5 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%d reports arrived, want %d", count(), n)
+			}
+		}
+	}
+	const older, newer = "aaaaaaaa-0000-4000-8000-000000000001", "bbbbbbbb-0000-4000-8000-000000000002"
+	call("RegisterExtension", marker(older, "https://ops-a.example.test")) // its report is held back
+	call("UpdateExtension", marker(newer, "https://ops-b.example.test"))
+	wait(1) // the report of the update has arrived, before the report of the registration
+	close(release)
+	wait(2)
+	mu.Lock()
+	last := seen[len(seen)-1]
+	mu.Unlock()
+	if last == nil || last.Identity != newer {
+		t.Errorf("the report delivered last left its reader with %+v, want the marker the vCenter holds, %s", last, newer)
+	}
+	if got := s.LicenseManager(); got == nil || got.Identity != newer {
+		t.Errorf("the vCenter holds %+v", got)
+	}
+	// the helper that compares a held marker with a described one
+	if !sim.SameLicenseManager(nil, nil) || sim.SameLicenseManager(last, nil) || sim.SameLicenseManager(nil, last) {
+		t.Error("SameLicenseManager is wrong about an absent marker")
+	}
+	if !sim.SameLicenseManager(last, &scenario.LicenseManager{Identity: newer, URL: "https://ops-b.example.test", SubjectName: "made-up subject"}) {
+		t.Error("a marker is not the same as its own description with the defaults left out")
+	}
+	if sim.SameLicenseManager(last, &scenario.LicenseManager{Identity: older, URL: "https://ops-b.example.test"}) {
+		t.Error("a marker is the same as a description with another id")
 	}
 }
 

@@ -134,12 +134,28 @@ func managerExtension(m *scenario.LicenseManager, version string, now time.Time)
 // reportLicenseManager tells the owner of the scenario when a tool has
 // registered, changed or removed the marker, so that the change outlives
 // the running vCenter.
+//
+// The report carries nothing: the owner reads the marker with
+// LicenseManager when the report reaches it. Reports are delivered on
+// their own goroutines and may arrive in any order, and a report that
+// carried the marker as it was when the report was made could then put an
+// older marker over a newer one.
 func (h *handler) reportLicenseManager() {
 	if h.managerChanged == nil {
 		return
 	}
 	h.managerMu.Lock()
 	defer h.managerMu.Unlock()
+	now := h.currentManager()
+	if (now == nil) == (h.manager == nil) && (now == nil || *now == *h.manager) {
+		return
+	}
+	h.manager = now
+	go h.managerChanged()
+}
+
+// currentManager reads the marker the vCenter holds; nil when it holds none.
+func (h *handler) currentManager() *scenario.LicenseManager {
 	var now *scenario.LicenseManager
 	em := h.registry.ExtensionManager()
 	h.registry.WithLock(&simulator.Context{}, em, func() {
@@ -149,16 +165,23 @@ func (h *handler) reportLicenseManager() {
 			}
 		}
 	})
-	if (now == nil) == (h.manager == nil) && (now == nil || *now == *h.manager) {
-		return
+	return now
+}
+
+// LicenseManager is the "license managed by" marker as the running vCenter
+// holds it now, or nil when it holds none.
+func (s *Simulator) LicenseManager() *scenario.LicenseManager {
+	return s.Handler.(*handler).currentManager()
+}
+
+// SameLicenseManager reports whether the marker a vCenter holds is the one
+// a scenario describes. A description that leaves a value out stands for
+// the default a new marker gets.
+func SameLicenseManager(held, described *scenario.LicenseManager) bool {
+	if held == nil || described == nil {
+		return held == nil && described == nil
 	}
-	h.manager = now
-	var copied *scenario.LicenseManager
-	if now != nil {
-		c := *now
-		copied = &c
-	}
-	go h.managerChanged(copied)
+	return sameManager(held, described)
 }
 
 // sameManager reports whether a registered marker is the one described: a

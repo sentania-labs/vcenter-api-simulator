@@ -88,9 +88,10 @@ type Options struct {
 	// vCenter's own settings name its sign-on services under it.
 	PublicAddress string
 	// LicenseManagerChanged is told when a tool registers, changes or
-	// removes the "license managed by" marker, with the marker as it now
-	// stands (nil when removed). It is called from its own goroutine.
-	LicenseManagerChanged func(*scenario.LicenseManager)
+	// removes the "license managed by" marker. It is called from its own
+	// goroutine, and reads the marker as it then stands with
+	// Simulator.LicenseManager.
+	LicenseManagerChanged func()
 }
 
 // ClusterRefs are the MoRefs vcsim assigned to one cluster's objects.
@@ -841,7 +842,7 @@ type handler struct {
 	// set or reported, and orders the reports of its changes.
 	managerMu      sync.Mutex
 	manager        *scenario.LicenseManager
-	managerChanged func(*scenario.LicenseManager)
+	managerChanged func()
 }
 
 // UpdateCredentials serializes a policy change with requests and revokes
