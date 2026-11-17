@@ -33,7 +33,7 @@ go build ./cmd/vcsimulator
 | `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. The log is bounded: it rotates by size into gzip archives and the oldest files are deleted, so its total stays inside the cap. A start-up default: see the saved capture settings below |
 | `-query-log-max-bytes N` | bytes one log file may hold before it is gzipped and a new one starts (default 4194304) |
 | `-query-log-max-files N` | how many log files to keep at most, oldest deleted first (default 4) |
-| `-query-log-max-total N` | total bytes the whole log may take across its files (default 25165824, or the space the data volume has when that is smaller) |
+| `-query-log-max-total N` | total bytes the whole log may take across its files (default 25165824, or the data volume's capacity less 8 MiB kept for the state files when that is smaller) |
 | `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; a start-up default, and the console has no switch for it |
 | `-debug-capture=false` | initially stop writing what tools ask about licensing and sign-on to stdout (the requests listed under "Debug capture" below); on by default. A start-up default: see the saved capture settings below |
 | `-lookup-trust-cert FILE` | a PEM file with the certificate tools see at the simulator's address when a proxy in front of it ends TLS (env `VCSIM_LOOKUP_TRUST_CERT`). The lookup service names it as the certificate to trust for the sign-on addresses it hands out, in place of the simulator's own, which such a tool never sees. The file is read again when it changes. Without it the simulator's own certificate is named |
@@ -64,8 +64,10 @@ The full log lives in the data volume as `query-log.jsonl` plus its gzip
 archives `query-log.N.jsonl.gz`. It cannot grow past its cap: when a file
 reaches `-query-log-max-bytes` it is compressed and a new one starts, and when
 the files together pass `-query-log-max-total` the oldest are deleted first.
-Where the volume's own capacity is known and smaller, that limits the cap, so
-the state files always keep their room. Downloads and "every request, one at a
+Where the volume's capacity is known, the cap never passes that capacity less
+8 MiB, so the state files always keep their room. The chart sets the three
+limits with `simulator.capture.queryLogMaxFileBytes`, `queryLogMaxFiles` and
+`queryLogMaxTotal` (0 keeps the default). Downloads and "every request, one at a
 time" read across the rotated and compressed files.
 
 The start-up flags `-query-log`, `-unanswered-stdout` and `-debug-capture` only

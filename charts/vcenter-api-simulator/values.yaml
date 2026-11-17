@@ -59,8 +59,8 @@ simulator:
     # simulator's default (4).
     queryLogMaxFiles: 0
     # Total bytes the whole log may take across its files. 0 means the
-    # simulator's default (24 MiB), or the space the claim has when that is
-    # smaller.
+    # simulator's default (24 MiB), or the claim's size less 8 MiB kept for
+    # the state files when that is smaller.
     queryLogMaxTotal: 0
     # Also emit unanswered requests as JSON lines to container stdout.
     unansweredStdout: false
