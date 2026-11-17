@@ -16,8 +16,8 @@ import (
 // state volume, together with the identity registry, the saved users, the
 // capture settings and the certificate.
 const (
-	defaultMaxFileBytes = 4 << 20    // 4 MiB uncompressed per file
-	defaultMaxFiles     = 4          // the active file plus up to 3 archives
+	defaultMaxFileBytes = 4 << 20 // 4 MiB uncompressed per file
+	defaultMaxFiles     = 4       // the active file plus up to 3 archives
 	defaultMaxTotal     = 24 << 20
 	// stateHeadroom is what the state files keep for themselves; the log's
 	// total cap never grows past volume size minus this.
