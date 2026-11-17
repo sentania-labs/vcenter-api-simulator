@@ -27,7 +27,7 @@ below. Use it in a lab, with made-up credentials.
 | Tag collection through vAPI JSON (`POST /api`) | Answers sign-in, an empty tag list, and sign-out. |
 | Standard vSphere performance (`/sdk`) and host/VM quickStats | Changing CPU, memory, storage and network values, with VM-to-host-to-cluster totals, realtime samples and historical rollups. [Semantics](docs/REFERENCE.md#standard-vsphere-performance). |
 | Operations' GPU vStats query and live stream (`/api`, `/stats`) | Accepts the query and leaves the stream idle, matching GPU-less lab vCenters. Tokens use only the simulator's signing key. Direct connections to separate ESX endpoints are not simulated. |
-| Appliance settings, backup lists, topology and supervisor discovery (`/api`) | Answers with invented appliance settings, no backups, no storage policies and no supervisors. |
+| Appliance settings, backup lists, topology and supervisor discovery (`/api`) | Answers with invented appliance account settings and the simulator's own hostname, DNS servers and address ([appliance networking](docs/REFERENCE.md#helm)), no backups, no storage policies and no supervisors. |
 | Licensing (the license service, `/ls/sdk`) | Answers that vCenter and its hosts are **in evaluation**, or that the evaluation has run out. It cannot say vCenter is licensed. |
 | Which VCF Operations manages vCenter's license | Answers "none", or the one you name, or the one that registered itself. |
 | The root certificate (`/rest/vcenter/certificate-authority/get-root`) | Answers. |
