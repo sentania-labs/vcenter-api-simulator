@@ -62,6 +62,52 @@ in 4.82s using 5.96 CPU seconds; two-client collection took 11.97s, peak RSS
 was 783Mi, and maximum successful discovery latency was 153ms. This supports
 reserving two CPUs for this size.
 
+## Standard performance collection
+
+A separate November 17, 2026 run used the Operations 9.1.1 adapter's own
+Java VLSI client classes against the simulator, with the large inventory above.
+The server used `GOMAXPROCS=2` and `GOMEMLIMIT=1500MiB`; server and client shared
+a two-CPU quota and a 4Gi safety scope. Query capture was disabled. The client
+used a 512Mi Java heap. The RSS measurement below is the simulator process,
+not the Java client or the whole scope.
+
+The client discovered available counters for all 5,454 providers (5,009 VMs,
+215 hosts, seven clusters, 222 datastores and one datacenter), then requested
+one sample of every supported aggregate counter in batches of 100 entities.
+VMs and hosts used 20-second intervals; containers and datastores used
+300-second intervals. It decoded 879,322 CSV series, including guest counters,
+using the adapter's bindings and decoded a normal XML composite query too.
+
+| Measurement | Observed |
+| --- | ---: |
+| Discovery and collection elapsed | 35.62s |
+| QueryPerf collection elapsed | 18.76s |
+| Simulator peak RSS | 464.85Mi |
+| Simulator CPU time, including startup | 39.21s |
+
+This fits the documented 2Gi/two-CPU sizing for one collection cycle. It is
+not an Operations ingestion run or a concurrent property/vSAN/performance
+stress test, and does not request every per-device wildcard series. Keep the
+existing sizing headroom for those workloads.
+
+A separate real-client run collected 288 five-minute CPU samples across a
+simulated day for 12 VMs, four hosts, their cluster and datacenter. VM totals
+agreed with host totals, and hosts with the cluster/datacenter, allowing only
+the less-than-one-MHz truncation per independently averaged series. Example
+rows (MHz, UTC) from the same collection:
+
+| Time | One VM | Its host | Cluster | Datacenter | Sum of all VMs | Sum of all hosts |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Nov 16 12:10 | 2,621 | 5,483 | 12,767 | 12,767 | 12,761 | 12,766 |
+| Nov 16 20:10 | 1,597 | 3,110 | 8,639 | 8,639 | 8,634 | 8,638 |
+| Nov 17 04:10 | 1,128 | 2,433 | 6,708 | 6,708 | 6,704 | 6,706 |
+| Nov 17 10:10 | 2,097 | 4,523 | 12,705 | 12,705 | 12,701 | 12,704 |
+
+The committed contract tests also check exact 20-second conservation,
+rollup averages and summations, state changes, capacity bounds, timestamps,
+instances and full property-collection enum validity. No Operations service
+was contacted for these measurements.
+
 ## Console preview
 
 Add-cluster, add-hosts and replace-environment previews show a planning budget:

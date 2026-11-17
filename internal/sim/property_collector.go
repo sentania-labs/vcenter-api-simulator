@@ -2,6 +2,8 @@ package sim
 
 import (
 	"reflect"
+	"strings"
+	"time"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/methods"
@@ -42,6 +44,28 @@ func (p *propertyCollector) CreatePropertyCollector(ctx *simulator.Context, _ *t
 	return &methods.CreatePropertyCollectorBody{Res: &types.CreatePropertyCollectorResponse{Returnval: ref}}
 }
 func shapeProperties(ctx *simulator.Context, objects []types.ObjectContent) {
+	var state *performanceState
+	var frame map[perfRef]workload
+	var perf *storagePerformance
+	for _, obj := range objects {
+		if obj.Obj.Type != "HostSystem" && obj.Obj.Type != "VirtualMachine" {
+			continue
+		}
+		for _, prop := range obj.PropSet {
+			if prop.Name == "summary" || strings.HasPrefix(prop.Name, "summary.quickStats") {
+				perf, _ = ctx.Map.Get(types.ManagedObjectReference{Type: "PerformanceManager", Value: "PerfMgr"}).(*storagePerformance)
+				if perf != nil {
+					state = readPerformanceState(ctx)
+					frame = state.sample(perf.seed, perf.now().Truncate(20*time.Second))
+				}
+				break
+			}
+		}
+		if state != nil {
+			break
+		}
+	}
+
 	for i := range objects {
 		o := &objects[i]
 		props := o.PropSet[:0]
@@ -68,6 +92,11 @@ func shapeProperties(ctx *simulator.Context, objects []types.ObjectContent) {
 							}
 						}
 					})
+				}
+			}
+			if state != nil {
+				if n := state.nodes[o.Obj]; n != nil && (o.Obj.Type == "VirtualMachine" || o.Obj.Type == "HostSystem") {
+					prop = quickStatsProperty(prop, n, frame[o.Obj], perf.now())
 				}
 			}
 			props = append(props, prop)
@@ -101,20 +130,30 @@ func shapeUpdates(ctx *simulator.Context, update *types.UpdateSet) {
 	if update == nil {
 		return
 	}
+	var objects []types.ObjectContent
+	for _, filter := range update.FilterSet {
+		for _, obj := range filter.ObjectSet {
+			shaped := types.ObjectContent{Obj: obj.Obj}
+			for _, change := range obj.ChangeSet {
+				shaped.PropSet = append(shaped.PropSet, types.DynamicProperty{Name: change.Name, Val: change.Val})
+			}
+			objects = append(objects, shaped)
+		}
+	}
+	shapeProperties(ctx, objects)
+	index := 0
 	for i := range update.FilterSet {
 		for j := range update.FilterSet[i].ObjectSet {
-			object := &update.FilterSet[i].ObjectSet[j]
-			for k := range object.ChangeSet {
-				change := &object.ChangeSet[k]
-				if change.Val == nil {
-					continue
-				}
-				shaped := []types.ObjectContent{{Obj: object.Obj, PropSet: []types.DynamicProperty{{Name: change.Name, Val: change.Val}}}}
-				shapeProperties(ctx, shaped)
-				if len(shaped[0].PropSet) == 1 {
-					change.Val = shaped[0].PropSet[0].Val
+			obj := &update.FilterSet[i].ObjectSet[j]
+			for k := range obj.ChangeSet {
+				for _, prop := range objects[index].PropSet {
+					if prop.Name == obj.ChangeSet[k].Name {
+						obj.ChangeSet[k].Val = prop.Val
+						break
+					}
 				}
 			}
+			index++
 		}
 	}
 }

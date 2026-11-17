@@ -9,12 +9,18 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-// The simulator has no guest agent producing internal counters. An empty
-// successful result is intentional; ordinary counters come from PerfCounter.
+// Internal guest metadata uses the same units and names as VMware Tools counters.
 type QueryPerfCounterInt struct {
 	This types.ManagedObjectReference `xml:"_this"`
 }
-type internalCounterResponse struct{}
+type internalCounterResponse struct {
+	Counters []internalCounter `xml:"returnval"`
+}
+type internalCounter struct {
+	types.PerfCounterInfo
+	EnabledByDefault bool `xml:"enabledByDefault"`
+	Enabled          bool `xml:"enabled"`
+}
 type internalCounterBody struct {
 	Res *internalCounterResponse `xml:"urn:vim25 QueryPerfCounterIntResponse"`
 }
@@ -22,7 +28,13 @@ type internalCounterBody struct {
 func (*internalCounterBody) Fault() *soap.Fault { return nil }
 func init()                                     { types.Add("QueryPerfCounterInt", reflect.TypeOf(QueryPerfCounterInt{})) }
 func (p *storagePerformance) QueryPerfCounterInt(_ *simulator.Context, _ *QueryPerfCounterInt) soap.HasFault {
-	return &internalCounterBody{Res: &internalCounterResponse{}}
+	body := &internalCounterBody{Res: &internalCounterResponse{}}
+	for _, c := range p.PerfCounter {
+		if c.GroupInfo.GetElementDescription().Key == "guest" {
+			body.Res.Counters = append(body.Res.Counters, internalCounter{PerfCounterInfo: c, Enabled: true})
+		}
+	}
+	return body
 }
 func (p *storagePerformance) QueryPerfCounterByLevel(_ *simulator.Context, req *types.QueryPerfCounterByLevel) soap.HasFault {
 	body := &methods.QueryPerfCounterByLevelBody{Res: &types.QueryPerfCounterByLevelResponse{}}
@@ -66,17 +78,15 @@ func (p *storagePerformance) UpdateCounterLevelMapping(ctx *simulator.Context, r
 	return &methods.UpdateCounterLevelMappingBody{Res: &types.UpdateCounterLevelMappingResponse{}}
 }
 
-func (p *storagePerformance) QueryPerfCounter(ctx *simulator.Context, req *types.QueryPerfCounter) soap.HasFault {
-	response := p.PerformanceManager.QueryPerfCounter(ctx, req)
-	if body, ok := response.(*methods.QueryPerfCounterBody); ok && body.Res != nil {
-		for i, id := range req.CounterId {
-			for _, counter := range p.PerfCounter {
-				if counter.Key == id {
-					body.Res.Returnval[i] = counter
-					break
-				}
+func (p *storagePerformance) QueryPerfCounter(_ *simulator.Context, req *types.QueryPerfCounter) soap.HasFault {
+	body := &methods.QueryPerfCounterBody{Res: &types.QueryPerfCounterResponse{}}
+	for _, id := range req.CounterId {
+		for _, counter := range p.PerfCounter {
+			if counter.Key == id {
+				body.Res.Returnval = append(body.Res.Returnval, counter)
+				break
 			}
 		}
 	}
-	return response
+	return body
 }

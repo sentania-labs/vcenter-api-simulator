@@ -23,14 +23,15 @@ below. Use it in a lab, with made-up credentials.
 | vSAN performance data (`/vsanHealth`), for ESA and OSA clusters | Answers all 69 kinds. The values are made up, the same every time for the same moment, and inside the range a real vCenter showed. |
 | vSAN settings, disk lists and the health summary | Answers. Some detailed health checks are missing. |
 | Where vCenter's other services are (the lookup service, `/lookupservice/sdk`), how its sign-on is set up (`/sso-adminserver`), and a signed sign-on token for an account (`/sts`) | Answers, in the shapes a real vCenter 9.1.1 uses. The key that signs the token is the simulator's own. |
-| Operations' host-to-datacenter query and performance counter discovery (`/sdk`) | Answers. Internal guest counters are empty; GPU counter levels can be changed. |
+| Operations' host-to-datacenter query and performance counter discovery (`/sdk`) | Answers, including 28 internal guest counters; GPU counter levels can be changed. |
 | Tag collection through vAPI JSON (`POST /api`) | Answers sign-in, an empty tag list, and sign-out. |
-| Operations' GPU vStats query and live stream (`/api`, `/stats`) | Answers with empty snapshots because the topology has no GPUs. Tokens use only the simulator's signing key. Direct connections to separate ESX endpoints are not simulated. |
+| Standard vSphere performance (`/sdk`) and host/VM quickStats | Changing CPU, memory, storage and network values, with VM-to-host-to-cluster totals, realtime samples and historical rollups. [Semantics](docs/REFERENCE.md#standard-vsphere-performance). |
+| Operations' GPU vStats query and live stream (`/api`, `/stats`) | Accepts the query and leaves the stream idle, matching GPU-less lab vCenters. Tokens use only the simulator's signing key. Direct connections to separate ESX endpoints are not simulated. |
 | Appliance settings, backup lists, topology and supervisor discovery (`/api`) | Answers with invented appliance settings, no backups, no storage policies and no supervisors. |
 | Licensing (the license service, `/ls/sdk`) | Answers that vCenter and its hosts are **in evaluation**, or that the evaluation has run out. It cannot say vCenter is licensed. |
 | Which VCF Operations manages vCenter's license | Answers "none", or the one you name, or the one that registered itself. |
 | The root certificate (`/rest/vcenter/certificate-authority/get-root`) | Answers. |
-| iSCSI and NFS datastores | Answers when you add them. Their activity counters read zero. |
+| iSCSI and NFS datastores | Answers when you add them. Capacity matches inventory; I/O follows the VMs using each datastore, and remains zero on unused stores. |
 | Which version vCenter and its hosts are | Answers as 8.0 Update 3, 9.0 or 9.1.1, or a number you type. One cluster can hold a mix of ESX versions. |
 
 Names and internal ids stay the same across restarts and changes (until you
@@ -58,9 +59,8 @@ the simulator slow or make it fail on purpose, to see how a tool copes.
 - **Management packs that bring their own collector do work.** The vSAN Host
   Metrics pack 2.0.0 collected from the simulator through a real VCF
   Operations 9.1.1 ([how that was checked](docs/OPERATIONS-ACCEPTANCE.md)).
-- Not answered: the list of performance counters vCenter can report, the
-  older license manager on the main interface (`/sdk`), and whether
-  Kubernetes is turned on.
+- Not answered: the older license manager on the main interface (`/sdk`),
+  and whether Kubernetes is turned on.
 - Reported as absent: Fibre Channel storage, and vSAN acting as a file server
   or an iSCSI server.
 - Distributed switches are there, but as the basic type rather than the
