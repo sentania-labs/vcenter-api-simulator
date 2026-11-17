@@ -103,8 +103,8 @@ func TestVolumeCapacityLimitsTheCap(t *testing.T) {
 	}
 }
 
-// With a small cap the log stops, but the state files still get written and
-// requests are still answered.
+// With a small cap the log sheds its oldest lines, but the state files still
+// get written and requests are still answered.
 func TestSmallCapKeepsStateFilesWritable(t *testing.T) {
 	dir := t.TempDir()
 	c, err := NewCapture(dir, filepath.Join(dir, "query-log.jsonl"), Settings{Full: true, Unanswered: true}, nil, 0,
@@ -151,7 +151,7 @@ func TestSmallCapKeepsStateFilesWritable(t *testing.T) {
 // still holds comes back, oldest line first.
 func TestWriteJSONLReadsAcrossRotatedFiles(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 30000})
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 3000, MaxFiles: 10, MaxTotal: 100000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,8 +164,11 @@ func TestWriteJSONLReadsAcrossRotatedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("expected records across files, got %d", len(lines))
+	if len(lines) != 25 {
+		t.Fatalf("expected all 25 requests across the files, got %d", len(lines))
+	}
+	if archives, _ := filepath.Glob(filepath.Join(dir, "query-log.*.jsonl.gz")); len(archives) == 0 {
+		t.Fatal("expected at least one compressed archive")
 	}
 	st := c.State()
 	// every line is a record, and the newest line is the last request
@@ -266,4 +269,27 @@ func sumSizes(dir string) (n int) {
 		}
 	}
 	return n
+}
+
+// A log an earlier, unbounded run left over the caps is cut down when the
+// capture opens it, not only after the next write.
+func TestOpenTrimsALogAlreadyOverTheCap(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "query-log.jsonl")
+	line := []byte(`{"time":"2026-01-01T00:00:00Z","method":"POST","path":"/sdk"}` + "\n")
+	old := bytes.Repeat(line, 4000)
+	if err := os.WriteFile(path, old, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 20000, MaxFiles: 3, MaxTotal: 40000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := c.State()
+	if st.TotalBytes > st.MaxBytes {
+		t.Fatalf("log of %d bytes left over the %d cap after opening", st.TotalBytes, st.MaxBytes)
+	}
+	if st.TotalBytes == 0 {
+		t.Fatal("the log was emptied instead of kept inside the cap")
+	}
 }

@@ -31,8 +31,7 @@ type State struct {
 	// FullSince is when full capture was last switched on, if it is on.
 	FullSince *time.Time `json:"fullSince,omitempty"`
 	// Path is the full log's file; the console does not show it.
-	Path      string `json:"-"`
-	FileBytes int64  `json:"fileBytes"`
+	Path string `json:"-"`
 	// TotalBytes is what the whole log takes (the active file and every
 	// archive), and MaxBytes the cap it is kept inside.
 	TotalBytes int64 `json:"totalBytes"`

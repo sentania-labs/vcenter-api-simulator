@@ -167,11 +167,11 @@ func (r *rotator) put(line []byte) error {
 // enforce rotates when the active file is full, then keeps the number of files
 // and the total inside the caps by removing the oldest first.
 func (r *rotator) enforce() error {
-	// 1. the active file is full: make it the newest archive
+	// 1. the active file is full: make it the newest archive. A failure
+	// here does not stop the caps below from freeing room.
+	var rotateErr error
 	if len(r.state) > 0 && r.state[0].gen == activeGen && r.state[0].size >= r.lim.MaxFileBytes {
-		if err := r.compress(r.state[0].name); err != nil {
-			return err
-		}
+		rotateErr = r.compress(r.state[0].name)
 	}
 	// 2. not too many files
 	for len(r.state) > r.lim.MaxFiles {
@@ -198,7 +198,7 @@ func (r *rotator) enforce() error {
 		}
 		r.state = r.state[:len(r.state)-1]
 	}
-	return nil
+	return rotateErr
 }
 
 // open makes sure the active file exists, so a later append starts from a
@@ -215,7 +215,13 @@ func (r *rotator) open() error {
 	if err != nil {
 		return err
 	}
-	return f.Close()
+	if err = f.Close(); err != nil {
+		return err
+	}
+	// A log left over the caps by an earlier run is cut down now; a failure
+	// here is reported again by the first write that still cannot fit.
+	_ = r.enforce()
+	return nil
 }
 
 // compress turns the active file into the newest archive. The archive is
