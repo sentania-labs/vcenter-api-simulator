@@ -157,12 +157,11 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		if !hasPrefix || !hasBuild {
 			release = v.Version
 		}
-		// a real appliance's summary names the release as major.minor and
-		// says "Patch for" once a patch is installed (9.1.1.0100: "Patch for
-		// VMware vCenter Server 9.1")
-		summary := "VMware vCenter Server " + v.LicenseVer
+		// a patched appliance (9.1.1.0100) says "Patch for" and names the
+		// release as major.minor; the others keep the full version number
+		summary := "VMware vCenter Server " + v.Version
 		if strings.Trim(v.PatchLevel, "0.") != "" {
-			summary = "Patch for " + summary
+			summary = "Patch for VMware vCenter Server " + v.LicenseVer
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"summary": summary, "product": "VMware vCenter Server", "build": v.Build, "name": release, "type": "vCenter Server with an embedded Platform Services Controller", "version": release})
 		return true
