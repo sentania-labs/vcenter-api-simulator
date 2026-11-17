@@ -43,6 +43,8 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
+	"github.com/sentania/vcenter-api-simulator/internal/sim"
+	"github.com/sentania/vcenter-api-simulator/internal/storage"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
 
@@ -177,12 +179,32 @@ func main() {
 		extra[*username] = *password
 	}
 
+	// Serve health and discovery before the potentially large inventory build.
+	vc, err := sc.VCenterVersion()
+	if err != nil {
+		log.Fatal(err)
+	}
+	vimVersions := func(vc scenario.Version) string {
+		return sim.VimVersions(catalog.MustLoad().VimServiceVersions, vc.APIVersion)
+	}
+	health := &serve.Health{}
+	health.SetVersions(vimVersions(vc))
+	ls, err := serve.Listen(listen, health, cert)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ls.Close()
 	start := time.Now()
 	ctl, err := control.New(control.Options{
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
 		Credentials: extra, CredentialRole: *role, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
 		PublicURL: *publicURL, ReportURL: *reportURL, LookupTrustFile: *lookupTrust,
+		Resolved: func(effective *scenario.Scenario) {
+			if vc, err := effective.VCenterVersion(); err == nil {
+				health.SetVersions(vimVersions(vc))
+			}
+		},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -191,16 +213,17 @@ func main() {
 
 	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: *debugCapture}, os.Stdout, volumeBytes(*dataDir),
 		querylog.Limits{MaxFileBytes: int64(*queryLogBytes), MaxFiles: *queryLogFiles, MaxTotal: int64(*queryLogTotal)})
-	if err != nil {
+	if err != nil && !storage.Full(err) {
 		log.Fatal(err)
 	}
-	ctl.Capture = capture
-	var handler http.Handler = capture.Wrap(ctl)
-	ls, err := serve.Listen(listen, handler, cert)
+	var handler http.Handler = ctl
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("startup: data volume full; continuing to serve without query capture; free space or enlarge the volume and restart to restore capture: %v", err)
+	} else {
+		ctl.Capture = capture
+		handler = capture.Wrap(ctl)
 	}
-	defer ls.Close()
+	health.Install(handler)
 
 	var adminSrv *http.Server
 	if *adminAddr != "" {

@@ -82,3 +82,6 @@ func selectVsanVersions(raw, apiVersion string) string {
 	}
 	return selectVimVersions(raw, top)
 }
+
+// VimVersions selects the discovery document before an inventory exists.
+func VimVersions(raw, version string) string { return selectVimVersions(raw, version) }

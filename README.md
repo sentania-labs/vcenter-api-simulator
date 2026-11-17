@@ -170,6 +170,8 @@ Other ways to run it, all in the [reference](docs/REFERENCE.md#running-it):
 - **From source:** `go build ./cmd/vcsimulator`, then
   `./vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data`.
 
+See [inventory sizing and probes](docs/sizing.md) before growing an environment.
+
 ## Change what it simulates
 
 Use the console. Its tabs are named for what you want to do: Home, Clusters,

@@ -1632,3 +1632,35 @@ func TestHistoryIsPlainSentences(t *testing.T) {
 		t.Errorf("recent %+v", home.Recent)
 	}
 }
+
+// A restart that restores a console-saved scenario tells the caller the
+// version that scenario carries before the inventory is built, so a collector
+// connecting during the build is not told the scenario file's version.
+func TestResolvedScenarioIsTheSavedOne(t *testing.T) {
+	dir := t.TempDir()
+	c := newCtl(t, small(t), dir, "h")
+	must(t, c, "vcenter-version", nil, map[string]any{"vc": "9.0", "hosts": "all"})
+	c.Close()
+
+	cert, err := serve.LoadOrCreateCertificate(filepath.Join(dir, "tls"), []string{"sim.test", "127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	c2, err := New(Options{Scenario: small(t), SourceHash: "h", DataDir: dir, Endpoint: "sim.test", Version: "test", Certificate: cert,
+		APIAddrs: []string{"127.0.0.1:8443"}, Resolved: func(sc *scenario.Scenario) {
+			if v, err := sc.VCenterVersion(); err == nil {
+				got = v.Version
+			}
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c2.Close)
+	if !strings.HasPrefix(got, "9.0") {
+		t.Fatalf("resolved scenario says vCenter %q, want the console-saved 9.0", got)
+	}
+	if file, _ := small(t).VCenterVersion(); file.Version == got {
+		t.Fatalf("test proves nothing: the scenario file already says %q", got)
+	}
+}
