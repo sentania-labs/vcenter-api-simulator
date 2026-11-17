@@ -48,8 +48,9 @@ has already seen.
 
 Things to know before you connect:
 
-- **The address on Home is the container's own name.** Use your machine's name
-  in the tool. To make Home show it too, add `-e VCSIM_PUBLIC_URL=https://<name>:8443`
+- **Home cannot know your machine's name under Docker.** It suggests the address
+  you used for the console, which is the wrong port and scheme for a tool, so use
+  your machine's name in the tool. To make Home show it, add `-e VCSIM_PUBLIC_URL=https://<name>:8443`
   before the image name. If the tool checks names on the certificate, add
   `-tls-names=<name>` after the image name. That takes effect when the
   certificate is first made; to change it later use Security in the console.
