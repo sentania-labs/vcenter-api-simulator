@@ -21,6 +21,11 @@ func valueAt(c types.PerfCounterInfo, n *workloadNode, w workload) (int64, bool)
 		}
 		return min(10000, v*10000/cap)
 	}
+	cores := int64(n.cpus)
+	if n.ref.Type == "ResourcePool" {
+		// The sample already sums running vCPUs through every ancestor pool.
+		cores = w.vcpus
+	}
 	latency := int64(0)
 	if w.ios > 0 {
 		latency = w.latency / w.ios
@@ -35,10 +40,10 @@ func valueAt(c types.PerfCounterInfo, n *workloadNode, w workload) (int64, bool)
 	case "cpu.totalmhz", "cpu.capacity.provisioned", "cpu.capacity.entitlement", "cpu.cpuentitlement", "clusterServices.effectivecpu":
 		return w.cpuCap, true
 	case "cpu.corecount.provisioned":
-		return int64(n.cpus), true
+		return cores, true
 	case "cpu.corecount.usage":
 		if w.cpuCap > 0 {
-			return w.cpu * int64(n.cpus) / w.cpuCap, true
+			return w.cpu * cores / w.cpuCap, true
 		}
 		return 0, true
 	case "cpu.capacity.contention", "cpu.corecount.contention":
