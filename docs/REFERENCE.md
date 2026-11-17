@@ -336,9 +336,9 @@ The simulator serves the captured service descriptor but does not serve
 ### Control console
 
 Open `http://127.0.0.1:9090/` (the `-admin` address). The console is the
-way to change a running simulator without editing YAML. It has eight tabs,
+way to change a running simulator without editing YAML. It has nine tabs,
 named for what you want to do: **Home, Clusters, Storage, Versions, Users,
-Security, Slowness and faults, Requests**. It follows the Lattice design
+Security, Activity, Slowness and faults, Requests**. It follows the Lattice design
 system, in light and dark, and works at phone width. It answers only to the
 Host names `localhost`, `127.0.0.1` and `::1` (any port, so a port-forward and
 `docker compose` work) plus those in `-admin-allowed-hosts`; behind a proxy,
@@ -355,8 +355,8 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
 - **Changes to clusters, hosts, storage and versions build a new vCenter**
   next to the running one and swap them, so connected tools are signed out
   and sign in again, as after a vCenter restart. Every identity the change
-  keeps is unchanged. Users, the certificate, idle sign-out, and slowness and
-  faults change in place. So does how licensing looks to tools (Security):
+  keeps is unchanged. Users, the certificate, idle sign-out, slowness and
+  faults, and everything Activity does change in place. So does how licensing looks to tools (Security):
   whether the evaluation is running or has run out, whether accounts are
   licensing administrators, and which VCF Operations, if any, vCenter says
   manages its license.
@@ -394,6 +394,100 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
 Projections (entities, series, calls and bytes per cycle) are computed from
 the topology and the catalog, labelled as projections, and never presented
 as measured scale.
+
+### Activity
+
+A vCenter nobody uses is still: no events, no tasks, flat inventory. The
+**Activity** tab makes the simulated environment change by itself the way one
+in use does, so a monitoring tool has something to see. It is off until you
+start it, and one button stops all of it.
+
+**One dial for each thing that happens.** The middle of a dial is a baseline
+for an environment of this size; left is slower (down to off), right is
+busier. The amounts follow the number of VMs and hosts, so a larger
+environment changes more. Next to each dial a sentence says what its position
+means in numbers.
+
+| Dial | At the baseline | What a tool sees |
+|---|---|---|
+| Load balancing (DRS) | about 25 vMotions a day for every 100 VMs, in bursts of a few VMs, more in working hours | each VM on another host; one DRS vMotion task and its events for each |
+| VMs powered off and on | about 2 a day for every 100 VMs, mostly in working hours; a VM stays off for a while and comes back; never more than one VM in ten is off | power state, guest state, the VM's performance numbers at zero while it is off |
+| New VMs | about 1 a day for every 100 VMs, mostly in working hours | a new VM with the next number its cluster has never used, powered on |
+| VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed; its number and identities are not used again |
+| Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode; a host that comes out gets some VMs back |
+| Datastores filling | 0.4% of each vSAN datastore's capacity a day, a little every half hour | datastore free space, vSAN used capacity and the datastore's performance numbers |
+| Datastore cleanup | 0.3% of capacity freed at 2 AM | the same numbers falling |
+| CPU load | as the VMs were built (half to double) | CPU usage of VMs, hosts and clusters; above the baseline, ready time (contention) rises too |
+| Memory load | as the VMs were built (half to double) | memory used by VMs, hosts and clusters, up to what each VM has |
+
+- **For the whole vCenter, and for each cluster.** "These dials are for"
+  chooses. A cluster follows the vCenter's dials until you move one of its
+  own; that dial then applies to that cluster only, and "Follow the vCenter
+  again" puts it back.
+- **Exact numbers.** "Type an exact number" sets a dial to one VM every so
+  many minutes, hours or days (a new VM every 30 minutes, one removed every
+  45), so many vMotions a day, or a percentage (hosts in maintenance mode, up
+  to a quarter; datastore growth, up to 10% a day). An exact number stays as
+  typed whatever the size of the environment and is spread evenly over day
+  and night. Moving the dial goes back to a level.
+- **Limits.** The number of VMs stays between two numbers (5% below and
+  above what was there when Activity started, unless you change them); at a
+  limit, adding or removing waits and says so once a day. At most a quarter
+  of a cluster's hosts are in maintenance mode at once. A vSAN datastore is
+  not filled past 90%, and a cleanup frees only what Activity filled.
+- **"Do it now"** on a cluster's dial does that thing once, straight away,
+  after saying what it will do.
+- **A change that moves hosts asks first**: starting, stopping, and raising
+  or lowering the share of hosts in maintenance mode each say how many hosts
+  and VMs will move before anything happens.
+- **Stop** leaves the environment still and healthy: hosts come out of
+  maintenance mode and VMs that are off are powered on. VMs that were added
+  or removed stay that way, and datastores stay as full as they are.
+- **"What has happened"** lists every cause with what it set off as one
+  line (a host going into maintenance mode is one line, however many VMs
+  moved), newest first, with the detail one click away. It says which lines
+  came from a button you pressed. The last 1,000 lines are kept.
+- **The same seed and the same settings make the same things happen** at the
+  same times. Times of day are the simulator's local time.
+- **It survives a restart**: the dials, where each VM is, which are off,
+  which hosts are in maintenance mode and how full the datastores are are
+  written to `<data>/life.json`; VMs that were added or removed are part of
+  the saved scenario (`addedVMs` and `removedVMs`, see
+  [the scenario file](SCENARIO.md)). Nothing happens while the simulator is
+  off or paused, and nothing is caught up afterwards. A change that rebuilds
+  the vCenter (clusters, hosts, storage, versions) keeps all of it; "Replace
+  everything with a new environment" starts again.
+- **If something fails three times in a row**, that one dial stops itself,
+  the tab shows a problem, and "Switch it on again" resumes it. The rest
+  carries on.
+
+**What vCenter records.** Each operation is recorded as a real vCenter 9.1.1
+records it; the shapes were read from one (read-only) and are decoded by the
+VCF Operations 9.1.1 vCenter adapter's own client classes in the checks. A
+`TaskEvent` comes first, carrying the task as it was queued; its key is the
+chain id of every event of the operation and of the task itself.
+
+| Operation | Task (description id), started by | Events after the `TaskEvent` |
+|---|---|---|
+| DRS moves a running VM | `Drm.ExecuteVMotionLRO`, the system (no user) | `EventEx` `com.vmware.vc.vm.VmHotMigratingWithEncryptionEvent`, `VmEmigratingEvent`, `DrsVmMigratedEvent` |
+| A VM is powered on, or off | `VirtualMachine.powerOn`, `VirtualMachine.powerOff`, a user | `VmStartingEvent`, `VmPoweredOnEvent`; `VmStoppingEvent`, `VmPoweredOffEvent` |
+| A VM is added | `Folder.createVm`, a user; then its power-on | `VmBeingCreatedEvent`, `VmInstanceUuidAssignedEvent`, `VmUuidAssignedEvent`, `VmCreatedEvent` |
+| A VM is removed | its power-off; then `VirtualMachine.destroy`, a user | `VmRemovedEvent` |
+| A host goes into maintenance mode | `HostSystem.enterMaintenanceMode`, a user; each running VM leaves by a DRS vMotion of its own | `EnteringMaintenanceModeEvent`, `VmBeingRelocatedEvent` and `VmRelocatedEvent` for each VM that is off, `HostDasDisabledEvent`, `EnteredMaintenanceModeEvent` |
+| A host comes out | `HostSystem.exitMaintenanceMode`, a user | `ExitMaintenanceModeEvent`, `HostDasEnabledEvent` |
+
+The user is `VSPHERE.LOCAL\Administrator`. Finished tasks leave vCenter's
+recent-task list after ten minutes, as on a real vCenter.
+
+**What it does not do.** Datastore filling changes each cluster's vSAN
+datastore only, not local, NFS or iSCSI datastores. A real vCenter also
+records a `VmMacAssignedEvent` for a new VM, distributed-switch port events
+around power and removal, and a vSphere HA state event when a host comes out
+of maintenance mode; the simulator does not. An event's chain id is set a
+moment after the event is posted, so a tool that is waiting on an event
+collector at that instant can, rarely, see an event with its own key as its
+chain id. Nothing Activity does raises an alarm. Rolling patching, nightly
+backups and snapshots, and a host that crashes are not built yet.
 
 ### Checks
 

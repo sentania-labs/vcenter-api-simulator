@@ -325,6 +325,12 @@ func about(n float64) string {
 	return "less than 1"
 }
 
+// plainNumber is a number to two decimal places without trailing zeros:
+// 1.25, 1.5, 2.
+func plainNumber(n float64) string {
+	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", n), "0"), ".")
+}
+
 // lifeText says what a dial means for a scope, in one sentence.
 func lifeText(b string, d life.Dial, s lifeScope) string {
 	off := d.Exact == nil && d.Level <= 0
@@ -393,18 +399,18 @@ func lifeText(b string, d life.Dial, s lifeScope) string {
 			if off {
 				return "Off: the datastores do not fill."
 			}
-			return fmt.Sprintf("The vSAN datastores fill by %s%% of their capacity a day (about %s GB).", strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", pct), "0"), "."), about(gb))
+			return fmt.Sprintf("The vSAN datastores fill by %s%% of their capacity a day (about %s GB).", plainNumber(pct), about(gb))
 		}
 		if off {
 			return "Off: nothing is cleaned up."
 		}
-		return fmt.Sprintf("A cleanup at 2 AM frees %s%% of vSAN datastore capacity (about %s GB).", strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", pct), "0"), "."), about(gb))
+		return fmt.Sprintf("A cleanup at 2 AM frees %s%% of vSAN datastore capacity (about %s GB).", plainNumber(pct), about(gb))
 	case life.CPU:
 		switch {
 		case d.Level == 1:
 			return "CPU use is as the VMs were built."
 		case d.Level > 1:
-			return fmt.Sprintf("CPU use is about %s times what the VMs were built with, and they contend for CPU more.", about(d.Level))
+			return fmt.Sprintf("CPU use is about %s times what the VMs were built with, and they contend for CPU more.", plainNumber(d.Level))
 		}
 		return fmt.Sprintf("CPU use is about %s%% of what the VMs were built with.", about(d.Level*100))
 	default:
@@ -412,7 +418,7 @@ func lifeText(b string, d life.Dial, s lifeScope) string {
 		case d.Level == 1:
 			return "Memory use is as the VMs were built."
 		case d.Level > 1:
-			return fmt.Sprintf("Memory use is about %s times what the VMs were built with, up to what each VM has.", about(d.Level))
+			return fmt.Sprintf("Memory use is about %s times what the VMs were built with, up to what each VM has.", plainNumber(d.Level))
 		}
 		return fmt.Sprintf("Memory use is about %s%% of what the VMs were built with.", about(d.Level*100))
 	}

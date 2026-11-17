@@ -24,7 +24,7 @@ async function ask(ctx, path, body) {
 function dialRow(d, r) {
   const i = Math.max(0, r.levels.findIndex((l) => l.v === r.level));
   const follows = r.follows;
-  const label = r.exact ? 'Your own number' : r.levels[i].label;
+  const label = r.exact ? (follows ? "The vCenter's number" : 'Your own number') : r.levels[i].label;
   const state = follows ? badge('', 'Follows the vCenter') : d.scope ? badge('accent', 'Set for this cluster') : '';
   return html`<li class="a-dial ${r.held ? 'is-held' : ''}">
     <div class="a-dial-h"><h3>${r.name}</h3><span class="a-level" id="l-${r.key}">${label}</span>${state}</div>
