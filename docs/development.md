@@ -71,6 +71,24 @@ tools/smoke/smoke.sh --scenario examples/scenarios/phase1.yaml
 pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install -User <username> -Password <password>
 ```
 
+Shared storage. [`storage.yaml`](../examples/scenarios/storage.yaml) has shared
+NFS and iSCSI datastores, an inaccessible NFS mount, an all-paths-down LUN on
+one host and a near-full datastore. The govc smoke:
+
+```sh
+tools/smoke/smoke.sh --scenario examples/scenarios/storage.yaml --storage
+```
+
+For PowerCLI, start the simulator on that scenario with an account
+(`VCSIM_USERNAME` and `VCSIM_PASSWORD`; there is no default password), then:
+
+```sh
+pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Storage -User <username> -Password <password>
+```
+
+Both check datastore and host storage reads and the host fault. They do not
+show that a real storage system or an Operations pack has been exercised.
+
 The pack harness needs the reference pack checked out at
 `af976fb9fe97bbac2fd94b666a3f79aa12656f2a` of `sentania-labs/vsanhostmetrics`,
 Python 3.12 (the Operations SDK 1.3.1 does not install on 3.13 or newer), and
@@ -83,6 +101,48 @@ walked by someone who did not write it, in the running app, doing the real job
 start to finish: reading each screen once, without opening collapsed sections,
 long scrolling or guessing a value, and able to tell afterwards that it worked.
 Screenshots of the current screens are in [console](console/README.md).
+
+### Repeating the Operations check
+
+Use a development Operations instance and a credential source its owner
+approves. Keep Operations credentials and tokens in the process environment,
+never in a transcript, scenario or pull request. Use placeholder credentials for
+the simulator. Run a pinned simulator image on a host the collector can reach,
+on `examples/scenarios/phase1.yaml` with a persistent data volume (it holds the
+registry and the certificate). Snapshot the adapter inventory first, then add
+exactly one `VsanHostMetrics` adapter:
+
+| Setting | Value |
+|---|---|
+| Endpoint | The simulator's host and port, reachable from the collector |
+| Collection interval | Five minutes |
+| `metric_scope` | `all` |
+| `attach_to_vcenter` | `false`, so the entities stand alone |
+| `container_memory_limit` | `1024` (MiB) |
+| `verify_certs` | `false` for the first controlled-lab run |
+| Credential | `vsan_vc_credential` with simulator-only placeholders (`vcenter_username`, `vcenter_password` in 2.0.0) |
+
+Check for an existing adapter of the same name before creating one, and do not
+blindly retry a timed-out creation. Assert, from the Suite API:
+
+- The adapter (`/suite-api/api/adapters/{id}`) and its resources
+  (`/adapters/{id}/resources`, following pagination) match the simulated
+  entities and kinds, all `DATA_RECEIVING`.
+- `/resources/stats/latest` for only the simulator's resource ids, with
+  `maxSamples=3` and `currentOnly=false` (Operations refuses several samples
+  with `currentOnly=true`), has the expected metric keys at two distinct
+  collection timestamps.
+- `POST /resources/bulk/relationships` for `PARENT` and for `CHILD` returns
+  nothing, since the entities are standalone.
+- Two nonempty collection cycles show the same resource ids and metric keys,
+  with advancing timestamps. Discovery alone is not enough.
+- The adapter inventory is unchanged apart from the one new adapter.
+
+Leave the adapter and simulator running for inspection. Remove them only when
+the owner authorizes it: delete only that adapter, decide whether to keep its
+collected resources, delete its dedicated credential only when no adapter uses
+it, and keep the data volume unless resetting identities and the certificate is
+intended.
 
 ## What has been checked
 
@@ -104,7 +164,7 @@ The pack's adapter was attached with `attach_to_vcenter` off, so the entities
 stand alone. Native-vCenter attachment, scale, certificate verification from
 the collector and restart under an active adapter were not tried.
 
-**Not run:** the built-in vCenter adapter of Operations 9.1.1 collecting from the
+**Not run, at any simulator version:** the built-in vCenter adapter of Operations 9.1.1 collecting from the
 simulator. The simulator answers every request in the license chain, and these
 were run against its answers with the adapter's own Java client classes:
 lookup, license login and asset parsing, sign-on admin construction, the

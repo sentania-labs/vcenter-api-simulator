@@ -20,8 +20,8 @@ find as [issues](https://github.com/sentania-labs/vcenter-api-simulator/issues).
 |---|---|
 | Presents as | vCenter 8.0 Update 3, 9.0 or 9.1.1 (the default). ESX hosts can be a different version |
 | Get it | [Releases](https://github.com/sentania-labs/vcenter-api-simulator/releases), and the image `ghcr.io/sentania-labs/vcenter-api-simulator` |
-| Checked with | govc, PowerCLI, and the vSAN Host Metrics 2.0.0 pack collecting through VCF Operations 9.1.1 ([details](docs/development.md#what-has-been-checked)) |
-| Not confirmed | VCF Operations' own vCenter adapter collecting from it ([#14](https://github.com/sentania-labs/vcenter-api-simulator/issues/14)) |
+| Checked with | govc and PowerCLI. The vSAN Host Metrics 2.0.0 pack collecting through VCF Operations 9.1.1 was checked with simulator v0.2.0 on 2026-11-07, not since ([details](docs/development.md#what-has-been-checked)) |
+| Not confirmed | VCF Operations' own vCenter adapter collecting from it, not yet run against any simulator version ([#14](https://github.com/sentania-labs/vcenter-api-simulator/issues/14)) |
 
 ## Run it
 
@@ -144,8 +144,9 @@ The exact list is in the [reference](docs/REFERENCE.md#what-is-and-is-not-answer
   answers every one of those questions the way a real 9.1.1 vCenter does, up to
   "in evaluation". The last step, starting the adapter against it, has not been run
   ([#14](https://github.com/sentania-labs/vcenter-api-simulator/issues/14)).
-- Management packs that bring their own collector do work. The vSAN Host
-  Metrics 2.0.0 pack collected from it through Operations 9.1.1.
+- Management packs that bring their own collector are expected to work. The
+  vSAN Host Metrics 2.0.0 pack collected from simulator v0.2.0 through
+  Operations 9.1.1 on 2026-11-07. It has not been run against later versions.
 - Behind a shared ingress address, Operations' DNS alert is raised. It looks up
   the ingress address itself, which the simulator cannot change.
 
