@@ -1,35 +1,59 @@
 package admin
 
 import (
-	"testing"
-
-	"golang.org/x/crypto/bcrypt"
 	"os"
-	"path/filepath"
+	"syscall"
+	"testing"
 )
 
+func failWrites(t *testing.T, errno syscall.Errno) {
+	t.Helper()
+	original := writeFile
+	writeFile = func(*os.File, []byte) (int, error) {
+		return 0, &os.PathError{Op: "write", Path: "console-password", Err: errno}
+	}
+	t.Cleanup(func() { writeFile = original })
+}
+
 func TestDeploymentPasswordSurvivesFullVolume(t *testing.T) {
-	if _, err := os.Stat("/dev/full"); err != nil {
-		t.Skip("requires /dev/full")
-	}
-	dir := t.TempDir()
-	if err := os.Symlink("/dev/full", filepath.Join(dir, "console-password")); err != nil {
-		t.Fatal(err)
-	}
-	// Exercise the ENOSPC handling without reading the unbounded /dev/full.
-	a := &consoleAuth{}
-	err := os.WriteFile(filepath.Join(dir, "console-password"), []byte("test"), 0600)
-	if err == nil {
-		t.Fatal("expected ENOSPC")
-	}
-	if err = a.unsavedSeed("test-deployment-password", err); err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := a.claimed(); err != nil || !ok {
-		t.Fatalf("claimed=%v err=%v", ok, err)
-	}
-	hash, err := a.readHash()
-	if err != nil || bcrypt.CompareHashAndPassword(hash, []byte("test-deployment-password")) != nil {
-		t.Fatal("password not available")
-	}
+	const password = "deployment-password"
+	t.Run("first claim", func(t *testing.T) {
+		failWrites(t, syscall.ENOSPC)
+		a, err := newConsoleAuth(t.TempDir(), password)
+		if err != nil {
+			t.Fatalf("startup on a full volume: %v", err)
+		}
+		if ok, err := a.claimed(); err != nil || !ok {
+			t.Fatalf("claimed=%v err=%v", ok, err)
+		}
+		if _, err := a.login(password); err != nil {
+			t.Fatalf("login with the deployment password: %v", err)
+		}
+		if _, err := a.login("another-password"); err == nil {
+			t.Fatal("a wrong password signed in")
+		}
+	})
+	t.Run("rotated password", func(t *testing.T) {
+		dir := t.TempDir()
+		if _, err := newConsoleAuth(dir, "previous-password"); err != nil {
+			t.Fatal(err)
+		}
+		failWrites(t, syscall.ENOSPC)
+		a, err := newConsoleAuth(dir, password)
+		if err != nil {
+			t.Fatalf("startup on a full volume: %v", err)
+		}
+		if _, err := a.login(password); err != nil {
+			t.Fatalf("login with the rotated password: %v", err)
+		}
+		if _, err := a.login("previous-password"); err == nil {
+			t.Fatal("the replaced password still signed in")
+		}
+	})
+	t.Run("other write errors still fail startup", func(t *testing.T) {
+		failWrites(t, syscall.EIO)
+		if _, err := newConsoleAuth(t.TempDir(), password); err == nil {
+			t.Fatal("startup succeeded despite an unrelated write error")
+		}
+	})
 }

@@ -35,6 +35,8 @@ const (
 	minPassword = 8
 )
 
+var writeFile = (*os.File).Write
+
 type consoleSession struct{ started, active time.Time }
 
 // consoleAuth keeps sessions in memory so a restart invalidates them. The
@@ -88,7 +90,7 @@ func (a *consoleAuth) replace(password string) error {
 		return err
 	}
 	defer os.Remove(f.Name())
-	if _, err = f.Write(hash); err != nil {
+	if _, err = writeFile(f, hash); err != nil {
 		f.Close()
 		return err
 	}
@@ -185,7 +187,7 @@ func (a *consoleAuth) claim(password string) error {
 		return err
 	}
 	defer os.Remove(f.Name())
-	if _, err = f.Write(hash); err != nil {
+	if _, err = writeFile(f, hash); err != nil {
 		f.Close()
 		return err
 	}
