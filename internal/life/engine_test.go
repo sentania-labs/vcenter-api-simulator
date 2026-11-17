@@ -172,7 +172,9 @@ func (w *world) Fill(cluster string, share float64) []Store {
 	return []Store{{Name: "vsanDatastore", Bytes: int64((w.used[cluster] - before) * 100 * (1 << 40)), UsedPercent: int(w.used[cluster]*100 + 0.5)}}
 }
 
-func (w *world) SetLoad(cluster string, cpu, memory float64) { w.load[cluster] = [2]float64{cpu, memory} }
+func (w *world) SetLoad(cluster string, cpu, memory float64) {
+	w.load[cluster] = [2]float64{cpu, memory}
+}
 
 // monday is a working day; the engine is given UTC as its local time.
 var monday = time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)

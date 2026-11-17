@@ -247,9 +247,9 @@ type ClusterOverride struct {
 	// out, and AddedVMs the numbers it has beyond the ones its hosts
 	// generate: what Activity removed and added while the simulator ran.
 	// A number is never given to another VM.
-	RemovedVMs []int `yaml:"removedVMs,omitempty" json:"removedVMs,omitempty"`
-	AddedVMs   []int `yaml:"addedVMs,omitempty" json:"addedVMs,omitempty"`
-	ClusterSpec  `yaml:",inline" json:",omitempty"`
+	RemovedVMs  []int `yaml:"removedVMs,omitempty" json:"removedVMs,omitempty"`
+	AddedVMs    []int `yaml:"addedVMs,omitempty" json:"addedVMs,omitempty"`
+	ClusterSpec `yaml:",inline" json:",omitempty"`
 }
 
 // Auth lists accepted users. AnyLogin explicitly permits arbitrary credentials.

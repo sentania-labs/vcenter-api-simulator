@@ -34,7 +34,7 @@ type workloadNode struct {
 	// loadCPU and loadMem are how loaded Activity says a VM's cluster looks:
 	// 1 is as built.
 	loadCPU, loadMem float64
-	boot              time.Time
+	boot             time.Time
 }
 
 func readPerformanceState(ctx *simulator.Context) *performanceState {

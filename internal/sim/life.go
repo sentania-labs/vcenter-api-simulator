@@ -169,7 +169,7 @@ func (l *Life) record(ctx *simulator.Context, entity types.ManagedObjectReferenc
 	l.old = append(l.old, oldTask{ref: ref, entity: entity, at: time.Now()})
 }
 
-func byUser() types.BaseTaskReason { return &types.TaskReasonUser{UserName: lifeUser} }
+func byUser() types.BaseTaskReason   { return &types.TaskReasonUser{UserName: lifeUser} }
 func bySystem() types.BaseTaskReason { return &types.TaskReasonSystem{} }
 
 // taskAge is how long a finished task stays in the recent task lists, as
