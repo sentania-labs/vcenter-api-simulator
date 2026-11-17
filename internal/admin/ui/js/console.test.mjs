@@ -325,3 +325,19 @@ test('Home says which build is running, how long, and how busy it has been', () 
   assert.equal(uptimeText(30), 'under a minute');
   assert.equal(uptimeText(26 * 3600), '1 day 2 hours');
 });
+
+test('the Requests screen shows the log\'s space against its limit', () => {
+  const cap = { available: true, unanswered: true, full: true, debug: true, kept: 2, kinds: 1, fullKept: 300, logBytes: 4194304, logMaxBytes: 25165824, logFiles: 4 };
+  const t = text(requests.screen(['requests'], {}).render(ctxOf(homeView), {
+    verdict: { tone: 'ok', big: 'Everything asked for is being answered.', line: 'x' },
+    counts: { all: 1, unknown: 0, fault: 0, denied: 0, ok: 1 },
+    asks: [{ id: 1, t: 'Signing in and out', tech: 'Login', n: 1, st: 'ok', tone: 'ok', label: 'Answered', long: 'x', who: 'the tool at 10.0.0.1', last: now }],
+    multiTool: false, capture: cap, reportUrl: 'https://example.test/issues/new',
+  }));
+  assert.match(t, /4,096 KiBs of 24,576 KiBs used by 4 files/);
+  const full = text(requests.screen(['requests'], {}).render(ctxOf(homeView), {
+    verdict: { tone: 'ok', big: 'x', line: 'x' }, counts: { all: 1, unknown: 0, fault: 0, denied: 0, ok: 1 }, asks: [],
+    multiTool: false, capture: { ...cap, logPaused: true }, reportUrl: 'r',
+  }));
+  assert.match(full, /the limit is reached, so writing stopped; delete what was captured to resume/);
+});

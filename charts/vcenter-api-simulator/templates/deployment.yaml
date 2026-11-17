@@ -51,6 +51,15 @@ spec:
             - -seed={{ .Values.simulator.seed }}
             {{- if .Values.simulator.capture.queryLog }}
             - -query-log=/data/query-log.jsonl
+            {{- if gt (int .Values.simulator.capture.queryLogMaxFileBytes) 0 }}
+            - -query-log-max-bytes={{ int .Values.simulator.capture.queryLogMaxFileBytes }}
+            {{- end }}
+            {{- if gt (int .Values.simulator.capture.queryLogMaxFiles) 0 }}
+            - -query-log-max-files={{ int .Values.simulator.capture.queryLogMaxFiles }}
+            {{- end }}
+            {{- if gt (int .Values.simulator.capture.queryLogMaxTotal) 0 }}
+            - -query-log-max-total={{ int .Values.simulator.capture.queryLogMaxTotal }}
+            {{- end }}
             {{- end }}
             {{- if .Values.simulator.capture.unansweredStdout }}
             - -unanswered-stdout

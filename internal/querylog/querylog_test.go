@@ -226,7 +226,7 @@ func TestCaptureReportsWriteFailure(t *testing.T) {
 	if _, err := os.Stat("/dev/full"); err != nil {
 		t.Skip("/dev/full unavailable")
 	}
-	c, err := NewCapture(t.TempDir(), "/dev/full", Settings{Full: true}, nil)
+	c, err := NewCapture(t.TempDir(), "/dev/full", Settings{Full: true}, nil, int64(0), Limits{MaxFileBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}

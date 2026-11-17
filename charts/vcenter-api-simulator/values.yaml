@@ -48,8 +48,20 @@ simulator:
   # Defaults for live capture settings. The console can override these.
   capture:
     # Write the full, redacted query log to /data/query-log.jsonl. It can
-    # contain inventory identifiers and grows until cleared.
+    # contain inventory identifiers. The log is bounded: it rotates by size
+    # into gzip archives and the oldest are deleted, so its total stays
+    # inside the cap below (and inside the space the volume has).
     queryLog: false
+    # Bytes one log file may hold before it is gzipped and a new one starts.
+    # 0 means the simulator's default (4 MiB).
+    queryLogMaxFileBytes: 0
+    # How many log files to keep at most, oldest deleted first. 0 means the
+    # simulator's default (4).
+    queryLogMaxFiles: 0
+    # Total bytes the whole log may take across its files. 0 means the
+    # simulator's default (24 MiB), or the space the claim has when that is
+    # smaller.
+    queryLogMaxTotal: 0
     # Also emit unanswered requests as JSON lines to container stdout.
     unansweredStdout: false
 
@@ -120,12 +132,17 @@ persistence:
   # emptyDir is used and every new pod issues new object identities and a new
   # certificate, which breaks a management pack's pins. The claim
   # is annotated to survive helm uninstall and Argo CD prune or delete.
+  # The size must comfortably hold the query log's total cap
+  # (simulator.capture.queryLogMaxTotal, 24 MiB by default) plus the state
+  # files; 128Mi does. An already-bound claim keeps its old size unless the
+  # storage class allows expansion - the log then limits itself to the space
+  # that is actually there. See the chart README.
   enabled: true
   existingClaim: ""
   storageClass: ""
   accessModes:
     - ReadWriteOnce
-  size: 100Mi
+  size: 128Mi
   annotations: {}
 
 service:
