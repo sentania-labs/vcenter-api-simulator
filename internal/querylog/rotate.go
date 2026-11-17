@@ -1,6 +1,7 @@
 package querylog
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"errors"
@@ -237,7 +238,7 @@ func (r *rotator) compress(active string) error {
 	}
 	defer in.Close()
 	name := r.base + "." + strconv.FormatInt(r.gen+1, 10) + ".jsonl.gz"
-	out, err := os.Create(name)
+	out, err := os.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -267,42 +268,54 @@ func removeFile(name string) error {
 	return nil
 }
 
-// readChronological returns the log's lines as they were written, oldest
-// first: the archives from the oldest up, then the active file.
-func (r *rotator) readChronological() [][]byte {
+// readChronological writes the log's lines as they were written, oldest
+// first: the archives from the oldest up, then the active file. Each file is
+// decoded and written one at a time, so a large legacy log never has to be
+// held in memory all at once.
+func (r *rotator) readChronological(w io.Writer) error {
 	r.scan()
-	var out [][]byte
 	for i := len(r.state) - 1; i >= 0; i-- {
-		lines, err := readAny(r.state[i].name)
-		if err != nil {
-			continue
+		if err := writeAny(w, r.state[i].name); err != nil {
+			return err
 		}
-		out = append(out, lines...)
 	}
-	return out
+	return nil
 }
 
-// readAny returns a file's non-empty lines, transparently for gzip.
-func readAny(name string) ([][]byte, error) {
-	b, err := os.ReadFile(name)
+// writeAny streams a file's non-empty lines, one per line, transparently for
+// gzip. Both the compressed and the decompressed form are read through a
+// buffered reader rather than as one block.
+func writeAny(w io.Writer, name string) error {
+	f, err := os.Open(name)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
 	}
+	defer f.Close()
+	var src io.Reader = f
 	if strings.HasSuffix(name, ".gz") {
-		zr, err := gzip.NewReader(bytes.NewReader(b))
+		zr, err := gzip.NewReader(f)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer zr.Close()
-		if b, err = io.ReadAll(zr); err != nil {
-			return nil, err
-		}
+		src = zr
 	}
-	var out [][]byte
-	for _, line := range bytes.Split(b, []byte("\n")) {
+	br := bufio.NewReaderSize(src, 64<<10)
+	for {
+		line, err := br.ReadBytes('\n')
 		if len(bytes.TrimSpace(line)) > 0 {
-			out = append(out, line)
+			if _, werr := w.Write(line); werr != nil {
+				return werr
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
 		}
 	}
-	return out, nil
 }

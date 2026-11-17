@@ -65,6 +65,16 @@ func TestRotationCompressesWithoutTearing(t *testing.T) {
 	if gz == 0 {
 		t.Fatal("no gzip archive was written")
 	}
+	// the archives are as restrictive as the active file
+	for _, name := range archives(t, dir) {
+		st, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := st.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("%s has mode %o, want 600 like the active log", filepath.Base(name), perm)
+		}
+	}
 }
 
 // The total stays inside the cap even after many files, and the oldest are the
@@ -213,6 +223,16 @@ func TestCapTooSmallReportsError(t *testing.T) {
 	if st := c.State(); !strings.Contains(st.Error, "smaller than one request") {
 		t.Fatalf("cap-too-small not reported: %q", st.Error)
 	}
+	// a following small request is written, and the cap error is what stays
+	if err := c.rot.put([]byte(`{"time":"2026-01-01T00:00:00Z","path":"/sdk"}` + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	if st := c.State(); !strings.Contains(st.Error, "smaller than one request") {
+		t.Fatalf("the cap error did not survive a later write: %q", st.Error)
+	}
+	if st := c.State(); st.TotalBytes == 0 {
+		t.Fatal("the following request did not reach the log")
+	}
 	// the log file holds nothing but the cap is still respected
 	if b, err := os.ReadFile(filepath.Join(dir, "query-log.jsonl")); err == nil && int64(len(b)) > 500 {
 		t.Fatalf("log %d bytes over the 500 cap", len(b))
@@ -314,4 +334,69 @@ func TestOpenTrimsALogAlreadyOverTheCap(t *testing.T) {
 	if st.TotalBytes == 0 {
 		t.Fatal("the log was emptied instead of kept inside the cap")
 	}
+}
+
+// A legacy log much larger than the reader's buffer comes back complete and in
+// order through a download, and the decompressed file is not held as one block.
+func TestDownloadStreamsALegacyLogLargerThanTheBuffer(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "query-log.jsonl")
+	const lines = 5000
+	line := []byte(`{"time":"2026-01-01T00:00:00Z","method":"POST","path":"/sdk","prop":"` + strings.Repeat("z", 200) + `"}` + "\n")
+	if err := os.WriteFile(path, bytes.Repeat(line, lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// 1 MiB of legacy log, sixteen times the reader's 64 KiB buffer
+	if n, err := os.Stat(path); err != nil || n.Size() < 64<<10 {
+		t.Fatalf("legacy log is not larger than the buffer: %+v %v", n, err)
+	}
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0,
+		Limits{MaxFileBytes: 1 << 20, MaxFiles: 4, MaxTotal: 4 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "query-log.1.jsonl.gz"))
+	if err != nil || info.Size() == 0 {
+		t.Fatalf("the legacy log was not compressed into an archive on start: %v", err)
+	}
+	var out bytes.Buffer
+	if err := c.WriteJSONL(&out, false); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(got) != lines {
+		t.Fatalf("streamed %d lines, want %d", len(got), lines)
+	}
+	for i, l := range got {
+		if !json.Valid([]byte(l)) {
+			t.Fatalf("line %d is not a record: %.80s", i+1, l)
+		}
+	}
+	// the newest line is still the last one after a later request
+	h := c.Wrap(http.NotFoundHandler())
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(soap(3))))
+	out.Reset()
+	if err := c.WriteJSONL(&out, false); err != nil {
+		t.Fatal(err)
+	}
+	got = strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(got) != lines+1 {
+		t.Fatalf("after one more request: %d lines, want %d", len(got), lines+1)
+	}
+	var last record
+	if err := json.Unmarshal([]byte(got[len(got)-1]), &last); err != nil {
+		t.Fatalf("last line is not a record: %v", err)
+	}
+	if last.Path != "/sdk" {
+		t.Fatalf("last record: %+v", last)
+	}
+}
+
+func archives(t *testing.T, dir string) []string {
+	t.Helper()
+	names, err := filepath.Glob(filepath.Join(dir, "query-log.*.jsonl.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return names
 }

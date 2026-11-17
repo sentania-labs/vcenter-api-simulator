@@ -245,17 +245,9 @@ func (c *Capture) WriteJSONL(w io.Writer, unanswered bool) error {
 		return nil
 	}
 	c.mu.Lock()
-	lines := c.rot.readChronological()
+	err := c.rot.readChronological(w)
 	c.mu.Unlock()
-	for _, line := range lines {
-		if _, err := w.Write(line); err != nil {
-			return err
-		}
-		if _, err := w.Write([]byte{'\n'}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return err
 }
 
 func (c *Capture) Clear() error {
