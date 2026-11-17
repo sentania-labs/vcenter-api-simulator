@@ -75,7 +75,8 @@ type Options struct {
 	Endpoint string
 	// PublicURL, when set, is the address tools should use, as one string
 	// (a deployment behind an ingress knows it; the simulator does not).
-	PublicURL string
+	PublicURL        string
+	ApplianceNetwork sim.ApplianceNetwork
 	// ReportURL is where the console sends people to report a request the
 	// simulator cannot answer.
 	ReportURL string
@@ -288,7 +289,7 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	s, err := sim.New(sim.Options{
 		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Conditions: sc.Conditions, Now: c.now, Certificate: c.opts.Certificate,
-		Licensing: sc.Licensing, Issuer: signon.Open(c.opts.DataDir, sc.Seed), Trust: c.trust, PublicAddress: c.Address(),
+		Licensing: sc.Licensing, Issuer: signon.Open(c.opts.DataDir, sc.Seed), Trust: c.trust, PublicAddress: c.Address(), ApplianceNetwork: c.opts.ApplianceNetwork,
 		LicenseManagerChanged: func() { c.licenseManagerChanged(built.Load()) },
 	})
 	if err != nil {

@@ -88,6 +88,8 @@ func main() {
 	adminReset := flag.Bool("admin-reset", false, "remove the console password and exit; stop the console first")
 	adminHosts := flag.String("admin-allowed-hosts", "", "comma-separated Host names the control console answers to besides localhost, 127.0.0.1 and ::1; any other Host gets 403 (env VCSIM_ADMIN_ALLOWED_HOSTS)")
 	sessionTimeout := flag.Duration("session-timeout", 0, "idle session timeout (0: sessions never expire)")
+	applianceDNS := flag.String("appliance-dns-servers", "", "comma-separated appliance DNS server IPs (default: /etc/resolv.conf)")
+	applianceIPv4 := flag.String("appliance-ipv4", "", "appliance IPv4 address with prefix, e.g. 10.0.0.2/24 (default: local interface)")
 	publicURL := flag.String("public-url", "", "the address tools should use, shown in the console (env VCSIM_PUBLIC_URL; default https://<name>:<port>)")
 	lookupTrust := flag.String("lookup-trust-cert", "", "PEM file with the certificate tools see at the simulator's address when a proxy in front of it ends TLS; the lookup service names it as the certificate to trust instead of the simulator's own (env VCSIM_LOOKUP_TRUST_CERT)")
 	reportURL := flag.String("report-url", "", "where the console sends people to report a request the simulator cannot answer (env VCSIM_REPORT_URL; default the project's new-issue page)")
@@ -199,7 +201,8 @@ func main() {
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
 		Credentials: extra, CredentialRole: *role, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
-		PublicURL: *publicURL, ReportURL: *reportURL, LookupTrustFile: *lookupTrust,
+		ApplianceNetwork: sim.ApplianceNetwork{DNSServers: splitNonempty(*applianceDNS), IPv4: *applianceIPv4},
+		PublicURL:        *publicURL, ReportURL: *reportURL, LookupTrustFile: *lookupTrust,
 		Resolved: func(effective *scenario.Scenario) {
 			if vc, err := effective.VCenterVersion(); err == nil {
 				health.SetVersions(vimVersions(vc))
@@ -434,4 +437,14 @@ func describeTopology(topo *topology.Topology) description {
 		})
 	}
 	return d
+}
+
+func splitNonempty(value string) []string {
+	var result []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
 }

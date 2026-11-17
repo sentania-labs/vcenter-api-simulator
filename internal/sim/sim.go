@@ -87,6 +87,8 @@ type Options struct {
 	// PublicAddress is the address tools use ("https://name:port"). The
 	// vCenter's own settings name its sign-on services under it.
 	PublicAddress string
+	// ApplianceNetwork overrides the resolver and IPv4 address reported by appliance APIs.
+	ApplianceNetwork ApplianceNetwork
 	// LicenseManagerChanged is told when a tool registers, changes or
 	// removes the "license managed by" marker. It is called from its own
 	// goroutine, and reads the marker as it then stands with
@@ -135,6 +137,10 @@ type dcRefs struct {
 func New(opts Options) (*Simulator, error) {
 	if opts.Topology == nil {
 		return nil, fmt.Errorf("sim: topology required")
+	}
+	network, err := opts.ApplianceNetwork.resolve()
+	if err != nil {
+		return nil, err
 	}
 	cat, err := catalog.Load()
 	if err != nil {
@@ -197,7 +203,7 @@ func New(opts Options) (*Simulator, error) {
 	s.server = m.Service.NewServer()
 	signOnSettings(m, opts.PublicAddress)
 	vsanhealth.Install(m.Service, s.Env)
-	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}, license: *newLicenseSessions(creds, opts.Authenticate), tls: opts.Certificate}
+	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat, publicAddress: opts.PublicAddress, network: network}, license: *newLicenseSessions(creds, opts.Authenticate), tls: opts.Certificate}
 	h.timeout.Store(int64(opts.SessionTimeout))
 	h.rest.timeout = &h.timeout
 	h.rest.access = &h.accessMu

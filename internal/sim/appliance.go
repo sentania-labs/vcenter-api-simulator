@@ -2,12 +2,24 @@ package sim
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
 )
 
-// Appliance configuration belongs to this simulated appliance. These are
-// invented defaults, not settings or account data copied from a vCenter.
+// Appliance configuration belongs to this simulated appliance. Account defaults
+// are invented; networking comes from its configured identity and local runtime.
 func (s *restSessions) appliance(w http.ResponseWriter, r *http.Request) bool {
+	host := clientHost(r)
+	if s.publicAddress != "" {
+		if u, err := url.Parse(s.publicAddress); err == nil && u.Host != "" {
+			host = u.Host
+		}
+	}
+	hostname := host
+	if u, err := url.Parse("https://" + host); err == nil {
+		hostname = u.Hostname()
+	}
 	var value any
 	switch r.URL.Path {
 	case "/api/appliance/local-accounts/root":
@@ -21,13 +33,23 @@ func (s *restSessions) appliance(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/appliance/recovery/backup/schedules":
 		value = map[string]any{}
 	case "/api/appliance/networking":
-		value = map[string]any{"interfaces": map[string]any{"nic0": map[string]any{"name": "nic0", "mac": "00:50:56:00:00:01", "status": "up", "ipv4": map[string]any{"mode": "static", "address": "192.0.2.10", "prefix": 24, "default_gateway": "192.0.2.1", "configurable": true}}}, "dns": map[string]any{"mode": "is_static", "hostname": "vcenter.example.invalid", "servers": []string{"192.0.2.1"}}, "vcenter_base_url": "https://" + clientHost(r)}
+		ipv4 := map[string]any{"mode": "static", "configurable": false}
+		if s.network.IPv4 != "" {
+			ip, subnet, _ := net.ParseCIDR(s.network.IPv4)
+			prefix, _ := subnet.Mask.Size()
+			ipv4["address"], ipv4["prefix"] = ip.String(), prefix
+		}
+		value = map[string]any{"interfaces": map[string]any{"nic0": map[string]any{"name": "nic0", "status": "up", "ipv4": ipv4}}, "dns": map[string]any{"mode": "is_static", "hostname": hostname, "servers": s.network.DNSServers}, "vcenter_base_url": "https://" + host}
+	case "/api/appliance/networking/dns/hostname":
+		value = hostname
+	case "/api/appliance/networking/dns/servers":
+		value = map[string]any{"mode": "is_static", "servers": s.network.DNSServers}
 	case "/api/appliance/timesync":
 		value = "NTP"
 	case "/api/appliance/tls/profiles/global":
 		value = map[string]any{"profile": "COMPATIBLE"}
 	case "/api/vcenter/topology/nodes":
-		value = []any{map[string]any{"node": "vcenter.example.invalid", "replication_partners": []string{}, "type": "VCSA_EMBEDDED"}}
+		value = []any{map[string]any{"node": hostname, "replication_partners": []string{}, "type": "VCSA_EMBEDDED"}}
 	case "/api/vcenter/namespace-management/supervisors/summaries":
 		value = map[string]any{"items": []any{}}
 	case "/api/vcenter/services/vsan-health":

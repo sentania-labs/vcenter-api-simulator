@@ -64,6 +64,12 @@ spec:
             {{- if .Values.simulator.capture.unansweredStdout }}
             - -unanswered-stdout
             {{- end }}
+            {{- with .Values.simulator.applianceNetworking.dnsServers }}
+            - -appliance-dns-servers={{ join "," . }}
+            {{- end }}
+            {{- with .Values.simulator.applianceNetworking.ipv4 }}
+            - -appliance-ipv4={{ . }}
+            {{- end }}
             - -tls-names={{ include "vcsim.tlsNames" . }}
             {{- if include "vcsim.tlsSecretName" . }}
             - -tls-managed
