@@ -1,14 +1,16 @@
 package control
 
 import (
+	"bytes"
 	"encoding/json"
-	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
 func TestMemoryPlanning(t *testing.T) {
@@ -122,5 +124,92 @@ func TestClusterPreviewShowsMemoryBeforeApply(t *testing.T) {
 	}
 	if len(c.applied().topo.Clusters()) != 1 {
 		t.Fatal("preview applied the change")
+	}
+}
+
+// A registry write can exhaust storage while the smaller state file would
+// still fit. A changed seed must never land on disk without its identities.
+func TestRegistrySaveFailureKeepsPersistedScenarioConsistent(t *testing.T) {
+	if _, err := os.Stat("/dev/full"); err != nil {
+		t.Skip("requires /dev/full")
+	}
+	for _, retry := range []bool{false, true} {
+		name := "restart_previous_layout"
+		if retry {
+			name = "retry_then_restart_new_layout"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			opts := Options{Scenario: scenario.Phase1("previous-layout"), SourceHash: "seed-save", DataDir: dir, AnyLogin: true}
+			c, err := New(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if c != nil {
+					c.Close()
+				}
+			}()
+			oldUUID := c.applied().topo.InstanceUUID
+			saved := map[string][]byte{}
+			for _, file := range []string{"registry.json", "console.json"} {
+				saved[file], err = os.ReadFile(filepath.Join(dir, file))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			fault := filepath.Join(dir, "registry.json.tmp")
+			if err = os.Symlink("/dev/full", fault); err != nil {
+				t.Fatal(err)
+			}
+			next := clone(c.applied().sc)
+			next.Seed = "replacement-layout"
+			c.mu.Lock()
+			_, err = c.applyScenario(next, true)
+			c.mu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.applied().sc.Seed != next.Seed || c.unsaved == "" {
+				t.Fatal("replacement must serve in memory and report unsaved state")
+			}
+			w := httptest.NewRecorder()
+			c.ServeHTTP(w, httptest.NewRequest("GET", "/sdk/vimServiceVersions.xml", nil))
+			if w.Code != 200 {
+				t.Fatal(w.Code)
+			}
+			for file, want := range saved {
+				got, err := os.ReadFile(filepath.Join(dir, file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got, want) {
+					t.Fatalf("%s changed although registry could not be saved", file)
+				}
+			}
+			if err = os.Remove(fault); err != nil {
+				t.Fatal(err)
+			}
+			wantSeed, wantUUID := opts.Scenario.Seed, oldUUID
+			if retry {
+				c.mu.Lock()
+				c.save()
+				c.mu.Unlock()
+				if c.unsaved != "" {
+					t.Fatal(c.unsaved)
+				}
+				wantSeed, wantUUID = next.Seed, c.applied().topo.InstanceUUID
+			}
+			c.Close()
+			c = nil
+			restored, err := New(opts)
+			if err != nil {
+				t.Fatalf("restart after storage recovery: %v", err)
+			}
+			defer restored.Close()
+			if restored.applied().sc.Seed != wantSeed || restored.reg.Seed() != wantSeed || restored.applied().topo.InstanceUUID != wantUUID {
+				t.Fatal("restarted scenario and identities disagree")
+			}
+		})
 	}
 }

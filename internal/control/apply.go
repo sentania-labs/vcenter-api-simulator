@@ -2,7 +2,6 @@ package control
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -82,7 +81,13 @@ func (c *Controller) regPath() string { return c.opts.DataDir + "/registry.json"
 // or called a failure because it could not be saved: Home says that the
 // state is unsaved until a later save succeeds.
 func (c *Controller) save() {
-	if err := errors.Join(c.reg.Save(), c.persist()); err != nil {
+	// The scenario may name a new seed. Never persist it until its matching
+	// identities are durable, even if the smaller scenario write would fit.
+	err := c.reg.Save()
+	if err == nil {
+		err = c.persist()
+	}
+	if err != nil {
 		c.unsaved = err.Error()
 		log.Printf("control: state not saved; continuing to serve in memory, changes may be lost on restart; free space or enlarge the data volume: %v", err)
 		return
