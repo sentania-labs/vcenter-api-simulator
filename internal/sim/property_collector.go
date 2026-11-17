@@ -36,7 +36,9 @@ func (p *propertyCollector) RetrieveProperties(ctx *simulator.Context, req *type
 	return response
 }
 func (p *propertyCollector) CreatePropertyCollector(ctx *simulator.Context, _ *types.CreatePropertyCollector) soap.HasFault {
-	ref := ctx.Session.Put(&propertyCollector{}).Reference()
+	collector := &propertyCollector{}
+	collector.Self = types.ManagedObjectReference{Type: "PropertyCollector"}
+	ref := ctx.Session.Put(collector).Reference()
 	return &methods.CreatePropertyCollectorBody{Res: &types.CreatePropertyCollectorResponse{Returnval: ref}}
 }
 func shapeProperties(ctx *simulator.Context, objects []types.ObjectContent) {

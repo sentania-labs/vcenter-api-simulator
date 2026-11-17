@@ -114,6 +114,9 @@ func TestOperationsPagedOptionalVMProperties(t *testing.T) {
 				t.Fatal(err)
 			}
 			pc = created.Returnval
+			if pc.Type != "PropertyCollector" {
+				t.Fatalf("session property collector has type %q", pc.Type)
+			}
 			defer methods.DestroyPropertyCollector(ctx, e.client, &types.DestroyPropertyCollector{This: pc})
 		}
 		req := &types.RetrievePropertiesEx{This: pc, SpecSet: []types.PropertyFilterSpec{{PropSet: []types.PropertySpec{{Type: "VirtualMachine", PathSet: []string{"name", "config.hardware", "config.managedBy", "config.ftInfo", "config.keyId", "snapshot"}}}, ObjectSet: []types.ObjectSpec{{Obj: container.Reference(), Skip: types.NewBool(true), SelectSet: []types.BaseSelectionSpec{&types.TraversalSpec{Type: "ContainerView", Path: "view"}}}}}}, Options: types.RetrieveOptions{MaxObjects: 1}}
