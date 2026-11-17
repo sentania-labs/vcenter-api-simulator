@@ -34,6 +34,8 @@ func installHostManagers(ctx *simulator.Context, host *simulator.HostSystem) err
 			return fmt.Errorf("host manager %q has no reference", own.Type)
 		}
 		switch m := obj.(type) {
+		case *mo.HostAccessManager:
+			obj = &hostAccessManager{HostAccessManager: *m}
 		case *mo.HostImageConfigManager:
 			obj = &hostImageManager{HostImageConfigManager: *m}
 		case *mo.HostMemorySystem:
@@ -59,4 +61,19 @@ type hostImageManager struct{ mo.HostImageConfigManager }
 
 func (m *hostImageManager) HostImageConfigGetAcceptance(_ *simulator.Context, _ *types.HostImageConfigGetAcceptance) soap.HasFault {
 	return &methods.HostImageConfigGetAcceptanceBody{Res: &types.HostImageConfigGetAcceptanceResponse{Returnval: string(types.HostImageAcceptanceLevelVmware_accepted)}}
+}
+
+// No exception accounts are configured on modeled hosts.
+type hostAccessManager struct{ mo.HostAccessManager }
+
+func (m *hostAccessManager) QueryLockdownExceptions(_ *simulator.Context, _ *types.QueryLockdownExceptions) soap.HasFault {
+	return &methods.QueryLockdownExceptionsBody{Res: &types.QueryLockdownExceptionsResponse{}}
+}
+
+// Install the retained ESXi template reference after every host has received
+// its own manager, so the alias does not short-circuit per-host installation.
+func installLegacyImageManager(ctx *simulator.Context) {
+	m := &hostImageManager{}
+	m.Self = types.ManagedObjectReference{Type: "HostImageConfigManager", Value: "ha-image-config-manager"}
+	ctx.Map.Put(m)
 }

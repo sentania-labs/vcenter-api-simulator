@@ -6,6 +6,7 @@
 package vsanhealth
 
 import (
+	"strings"
 	"time"
 
 	"github.com/vmware/govmomi/simulator"
@@ -103,6 +104,10 @@ func Install(s *simulator.Service, env *Env) {
 	r.Put(&StretchSystem{ManagedObjectReference: StretchSystemRef, env: env})
 	r.Put(&IscsiSystem{ManagedObjectReference: IscsiSystemRef, env: env})
 	r.Put(&CapabilitySystem{ManagedObjectReference: CapabilitySystemRef, env: env})
+	for ref, entry := range env.hosts {
+		systemRef := vim25types.ManagedObjectReference{Type: "VsanSystemEx", Value: "vsanSystemEx-" + strings.TrimPrefix(ref.Value, "host-")}
+		r.Put(&HostSystemEx{ManagedObjectReference: systemRef, env: env, cluster: entry.cluster})
+	}
 	s.RegisterSDK(r)
 }
 

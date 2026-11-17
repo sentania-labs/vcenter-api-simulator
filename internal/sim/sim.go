@@ -185,6 +185,8 @@ func New(opts Options) (*Simulator, error) {
 	collector := &propertyCollector{}
 	collector.Self = m.ServiceContent.PropertyCollector
 	m.Service.Context.Map.Put(collector)
+	index := m.Service.Context.Map.Get(*m.ServiceContent.SearchIndex).(*simulator.SearchIndex)
+	m.Service.Context.Map.Put(&searchIndex{SearchIndex: index})
 	ownSettings(m)
 	installAuth(m, creds, opts.Authenticate, 0)
 	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
@@ -193,6 +195,7 @@ func New(opts Options) (*Simulator, error) {
 		s.Close()
 		return nil, err
 	}
+	installLegacyImageManager(m.Service.Context)
 	m.Service.Context.Map.Put(&resourceModel{ManagedObjectReference: types.ManagedObjectReference{Type: "DataProviderResourceModel", Value: "ResourceModel"}})
 	s.server = m.Service.NewServer()
 	signOnSettings(m, opts.PublicAddress)

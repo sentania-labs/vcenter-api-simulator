@@ -212,7 +212,7 @@ var inventoryTypes = map[string]bool{
 // deliberatePaths are requests the simulator turns away exactly as a real
 // vCenter does: they were captured that way.
 var deliberatePaths = map[string]bool{
-	"/sdk": true, "/sdk/": true, "/vsanHealth": true, "/vsanHealth/": true, "/vsanHealth/vsanServiceVersions.xml": true,
+	"/wcp": true, "/sdk": true, "/sdk/": true, "/vsanHealth": true, "/vsanHealth/": true, "/vsanHealth/vsanServiceVersions.xml": true,
 }
 
 // Classify says why a request was answered the way it was. The Requests

@@ -79,6 +79,9 @@ func (s *restSessions) valid(token string) bool {
 }
 
 func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
+	if r.URL.Path == "/wcp" {
+		return serveWCP(w, r)
+	}
 	legacy := r.URL.Path == legacySessionPath
 	fail := func(status int, kind string) {
 		if legacy {
@@ -169,7 +172,11 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	}
 	path := r.URL.Path
 	switch path {
-	case "/api/cis/tagging/category", "/api/cis/tagging/tag", "/api/vcenter/namespace-management/clusters":
+	case "/api/vcenter/namespace-management/supervisors/summaries":
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[]}`))
+		return true
+	case "/api/cis/tagging/category", "/api/cis/tagging/tag", "/api/vcenter/namespace-management/clusters", "/api/vcenter/namespace-management/clusters/", "/api/vcenter/namespaces/instances", "/api/vcenter/namespaces/instances/", "/api/vcenter/namespaces/instances/v2":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[]"))
 		return true
