@@ -187,7 +187,7 @@ func TestCustomVCenterCanBeMatchedByESX(t *testing.T) {
 	s := Phase1("custom-match")
 	s.VCenter = Version{Version: "8.0.2", Build: "23504390", APIVersion: "8.0.2.0", FullName: "VMware vCenter Server 8.0.2"}
 	host, err := s.HostVersion("dc-01/cluster-01", "dc-01/cluster-01/esx01")
-	if err != nil || host.Version != s.VCenter.Version || host.Build != s.VCenter.Build || host.APIVersion != s.VCenter.APIVersion {
+	if err != nil || host.Version != s.VCenter.Version || host.Build == s.VCenter.Build || host.APIVersion != s.VCenter.APIVersion {
 		t.Fatalf("custom match: %+v, %v", host, err)
 	}
 	if err := s.Validate(); err != nil {
@@ -216,5 +216,37 @@ func TestEveryPresetCarriesItsOwnAPIVersionAndLicenseVersion(t *testing.T) {
 		if got := (Version{Version: version}).LicenseVersion(); got != want {
 			t.Errorf("LicenseVersion(%s) = %q, want %q", version, got, want)
 		}
+	}
+}
+
+// A release that is not a preset gets derived strings. They follow the same
+// form as the real products of that major version, and a host that follows a
+// custom vCenter gets a host-shaped name, not a vCenter build.
+func TestDerivedVersionForms(t *testing.T) {
+	vc, err := VersionChoice("vcenter", "9.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vc.FullName != "VMware vCenter Server 9.2.0.0."+vc.Build || vc.PatchLevel != "0" || vc.APIVersion != "9.2.0.0" {
+		t.Errorf("9.2.0 vCenter: %+v", vc)
+	}
+	esx, err := VersionChoice("esx", "9.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if esx.FullName != "VMware ESXi 9.2.0.0."+esx.Build || esx.PatchLevel != "0.0" || esx.Build == vc.Build {
+		t.Errorf("9.2.0 ESX: %+v", esx)
+	}
+	old, _ := VersionChoice("vcenter", "8.1.0")
+	if old.FullName != "VMware vCenter Server 8.1.0 build-"+old.Build || old.PatchLevel != "" {
+		t.Errorf("8.1.0 vCenter: %+v", old)
+	}
+	sc := &Scenario{VCenter: vc}
+	h, err := sc.HostVersion("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Build == vc.Build || h.FullName != "VMware ESXi "+vc.Version+".0."+h.Build {
+		t.Errorf("host of a custom vCenter: %+v", h)
 	}
 }

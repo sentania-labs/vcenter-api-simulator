@@ -252,9 +252,9 @@ if [ $versions = yes ]; then
 
   # One vCenter release with hosts that follow it: the vCenter, every host,
   # the REST appliance version and the vSAN service version must agree.
-  # check_release <preset> <vc version> <vc build> <api> <esx version> <esx build> <REST version> <vSAN namespace>
+  # check_release <preset> <vc version> <vc build> <api> <esx version> <esx build> <REST version> <vSAN namespace> <vc fullName> <vc patchLevel> <esx fullName> <esx patchLevel>
   check_release() {
-    local preset=$1 vcver=$2 vcbuild=$3 api=$4 esxver=$5 esxbuild=$6 rest=$7 vsan=$8
+    local preset=$1 vcver=$2 vcbuild=$3 api=$4 esxver=$5 esxbuild=$6 rest=$7 vsan=$8 vcfull=$9 vcpatch=${10} esxfull=${11} esxpatch=${12}
     echo "== $preset vCenter with hosts of the same release"
     stop_sim
     rm -rf "$work/data"
@@ -262,6 +262,12 @@ if [ $versions = yes ]; then
     scenario=$work/release.yaml
     start_sim "release-$preset"
     govc about -json | VER=$vcver BUILD=$vcbuild API=$api python3 -c 'import json,os,sys; a=json.load(sys.stdin)["about"]; sys.exit(0 if (a["version"], a["build"], a["apiVersion"]) == (os.environ["VER"], os.environ["BUILD"], os.environ["API"]) else f"vCenter about: {a}")' || fail "$preset: govc about does not report the preset"
+    # the vCenter card in VCF Operations reads version.patchLevel.build
+    govc about -json | FULL=$vcfull PATCH=$vcpatch python3 -c 'import json,os,sys; a=json.load(sys.stdin)["about"]; sys.exit(0 if (a["fullName"], a.get("patchLevel", "")) == (os.environ["FULL"], os.environ["PATCH"]) else f"vCenter about: {a}")' || fail "$preset: vCenter fullName or patchLevel is not as the real product serves it"
+    local hostforms want
+    hostforms=$(collect host h config.product.fullName config.product.patchLevel config.product.name | awk '{ $1=$2=""; print }' | sort -u | sed 's/^ *//')
+    want="$esxfull ${esxpatch:--} VMware ESXi"
+    [ "$hostforms" = "$want" ] || fail "$preset: host product forms are '$hostforms', not '$want'"
     local hostproducts
     hostproducts=$(govc object.collect -s -type h / config.product.version config.product.build config.product.apiVersion | paste - - - | sort -u)
     [ "$hostproducts" = "$(printf '%s\t%s\t%s' "$esxver" "$esxbuild" "$api")" ] || fail "$preset: host products are '$hostproducts'"
@@ -271,8 +277,9 @@ if [ $versions = yes ]; then
     curl -sk "https://127.0.0.1:$port/sdk/vsanServiceVersions.xml" | grep -q "<namespace><name>urn:vsan</name><version>$vsan</version>" || fail "$preset: vSAN service version is not $vsan"
     pass "$preset: govc about, host products, REST and vSAN service versions"
   }
-  check_release 8.0u3 8.0.3 24022515 8.0.3.0 8.0.3 24022510 8.0.3.00000 8.0.0.4
-  check_release 9.1.1 9.1.1 25784172 9.1.1.0 9.1.1 25782009 9.1.1.0100 9.1.1.0
+  check_release 8.0u3 8.0.3 24022515 8.0.3.0 8.0.3 24022510 8.0.3.00000 8.0.0.4 "VMware vCenter Server 8.0.3.00000.24022515" "" "VMware ESXi 8.0.3 build-24022510" ""
+  check_release 9.0 9.0.0 24755230 9.0.0.0 9.0.0 24755229 9.0.0.0 9.0.0.0 "VMware vCenter Server 9.0.0.0.24755230" "" "VMware ESXi 9.0.0.0.24755229" "0.0"
+  check_release 9.1.1 9.1.1 25784172 9.1.1.0 9.1.1 25782009 9.1.1.0100 9.1.1.0 "VMware vCenter Server 9.1.1.0100.25784172" 0100 "VMware ESXi 9.1.1.0100.25782009" 1.0100
 
   echo "== mixed versions: 9.0 vCenter, one 8.0 U3 cluster with one 9.0 host"
   stop_sim

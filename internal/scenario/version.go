@@ -13,19 +13,29 @@ type Version struct {
 	Build      string `yaml:"build,omitempty" json:"build,omitempty"`
 	APIVersion string `yaml:"apiVersion,omitempty" json:"apiVersion,omitempty"`
 	FullName   string `yaml:"fullName,omitempty" json:"fullName,omitempty"`
+	// PatchLevel is about.patchLevel. vCenter 9.1.1 serves "0100" and its
+	// hosts "1.0100"; the VCF Operations vCenter card shows
+	// version.patchLevel.build, so the card reads 9.1.1.0100.25784172 only
+	// while this is served.
+	PatchLevel string `yaml:"patchLevel,omitempty" json:"patchLevel,omitempty"`
 }
 
-// Release/build pairs are published by Broadcom's vCenter and ESX build tables.
-// The 9.1.1 strings are additionally backed by the repository's live capture.
+// Release/build pairs are published by Broadcom's vCenter and ESX build tables
+// (https://knowledge.broadcom.com/external/article/326316 for vCenter,
+// https://knowledge.broadcom.com/external/article/316595 for ESX). The 9.1.1
+// strings and the 9.0 host strings are backed by a read-only probe of real
+// 9.1.1 vCenters and their 9.1.1 and 9.0 hosts. The 8.0u3 and 9.0 vCenter
+// fullName and patchLevel have no reachable authoritative source and are as
+// they were.
 var vcVersions = map[string]Version{
 	"8.0u3": {Preset: "8.0u3", Version: "8.0.3", Build: "24022515", APIVersion: "8.0.3.0", FullName: "VMware vCenter Server 8.0.3.00000.24022515"},
 	"9.0":   {Preset: "9.0", Version: "9.0.0", Build: "24755230", APIVersion: "9.0.0.0", FullName: "VMware vCenter Server 9.0.0.0.24755230"},
-	"9.1.1": {Preset: "9.1.1", Version: "9.1.1", Build: "25784172", APIVersion: "9.1.1.0", FullName: "VMware vCenter Server 9.1.1.0100.25784172"},
+	"9.1.1": {Preset: "9.1.1", Version: "9.1.1", Build: "25784172", APIVersion: "9.1.1.0", FullName: "VMware vCenter Server 9.1.1.0100.25784172", PatchLevel: "0100"},
 }
 var esxVersions = map[string]Version{
 	"8.0u3": {Preset: "8.0u3", Version: "8.0.3", Build: "24022510", APIVersion: "8.0.3.0", FullName: "VMware ESXi 8.0.3 build-24022510"},
-	"9.0":   {Preset: "9.0", Version: "9.0.0", Build: "24755229", APIVersion: "9.0.0.0", FullName: "VMware ESX 9.0.0 build-24755229"},
-	"9.1.1": {Preset: "9.1.1", Version: "9.1.1", Build: "25782009", APIVersion: "9.1.1.0", FullName: "VMware ESXi 9.1.1.0100.25782009"},
+	"9.0":   {Preset: "9.0", Version: "9.0.0", Build: "24755229", APIVersion: "9.0.0.0", FullName: "VMware ESXi 9.0.0.0.24755229", PatchLevel: "0.0"},
+	"9.1.1": {Preset: "9.1.1", Version: "9.1.1", Build: "25782009", APIVersion: "9.1.1.0", FullName: "VMware ESXi 9.1.1.0100.25782009", PatchLevel: "1.0100"},
 }
 
 func (v Version) empty() bool { return v == Version{} }
@@ -47,7 +57,7 @@ func resolveVersion(v Version, presets map[string]Version, fallback string) (Ver
 		if !ok {
 			return Version{}, fmt.Errorf("unknown version preset %q", v.Preset)
 		}
-		if v.Version != "" || v.Build != "" || v.APIVersion != "" || v.FullName != "" {
+		if v.Version != "" || v.Build != "" || v.APIVersion != "" || v.FullName != "" || v.PatchLevel != "" {
 			return Version{}, fmt.Errorf("preset cannot be combined with custom version fields")
 		}
 		return base, nil
@@ -86,7 +96,14 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 		spec = h
 	}
 	if spec.empty() && fallback == "" {
-		return Version{Version: vc.Version, Build: vc.Build, APIVersion: vc.APIVersion, FullName: "VMware ESXi " + vc.Version + " build-" + vc.Build}, nil
+		// a host of a custom vCenter: its own build and a host's product
+		// name, never the vCenter's build
+		h, err := derivedVersion("esx", vc.Version)
+		if err != nil {
+			return Version{}, fmt.Errorf("host version for custom vCenter %q: %w", vc.Version, err)
+		}
+		h.APIVersion = vc.APIVersion
+		return h, nil
 	}
 	return resolveVersion(spec, esxVersions, fallback)
 }
@@ -216,17 +233,35 @@ func VersionChoice(product, choice string) (Version, error) {
 			return Version{Preset: id}, nil
 		}
 	}
+	return derivedVersion(product, number)
+}
+
+// derivedVersion invents the build, API version and product name for a
+// release that is not a preset. They are plausible, internally consistent
+// and not any real release's: 9.x and later follow the four-part form the
+// real 9.0 and 9.1.1 products serve (version.patch.build, with the patch
+// level served as about.patchLevel), older releases the "build-" form.
+func derivedVersion(product, number string) (Version, error) {
+	n, err := versionNumbers(number)
+	if err != nil || len(n) != 3 {
+		return Version{}, fmt.Errorf("%q is not a version number like 9.2.0", number)
+	}
 	build := 24000000 + (n[0]-8)*1500000 + n[1]*120000 + n[2]*11000 + 515
 	if build < 1000000 {
 		build = 1000000 + n[0]*1000 + n[1]*100 + n[2]
 	}
 	v := Version{Version: number, APIVersion: number + ".0"}
+	name, patch := "VMware vCenter Server ", "0"
 	if product == "esx" {
-		v.Build = strconv.Itoa(build - 6)
-		v.FullName = "VMware ESXi " + number + " build-" + v.Build
+		build -= 6
+		name, patch = "VMware ESXi ", "0.0"
+	}
+	v.Build = strconv.Itoa(build)
+	if n[0] >= 9 {
+		v.FullName = name + number + ".0." + v.Build
+		v.PatchLevel = patch
 	} else {
-		v.Build = strconv.Itoa(build)
-		v.FullName = "VMware vCenter Server " + number + " build-" + v.Build
+		v.FullName = name + number + " build-" + v.Build
 	}
 	return v, nil
 }

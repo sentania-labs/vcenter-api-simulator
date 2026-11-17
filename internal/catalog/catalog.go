@@ -74,6 +74,7 @@ type About struct {
 	Build        string `json:"build"`
 	ApiVersion   string `json:"apiVersion"`
 	FullName     string `json:"fullName"`
+	PatchLevel   string `json:"patchLevel,omitempty"`
 	OsType       string `json:"osType"`
 	ProductLine  string `json:"productLineId"`
 	LicenseName  string `json:"licenseProductName"`

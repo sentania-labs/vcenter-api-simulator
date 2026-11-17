@@ -157,7 +157,14 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		if !hasPrefix || !hasBuild {
 			release = v.Version
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"summary": "VMware vCenter Server " + v.Version, "product": "VMware vCenter Server", "build": v.Build, "name": release, "type": "vCenter Server with an embedded Platform Services Controller", "version": release})
+		// a real appliance's summary names the release as major.minor and
+		// says "Patch for" once a patch is installed (9.1.1.0100: "Patch for
+		// VMware vCenter Server 9.1")
+		summary := "VMware vCenter Server " + v.LicenseVer
+		if strings.Trim(v.PatchLevel, "0.") != "" {
+			summary = "Patch for " + summary
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"summary": summary, "product": "VMware vCenter Server", "build": v.Build, "name": release, "type": "vCenter Server with an embedded Platform Services Controller", "version": release})
 		return true
 	}
 	if s.inventory(w, r) {
