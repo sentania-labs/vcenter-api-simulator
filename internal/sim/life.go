@@ -120,6 +120,13 @@ func (s *Simulator) Life() *Life {
 				}
 			}
 		})
+		for _, spec := range activityHostAlarms {
+			ctx := l.as(lifeUser)
+			am := ctx.Map.AlarmManager()
+			ctx.WithLock(am, func() {
+				am.CreateAlarm(ctx, &types.CreateAlarm{This: am.Self, Entity: s.model.ServiceContent.RootFolder, Spec: &spec})
+			})
+		}
 		s.life = l
 	})
 	return s.life
@@ -648,6 +655,9 @@ func (l *Life) power(cluster, name string, on bool) bool {
 		return false
 	}
 	ctx := l.as(lifeUser)
+	if _, maint, down := l.hostState(ctx, l.hostOf(ctx, vm)); maint || down {
+		return false
+	}
 	ev := l.vmEvent(refs, vm, l.hostOf(ctx, vm))
 	ev.Ds = nil
 	if on {
@@ -820,7 +830,20 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 // number and its identities are never used again.
 func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 	refs := l.refs(cluster)
-	names := l.names(cluster, nil)
+	names := l.names(cluster, func(vm *lifeVM) bool {
+		ctx := l.as("")
+		_, maint, down := l.hostState(ctx, l.hostOf(ctx, vm))
+		if maint || down {
+			return false
+		}
+		obj, _ := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+		if obj == nil {
+			return false
+		}
+		var backup bool
+		ctx.WithLock(obj, func() { backup = findBackup(obj) != nil })
+		return !backup
+	})
 	if refs == nil || len(names) == 0 {
 		return "", nil
 	}
@@ -1110,6 +1133,9 @@ func (l *Life) SetLoad(cluster string, cpu, memory float64) {
 // does not say: where VMs are, which are off, which hosts are in
 // maintenance mode and how much the datastores have filled.
 type Live struct {
+	Down     map[string]bool            `json:"down,omitempty"`
+	Products map[string]types.AboutInfo `json:"products,omitempty"`
+	Backups  map[string]time.Time       `json:"backups,omitempty"`
 	// Hosts is the host of each VM that is not on the one the inventory
 	// builder puts it on, by VM key.
 	Hosts map[string]string `json:"hosts,omitempty"`
@@ -1125,17 +1151,35 @@ type Live struct {
 // Snapshot reads what activity has changed.
 func (l *Life) Snapshot() Live {
 	ctx := l.as("")
-	out := Live{Hosts: map[string]string{}, Filled: map[string]int64{}}
+	out := Live{Hosts: map[string]string{}, Filled: map[string]int64{}, Down: map[string]bool{}, Products: map[string]types.AboutInfo{}, Backups: map[string]time.Time{}}
 	for _, refs := range l.s.Clusters {
 		cl := refs.Cluster
 		name := map[types.ManagedObjectReference]string{}
 		for i, ref := range refs.Hosts {
 			name[ref] = cl.Hosts[i].Name
+			hs := l.host(ref)
+			ctx.WithLock(hs, func() {
+				out.Down[cl.Hosts[i].Key] = hs.Runtime.ConnectionState != types.HostSystemConnectionStateConnected
+				if hs.Config != nil {
+					out.Products[cl.Hosts[i].Key] = hs.Config.Product
+				}
+			})
 			if _, maint, _ := l.hostState(ctx, ref); maint {
 				out.Maintenance = append(out.Maintenance, cl.Hosts[i].Key)
 			}
 		}
 		for _, vm := range l.vms[cl.Key] {
+			obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+			ctx.WithLock(obj, func() {
+				if ref := findBackup(obj); ref != nil {
+					out.Backups[vm.vm.Key] = l.now()
+					for _, n := range obj.Snapshot.RootSnapshotList {
+						if n.Snapshot == *ref {
+							out.Backups[vm.vm.Key] = n.CreateTime
+						}
+					}
+				}
+			})
 			if h := name[l.hostOf(ctx, vm)]; h != "" && h != cl.Hosts[vm.vm.Host%len(cl.Hosts)].Name {
 				out.Hosts[vm.vm.Key] = h
 			}
@@ -1171,6 +1215,18 @@ func (l *Life) Restore(live Live) {
 		byName := map[string]types.ManagedObjectReference{}
 		for i, h := range cl.Hosts {
 			byName[h.Name] = refs.Hosts[i]
+			hs := l.host(refs.Hosts[i])
+			if p, ok := live.Products[h.Key]; ok && hs.Config != nil && p.Version == hs.Config.Product.Version {
+				hs.Config.Product = p
+				hs.Summary.Config.Product = &hs.Config.Product
+			}
+			if live.Down[h.Key] {
+				l.connection(ctx, hs, true)
+				if !maint[h.Key] {
+					l.hostAlarm(refs, hs, "Host connection and power state", true, false)
+					l.hostAlarm(refs, hs, "vSphere HA host status", true, false)
+				}
+			}
 			if maint[h.Key] {
 				hs := l.host(refs.Hosts[i])
 				hs.Runtime.InMaintenanceMode = true
@@ -1192,6 +1248,14 @@ func (l *Life) Restore(live Live) {
 				}
 			}
 			relocateVM(ctx, vm.ref, to)
+			obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+			if hs := l.host(to); hs != nil && hs.Runtime.ConnectionState != types.HostSystemConnectionStateConnected {
+				obj.Runtime.ConnectionState = types.VirtualMachineConnectionStateDisconnected
+				obj.Summary.Runtime.ConnectionState = obj.Runtime.ConnectionState
+			}
+			if at, ok := live.Backups[vm.vm.Key]; ok {
+				l.restoreBackup(obj, at)
+			}
 			if off[vm.vm.Key] {
 				if obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine); ok {
 					l.setPower(ctx, obj, vm.vm, false)

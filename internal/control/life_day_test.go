@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sentania/vcenter-api-simulator/internal/life"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
@@ -53,6 +54,9 @@ func aDay(t *testing.T, sc *scenario.Scenario) (lines map[string]int, counts map
 	t.Helper()
 	clk = &clock{t: time.Date(2026, 11, 16, 0, 0, 0, 0, time.Local)}
 	c = newCtlAt(t, sc, "", "h", clk.now)
+	// These regressions measure the original daily rates. Calendar jobs are covered separately.
+	c.life.Settings.Global[life.Patching] = life.Dial{}
+	c.life.Settings.Global[life.Backups] = life.Dial{}
 	if _, err := c.ActivityStart(true); err != nil {
 		t.Fatal(err)
 	}

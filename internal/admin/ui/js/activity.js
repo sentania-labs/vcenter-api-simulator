@@ -67,14 +67,14 @@ const main = (q) => ({
       ${d.clusters.map((c) => html`<option value="${c.key}" ${c.key === d.scope ? raw('selected') : ''}>${c.label} (${plural(c.hosts, 'host')}, ${plural(c.vms, 'VM')})${c.own ? ` · ${c.own} of its own` : ''}</option>`)}</select></label>`;
     const intro = scope ? html`${scope.label} follows the vCenter's dials until you move one here. A dial you move applies to this cluster only, and "Follow the vCenter again" puts it back.`
       : html`Each dial is one thing that happens. The middle is the baseline for an environment of this size; left is slower, right is busier. A cluster follows these until you give it its own.`;
-    return html`<div class="m-page"><div class="m-head"><div><h1>Activity</h1><p class="sub">Make the environment behave like one that is in use, so a monitoring tool has something to see: VMs move, come and go and are powered off and on, hosts go into maintenance mode, datastores fill, and the load rises and falls. How much happens follows the size of the environment. Stop it and the environment holds still; VMs that were added or removed stay that way.</p></div></div>
+    return html`<div class="m-page"><div class="m-head"><div><h1>Activity</h1><p class="sub">Make the environment behave like one that is in use, so a monitoring tool has something to see: VMs move, come and go and are powered off and on, hosts go into maintenance mode, are patched or crash, nightly backups take snapshots, datastores fill, and the load rises and falls. How much happens follows the size of the environment. Stop it and the environment holds still; VMs that were added or removed stay that way.</p></div></div>
       ${verdict(d)}
       <div class="m-grid m-g32 a-main"><div class="m-stack">
         ${card('How much happens', html`<div class="a-scope-row">${picker}</div><p class="m-small" style="margin:6px 0 10px">${intro}</p>
           <ul class="a-dials">${d.rows.map((r) => dialRow(d, r))}</ul>`)}
       </div><div class="m-stack">${happened(d)}
         ${card('What it adds up to', html`<p style="font-size:13.5px">${d.day}</p>
-          <p style="font-size:13.5px;margin-top:8px">The number of VMs stays between <b>${num(d.minVMs)}</b> and <b>${num(d.maxVMs)}</b>. ${d.vms === d.built ? html`It is ${num(d.vms)} now.` : html`It is ${num(d.vms)} now.`} At most a quarter of each cluster's hosts are in maintenance mode at once, so every VM always has somewhere to run.</p>
+          <p style="font-size:13.5px;margin-top:8px">The number of VMs stays between <b>${num(d.minVMs)}</b> and <b>${num(d.maxVMs)}</b>. ${d.vms === d.built ? html`It is ${num(d.vms)} now.` : html`It is ${num(d.vms)} now.`} At most a quarter of each cluster's hosts are down or in maintenance mode at once, so every VM always has somewhere to run.</p>
           <div class="m-row" style="margin-top:8px">${btn('Change the limits…', 'actLimits')}</div>
           <p class="m-small" style="margin-top:8px">If the simulator restarts, everything carries on as it was: the dials, where each VM is, which are off, which hosts are in maintenance mode and how full the datastores are. Nothing happens while it is off, and nothing is caught up afterwards.</p>`)}
       </div></div></div>`;
@@ -109,16 +109,18 @@ const main = (q) => ({
       const d = ctx.data, r = d.rows.find((x) => x.key === el.dataset.b), u = r.units;
       ctx.F.n = r.exact ? String(r.exact.n) : '';
       ctx.F.unit = r.exact ? r.exact.unit : u[0];
+ ctx.F.recovery = String(r.recoveryMinutes || 15);
       const where = d.scope ? d.clusters.find((c) => c.key === d.scope).label : 'the whole vCenter';
       const lead = { perDay: 'About', percent: '', minutes: 'One every', hours: 'One every', days: 'One every' }[u[0]];
       const yes = await ctx.confirm({ title: `${r.name}: an exact number`, ok: 'Use this number', body: html`<p>${r.what}</p>
         <div class="m-field"><label for="f-exact">For ${where}</label><div class="m-inline">${lead} <input class="lat-input n" id="f-exact" data-x="n" inputmode="decimal" value="${ctx.F.n}" style="width:96px">
-          ${u.length > 1 ? html`<select class="lat-select" data-x="unit" aria-label="Minutes, hours or days">${u.map((k) => html`<option value="${k}" ${k === ctx.F.unit ? raw('selected') : ''}>${UNITS[k]}</option>`)}</select>` : html`<span>${u[0] === 'percent' ? (r.key === 'maintenance' ? '% of the hosts' : '% of capacity a day') : 'vMotions a day'}</span>`}</div>
-          <span class="lat-hint">An exact number stays as you typed it, whatever the size of the environment. Moving the dial afterwards goes back to a level.</span></div>` });
+          ${u.length > 1 ? html`<select class="lat-select" data-x="unit" aria-label="Minutes, hours or days">${u.map((k) => html`<option value="${k}" ${k === ctx.F.unit ? raw('selected') : ''}>${UNITS[k]}</option>`)}</select>` : html`<span>${u[0] === 'percent' ? (r.key === 'maintenance' ? '% of the hosts' : '% of capacity a day') : (u[0] === 'days' ? 'days' : 'vMotions a day')}</span>`}</div>
+          <span class="lat-hint">An exact number stays as you typed it, whatever the size of the environment. Moving the dial afterwards goes back to a level.</span></div>
+ ${r.key === 'crash' ? html`<div class="m-field"><label for="f-recovery">Host returns after</label><input id="f-recovery" class="lat-input n" data-x="recovery" inputmode="numeric" value="${ctx.F.recovery}"> minutes (1 to 1,440)</div>` : ''}` });
       if (!yes) return;
       const n = Number(String(ctx.F.n).trim());
       if (!String(ctx.F.n).trim() || Number.isNaN(n)) { ctx.say('bad', '**Not changed.** Type a number.'); ctx.rerender(); return; }
-      ask(ctx, '/activity/dial', { cluster: d.scope, behaviour: r.key, n, unit: ctx.F.unit });
+      ask(ctx, '/activity/dial', { cluster: d.scope, behaviour: r.key, n, unit: ctx.F.unit, ...(r.key === 'crash' ? { recoveryMinutes: Number(ctx.F.recovery) } : {}) });
     },
     async actLimits(ctx) {
       const d = ctx.data;
@@ -132,7 +134,7 @@ const main = (q) => ({
 });
 
 const RANGES = [['hour', 'Last hour'], ['today', 'Today'], ['day', 'Last 24 hours'], ['week', 'Last 7 days']];
-const SHOWS = [['all', 'Everything'], ['moves', 'Load balancing'], ['power', 'Power'], ['vms', 'VMs added and removed'], ['hosts', 'Hosts'], ['disks', 'Datastores'], ['other', 'Waiting or failed']];
+const SHOWS = [['all', 'Everything'], ['moves', 'Load balancing'], ['power', 'Power'], ['vms', 'VMs added and removed'], ['hosts', 'Hosts'], ['backups', 'Backups'], ['disks', 'Datastores'], ['other', 'Waiting or failed']];
 const LEADS = { hour: 'In the last hour', today: 'Today', day: 'In the last 24 hours', week: 'In the last 7 days' };
 
 const log = (q) => ({

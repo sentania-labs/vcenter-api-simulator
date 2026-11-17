@@ -297,13 +297,42 @@ recent-task list after ten minutes, as on a real vCenter.
 - A real vCenter also records a `VmMacAssignedEvent` for a new VM, distributed
   switch port events around power and removal, and a vSphere HA state event when
   a host comes out of maintenance mode. The simulator does not.
-- Nothing Activity does raises an alarm. Patching hosts one after another, nightly
-  backups and snapshots, and a host that crashes are not built.
+- Only a crashed host raises an alarm. The five proposed extras (datastore-full
+  alarms, hot VMs, network-link failures, forgotten snapshots, and a permanent
+  powered-off VM share) are not built.
 - An event collector created with a filter on one chain id does not receive that
   chain's later events as they happen, though a query made afterwards finds them.
   A tool streaming events at the instant one is posted can see it with its own key
   as chain id (for a new VM, about a millisecond). A tool that reads events in pages
   afterwards, as VCF Operations does, sees the finished chain.
+
+**Patching, backups and host crashes.** Rolling patching starts from 6 PM, with each
+cluster due every 30 days at the baseline. Clusters and hosts take turns. A host
+evacuates its VMs, enters maintenance, receives a simulated build and patch-level
+increment in its product info, reboots, and returns after half an hour. The
+quarter-of-hosts limit counts both maintenance and failed hosts. Activity's own
+maintenance rotation yields to patching so a host need not wait a week to be patched.
+
+Nightly backups start between 10 PM and 4 AM, after patching, one cluster at a
+time. Real snapshot tasks create managed snapshot objects on every VM; each
+snapshot is removed ten minutes later. Half-hour history entries group the work.
+The backup dial changes the number of nights between runs, with at most one run per
+night. Patching and backups also accept an exact number of days.
+
+Host crashes are off in the ready-made day. The baseline is one crash a day across
+the vCenter, with independent cluster overrides. A failed host reports
+`notResponding`; its running VMs become unavailable, then restart on other hosts
+within two minutes. The host returns after 15 minutes by default, configurable from
+1 to 1,440 minutes in its exact-number dialog. `Host connection and power state` and
+`vSphere HA host status` raise and clear using the default names and expressions
+read from lab vCenter 9.1.1. HA uses the current `EventEx` event IDs. Performance
+reads exclude down or maintenance hosts and reflect the VMs' new placement. Existing
+saved setups leave the three new dials off on upgrade.
+
+All three have global and cluster dials, exact numbers, and a cluster's **Do it now**
+button. Stop returns failed and patching hosts to service and removes temporary
+backup snapshots. Products, failed hosts, snapshots and job progress survive a
+rebuild or restart.
 
 ## Licensing and sign-on
 

@@ -80,7 +80,7 @@ Use the console. Its tabs are named for what you want to do.
 | Change the vCenter or ESX version, or mix versions in a cluster | Versions |
 | Add, change or remove the accounts tools sign in with | Users |
 | Replace the certificate, sign idle tools out, change the console password, change how licensing looks to tools | Security |
-| Make the environment change by itself: vMotions, power changes, new and removed VMs, maintenance mode, datastores filling, CPU and memory load | Activity |
+| Make the environment change by itself: vMotions, power changes, new and removed VMs, maintenance mode, rolling patching, nightly backups, host crashes, datastores filling, CPU and memory load | Activity |
 | Make requests slow or fail on purpose | Slowness and faults |
 | See what your tool asks for, what got no answer, and download requests to report | Requests |
 
@@ -126,8 +126,10 @@ The exact list is in the [reference](docs/REFERENCE.md#what-is-and-is-not-answer
 - Distributed switches are served as the basic type, not the VMware type.
 - Fibre Channel storage, and vSAN acting as a file server or an iSCSI server,
   are reported as absent. NFS 4.1, CHAP and rescans are not modelled.
-- Alarms. Nothing Activity does raises one. Activity does not yet patch hosts one
-  after another, take backups or snapshots, or crash a host.
+- Alarms. Only a crashed host, which Activity can raise, sets one off: the host
+  connection and HA host status alarms. The other proposed extras (datastore-full
+  alarms, hot VMs, lost network links, forgotten snapshots, a permanent
+  powered-off VM share) are not built.
 - Session tickets (`AcquireSessionTicket`) and an unfiltered lookup list.
 
 **Made up**
