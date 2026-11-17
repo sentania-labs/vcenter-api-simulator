@@ -62,6 +62,18 @@ func counterInstances(c types.PerfCounterInfo, n *workloadNode, state *performan
 	}
 	return instances
 }
+
+// intensiveCounter reports counters whose instance values equal the aggregate
+// rather than partition it: percentages and non-summed time (latency) values.
+func intensiveCounter(c types.PerfCounterInfo) bool {
+	switch c.UnitInfo.GetElementDescription().Key {
+	case "percent":
+		return true
+	case "millisecond", "microsecond":
+		return c.RollupType != types.PerfSummaryTypeSummation
+	}
+	return false
+}
 func perfInterval(spec types.PerfQuerySpec) (int32, time.Duration, bool) {
 	interval := spec.IntervalId
 	if interval == 0 || interval == -1 {
@@ -279,9 +291,7 @@ func (p *storagePerformance) query(ctx *simulator.Context, specs []types.PerfQue
 				}
 				v, _ := valueAt(m.counter, plan.node, measurement)
 				if m.id.Instance != "" && m.count > 0 && !datastoreInstance {
-					unit := m.counter.UnitInfo.GetElementDescription().Key
-					// Percentages and latency are intensive; rates and counts partition.
-					if unit != "percent" && !strings.Contains(counterName(m.counter), "Latency") && !strings.Contains(counterName(m.counter), "contention") {
+					if !intensiveCounter(m.counter) {
 						v = v*int64(m.index+1)/int64(m.count) - v*int64(m.index)/int64(m.count)
 					}
 				}
