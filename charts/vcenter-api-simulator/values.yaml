@@ -36,6 +36,13 @@ simulator:
   # Where the console sends people to report a request the simulator cannot
   # answer. Empty means the simulator project's new-issue page.
   reportUrl: ""
+  # Name of a Secret whose tls.crt is the certificate tools see at the
+  # simulator's address when something in front of it ends TLS: usually the
+  # Ingress's own TLS Secret. The lookup service then names that certificate
+  # as the one to trust for the sign-on addresses it hands out, instead of
+  # the simulator's own, which such a tool never sees. Only tls.crt is
+  # mounted. Empty means the simulator's own certificate.
+  lookupTrustSecret: ""
   # Additional command-line arguments passed to vcsimulator.
   extraArgs: []
   # Defaults for live capture settings. The console can override these.

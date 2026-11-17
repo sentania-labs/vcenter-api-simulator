@@ -243,7 +243,8 @@ func TestLookupServiceContent(t *testing.T) {
 		value   string
 	}{
 		{"lookupService", "LookupLookupService", "lookupService"},
-		{"serviceRegistration", "LookupServiceRegistration", "serviceRegistration"},
+		// the reference a real vCenter hands out begins with a capital
+		{"serviceRegistration", "LookupServiceRegistration", "ServiceRegistration"},
 		{"deploymentInformationService", "LookupDeploymentInformationService", "deploymentInformationService"},
 		{"l10n", "LookupL10n", "l10n"},
 	}
@@ -288,10 +289,10 @@ func TestLookupServiceContent(t *testing.T) {
 			t.Errorf("%s text length %d, want %d", name, lengths[name], want)
 		}
 	}
-	// an unclassified lookup operation stays unanswered, as captured
-	res2, _ := postTo(t, e.srv, "/lookupservice/sdk", `"urn:internallookup/2.0"`, []byte(`<?xml version='1.0'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><List xmlns="urn:internallookup"/></soapenv:Body></soapenv:Envelope>`))
+	// a lookup operation the simulator does not know stays unanswered
+	res2, _ := postTo(t, e.srv, "/lookupservice/sdk", `"urn:internallookup/2.0"`, []byte(`<?xml version='1.0'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><Create xmlns="urn:internallookup"/></soapenv:Body></soapenv:Envelope>`))
 	if res2.StatusCode != http.StatusNotFound {
-		t.Errorf("List status %d, want the previous 404", res2.StatusCode)
+		t.Errorf("Create status %d, want 404", res2.StatusCode)
 	}
 }
 
@@ -359,6 +360,12 @@ func TestCertificateAuthorityRoot(t *testing.T) {
 			t.Errorf("%s: certificate differs from the one the listener serves", path)
 		}
 	}
+}
+
+// jsonDecode reads a JSON answer and closes it.
+func jsonDecode(res *http.Response, v any) error {
+	defer res.Body.Close()
+	return json.NewDecoder(res.Body).Decode(v)
 }
 
 func restToken(t *testing.T, srv *httptest.Server) string {

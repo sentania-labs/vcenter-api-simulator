@@ -120,7 +120,7 @@ func serve(w http.ResponseWriter, r *http.Request, next http.Handler, enabled fu
 	next.ServeHTTP(rw, r)
 }
 
-var sensitiveWords = []string{"password", "passwd", "secret", "token", "cookie", "ticket", "credential", "authorization", "session", "hash", "assertion", "privatekey", "licensekey", "signedentitlement"}
+var sensitiveWords = []string{"password", "passwd", "secret", "token", "cookie", "ticket", "credential", "authorization", "session", "hash", "assertion", "privatekey", "licensekey", "signedentitlement", "ssltrust", "user", "ownerid", "principal"}
 
 type notedKey struct{}
 
@@ -182,11 +182,14 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 				inBody = true
 				continue
 			}
+			isOp := false
 			if inBody && op == "" {
 				op = t.Name.Local
 				opDepth = depth
-				low := strings.ToLower(op)
-				sessionOp = strings.Contains(low, "login") || strings.Contains(low, "session") || strings.Contains(low, "ticket") || strings.Contains(low, "token")
+				isOp = true
+				// an operation whose own name is a sensitive word is about
+				// credentials or an account: none of its body is kept
+				sessionOp = sensitive(op) || strings.Contains(strings.ToLower(op), "login")
 			}
 			if inBody && t.Name.Local == "propSet" {
 				propDepth = depth
@@ -201,7 +204,7 @@ func inspect(data []byte) (op, target string, props []string, body string) {
 					}
 				}
 			}
-			redact := t.Name.Local == "Header" || sensitive(t.Name.Local)
+			redact := t.Name.Local == "Header" || (sensitive(t.Name.Local) && !isOp)
 			for _, a := range t.Attr {
 				if sensitive(a.Name.Local) || (a.Name.Local == "type" && sensitive(a.Value)) {
 					redact = true

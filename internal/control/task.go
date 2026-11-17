@@ -320,6 +320,8 @@ func taskRoute(kind string, raw json.RawMessage) string {
 		return "/users/edit/" + p.Name
 	case "idle":
 		return "/security/idle"
+	case "licensing":
+		return "/security/licensing"
 	case "new-certificate":
 		return "/security/new-certificate"
 	case "own-certificate":

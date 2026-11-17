@@ -25,9 +25,9 @@ const maxDebugScan = 1 << 20
 // debugHeaders are the only headers whose values are logged.
 var debugHeaders = []string{"Content-Type", "SOAPAction", "User-Agent", "Accept", "Content-Length"}
 
-// scrubWords extends the query log's sensitive words with the SAML, X509,
-// signature and user-name names a request body can carry.
-var scrubWords = append(append([]string{}, sensitiveWords...), "security", "signature", "x509", "user")
+// scrubWords extends the query log's sensitive words with the SAML, X509
+// and signature names a request body can carry.
+var scrubWords = append(append([]string{}, sensitiveWords...), "security", "signature", "x509")
 
 func scrubName(n string) bool {
 	n = strings.ToLower(n)
@@ -269,6 +269,102 @@ func scrubXML(data []byte) string {
 	return out.String()
 }
 
+// plainText are the elements of a token request whose text is a fixed name
+// or a time: which kind of token, of key and of signature is asked for, and
+// for how long.
+var plainText = map[string]bool{
+	"TokenType": true, "RequestType": true, "KeyType": true, "SignatureAlgorithm": true, "Delegatable": true,
+	"Created": true, "Expires": true, "CanonicalizationAlgorithm": true, "EncryptionAlgorithm": true,
+	"EncryptWith": true, "SignWith": true, "ComputedKeyAlgorithm": true, "KeySize": true, "AuthenticationType": true,
+}
+
+// scrubBodyAt scrubs a body by where it was sent. A token request keeps
+// its shape and loses its text; everything else goes through ScrubBody.
+func scrubBodyAt(path string, data []byte) string {
+	if underPrefix(path, "/sts") && utf8.Valid(data) {
+		if trimmed := bytes.TrimLeft(data, " \t\r\n\xef\xbb\xbf"); len(trimmed) > 0 && trimmed[0] == '<' {
+			return scrubRuns(scrubSkeleton(data))
+		}
+	}
+	return ScrubBody(data)
+}
+
+// scrubSkeleton keeps the elements of an XML body, their order, their
+// namespaces and their attributes, and removes the text of every element
+// that is not in plainText: user names, passwords, binary tokens, addresses
+// and anything else a token request carries. An assertion loses everything
+// inside it, elements included. ScrubBody would instead drop the whole of a
+// token request, because its element names say "security" and "token", and
+// nothing would be learned of what a tool really sends.
+func scrubSkeleton(data []byte) string {
+	d := xml.NewDecoder(bytes.NewReader(data))
+	d.Strict = false
+	var out bytes.Buffer
+	var open []string
+	for {
+		before := d.InputOffset()
+		tok, err := d.RawToken()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			out.WriteString(placeholder("unparsed", len(data)-int(before)))
+			break
+		}
+		span := data[before:d.InputOffset()]
+		switch t := tok.(type) {
+		case xml.StartElement:
+			out.WriteString(scrubAttrs(string(span)))
+			if !strings.Contains(strings.ToLower(t.Name.Local), "assertion") {
+				open = append(open, t.Name.Local)
+				continue
+			}
+			// an assertion: nothing inside it is kept
+			from, end, depth := d.InputOffset(), int64(len(data)), 1
+			var closing []byte
+			for depth > 0 {
+				at := d.InputOffset()
+				inner, err := d.RawToken()
+				if err != nil {
+					break
+				}
+				switch inner.(type) {
+				case xml.StartElement:
+					depth++
+				case xml.EndElement:
+					if depth--; depth == 0 {
+						end, closing = at, data[at:d.InputOffset()]
+					}
+				}
+			}
+			if end > from {
+				out.WriteString(placeholder(t.Name.Local, int(end-from)))
+			}
+			out.Write(closing)
+			if depth > 0 {
+				return out.String()
+			}
+		case xml.EndElement:
+			out.Write(span)
+			if len(open) > 0 {
+				open = open[:len(open)-1]
+			}
+		case xml.CharData:
+			switch {
+			case len(bytes.TrimSpace(span)) == 0:
+				out.Write(span)
+			case len(open) > 0 && plainText[open[len(open)-1]]:
+				out.Write(span)
+			default:
+				out.WriteString(placeholder("text", len(span)))
+			}
+		case xml.ProcInst:
+			out.Write(span)
+		}
+	}
+	return out.String()
+}
+
 func scrubQuery(raw string) string {
 	if raw == "" {
 		return ""
@@ -293,12 +389,20 @@ func sensitiveKey(k string) bool {
 }
 
 type debugRecord struct {
-	Event         string            `json:"event"`
-	Time          time.Time         `json:"time"`
-	Method        string            `json:"method"`
-	Path          string            `json:"path"`
-	Query         string            `json:"query,omitempty"`
-	Status        int               `json:"status"`
+	Event  string    `json:"event"`
+	Time   time.Time `json:"time"`
+	Method string    `json:"method"`
+	Path   string    `json:"path"`
+	Query  string    `json:"query,omitempty"`
+	// Operation is the SOAP operation, when the body names one.
+	Operation string `json:"operation,omitempty"`
+	Status    int    `json:"status"`
+	// Fault is the type of the SOAP fault the request was answered with, so
+	// that a refusal reads as one.
+	Fault string `json:"fault,omitempty"`
+	// CookieSent says whether the request came with a session cookie. Its
+	// value is never logged.
+	CookieSent    bool              `json:"cookieSent"`
 	Headers       map[string]string `json:"headers,omitempty"`
 	HeaderNames   []string          `json:"headerNames,omitempty"`
 	Body          string            `json:"body,omitempty"`
@@ -307,11 +411,59 @@ type debugRecord struct {
 	BodyCut       string            `json:"bodyNote,omitempty"`
 }
 
-func isLicenseService(p string) bool { return p == "/ls" || strings.HasPrefix(p, "/ls/") }
+// debugPrefixes are the services whose every request is logged: the license
+// service, the lookup service, the sign-on admin service and the token
+// service. They are what a tool asks before it decides whether a vCenter is
+// licensed, and their requests are not in any published description.
+var debugPrefixes = []string{"/ls", "/lookupservice", "/sso-adminserver", "/sts"}
 
-func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, now time.Time) debugRecord {
+// sessionOperations are the /sdk operations that are logged: the ones by
+// which a tool carries a session from one connection to another.
+var sessionOperations = map[string]bool{"LoginBySessionTicket": true, "AcquireSessionTicket": true, "AcquireCloneTicket": true, "CloneSession": true}
+
+// sessionHint is in every body that names a session operation; it spares
+// the others a closer look.
+var sessionHint = regexp.MustCompile(`Ticket|CloneSession`)
+
+// soapOperationRe finds the first element inside a SOAP Body.
+var soapOperationRe = regexp.MustCompile(`<(?:[A-Za-z0-9_.-]+:)?Body[^>]*>\s*<(?:[A-Za-z0-9_.-]+:)?([A-Za-z0-9_.-]+)`)
+
+func soapOperationName(body []byte) string {
+	if m := soapOperationRe.FindSubmatch(body); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
+func underPrefix(p, prefix string) bool { return p == prefix || strings.HasPrefix(p, prefix+"/") }
+
+// debugPath reports a request that is logged whatever its body says: any
+// request to one of debugPrefixes, and a POST to /api itself, which is how
+// a tool opens a session on the interface licenses are assigned through.
+func debugPath(r *http.Request) bool {
+	for _, prefix := range debugPrefixes {
+		if underPrefix(r.URL.Path, prefix) {
+			return true
+		}
+	}
+	return r.Method == http.MethodPost && r.URL.Path == "/api"
+}
+
+// debugSDK reports a POST to /sdk, which is logged only when its body turns
+// out to name one of sessionOperations.
+func debugSDK(r *http.Request) bool {
+	return r.Method == http.MethodPost && (r.URL.Path == "/sdk" || strings.HasPrefix(r.URL.Path, "/sdk/"))
+}
+
+func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, answer []byte, now time.Time) debugRecord {
 	rec := debugRecord{Event: "request-capture", Time: now.UTC(), Method: r.Method,
 		Path: scrubRuns(r.URL.Path), Query: scrubQuery(r.URL.RawQuery), Status: status, BodyBytes: len(body)}
+	if op := soapOperationName(body); len(op) <= 128 {
+		rec.Operation = op
+	}
+	rec.Fault = fault(answer)
+	_, err := r.Cookie("vmware_soap_session")
+	rec.CookieSent = err == nil
 	rec.Headers = map[string]string{}
 	for _, h := range debugHeaders {
 		if v := r.Header.Get(h); v != "" {
@@ -325,7 +477,7 @@ func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, now time
 		rec.Headers["Content-Length"] = fmt.Sprint(r.ContentLength)
 	}
 	sort.Strings(rec.HeaderNames)
-	scrubbed := ScrubBody(body)
+	scrubbed := scrubBodyAt(r.URL.Path, body)
 	if len(scrubbed) > maxDebugBody {
 		cut := maxDebugBody
 		for cut > 0 && !utf8.RuneStart(scrubbed[cut]) {
@@ -344,14 +496,16 @@ func buildDebug(r *http.Request, body []byte, bodyCut bool, status int, now time
 	return rec
 }
 
-// debugWrap logs license-service requests with headers and a scrubbed body to
-// stdout.
+// debugWrap logs the requests of debugPath and the session operations of
+// /sdk to stdout, each with its headers, a scrubbed body, the status it was
+// answered with and the fault, if any.
 func (c *Capture) debugWrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c.mu.Lock()
 		on := c.settings.Debug && c.stdout != nil
 		c.mu.Unlock()
-		if !on || !isLicenseService(r.URL.Path) {
+		always := on && debugPath(r)
+		if !always && !(on && debugSDK(r)) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -368,13 +522,17 @@ func (c *Capture) debugWrap(next http.Handler) http.Handler {
 				body, cut = body[:maxDebugScan], true
 			}
 		}
+		if !always && !(sessionHint.Match(body) && sessionOperations[soapOperationName(body)]) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		rw := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(rw, r)
 		if rw.status == 0 {
 			rw.status = http.StatusOK
 		}
-		rec := buildDebug(r, body, cut, rw.status, start)
+		rec := buildDebug(r, body, cut, rw.status, rw.head, start)
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		enc := json.NewEncoder(c.stdout)
@@ -385,11 +543,15 @@ func (c *Capture) debugWrap(next http.Handler) http.Handler {
 	})
 }
 
-// statusWriter records only the status; the request log needs nothing else.
+// statusWriter records the status and the head of the answer, where a SOAP
+// fault names its type. Nothing else of the answer is kept or logged.
 type statusWriter struct {
 	http.ResponseWriter
 	status int
+	head   []byte
 }
+
+const maxDebugHead = 4 << 10
 
 func (w *statusWriter) WriteHeader(n int) {
 	if w.status == 0 {
@@ -400,6 +562,9 @@ func (w *statusWriter) WriteHeader(n int) {
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
+	}
+	if room := maxDebugHead - len(w.head); room > 0 {
+		w.head = append(w.head, b[:min(room, len(b))]...)
 	}
 	return w.ResponseWriter.Write(b)
 }

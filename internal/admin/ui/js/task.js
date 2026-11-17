@@ -118,6 +118,12 @@ const FIELDS = {
 
   idle: (F, O) => html`<div class="m-field ${F._err && F._err.idle ? 'has-err' : ''}"><span class="lbl">Sign a tool out after it has been quiet for</span>${opts(F, 'idle', O.choices.map((v) => [v, v, v === O.current ? 'What it is now.' : v === 'Never' ? 'Tools stay signed in until they sign out themselves.' : '']), true)}${errOf(F, 'idle')}</div>`,
 
+  licensing: (F) => html`<div class="m-field ${F._err && F._err.state ? 'has-err' : ''}"><span class="lbl">What should vCenter say about its license?</span>${opts(F, 'state', [['evaluation', 'It is in evaluation', 'With 90 days left. How a vCenter looks before it is given a license.'], ['expired', 'Its evaluation has run out', 'To see what a tool does with a vCenter nobody licensed in time.']])}${errOf(F, 'state')}</div>
+    <div class="m-field ${F._err && F._err.groups ? 'has-err' : ''}"><span class="lbl">May the accounts tools sign in with manage licenses?</span>${opts(F, 'groups', [['in', 'Yes', 'They are in the licensing administrator groups, as on a real vCenter.'], ['out', 'No', 'They are left out of those groups. VCF Operations then warns that it cannot manage licenses with the account.']])}${errOf(F, 'groups')}</div>
+    <div class="m-field ${F._err && F._err.manager ? 'has-err' : ''}"><span class="lbl">Which VCF Operations does vCenter say manages its license?</span>${opts(F, 'manager', [['none', 'None', 'Nothing has claimed this vCenter. A VCF Operations may claim it itself.'], ['other', 'Another VCF Operations', 'As if a different VCF Operations had already claimed it.']])}${errOf(F, 'manager')}</div>
+    ${F.manager === 'other' ? html`${field(F, 'The id of that VCF Operations', text(F, 'identity'), 'A made-up id is filled in. To make a VCF Operations see this vCenter as its own, enter that Operations\' id instead.', 'identity')}
+      ${field(F, 'Its address', text(F, 'url', 'https://operations.example.test'), 'Nothing is contacted at this address. Tools are only told it.', 'url')}` : ''}`,
+
   'new-certificate': (F) => field(F, 'Names and addresses tools use to reach the simulator', text(F, 'names'), 'Filled in for you from the name of this machine, the address you opened this console with and the names the certificate covers now. Add more separated by commas if tools use another name.', 'names'),
 
   'own-certificate': (F, O, plan) => {

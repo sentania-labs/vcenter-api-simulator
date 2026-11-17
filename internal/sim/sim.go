@@ -43,6 +43,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
+	"github.com/sentania/vcenter-api-simulator/internal/signon"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/sentania/vcenter-api-simulator/internal/vsanhealth"
 )
@@ -74,6 +75,22 @@ type Options struct {
 	Latency scenario.Latency
 	// Conditions are the console's slowness and faults.
 	Conditions []scenario.Condition
+	// Licensing is how the vCenter presents its own licensing.
+	Licensing scenario.Licensing
+	// Issuer holds the key sign-on tokens are signed with; nil means one
+	// kept in memory for the topology's seed.
+	Issuer *signon.Issuer
+	// Trust, when set, is the certificate the lookup service names as the
+	// one to trust at the simulator's address, in place of the listener's
+	// own: the certificate of a proxy that ends TLS in front of it.
+	Trust *TrustSource
+	// PublicAddress is the address tools use ("https://name:port"). The
+	// vCenter's own settings name its sign-on services under it.
+	PublicAddress string
+	// LicenseManagerChanged is told when a tool registers, changes or
+	// removes the "license managed by" marker, with the marker as it now
+	// stands (nil when removed). It is called from its own goroutine.
+	LicenseManagerChanged func(*scenario.LicenseManager)
 }
 
 // ClusterRefs are the MoRefs vcsim assigned to one cluster's objects.
@@ -163,6 +180,7 @@ func New(opts Options) (*Simulator, error) {
 			creds[n] = p
 		}
 	}
+	ownSettings(m)
 	installAuth(m, creds, opts.Authenticate, 0)
 	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
 	m.Service.Context.Map.Put(&authorization{AuthorizationManager: am, role: opts.UserRole})
@@ -171,12 +189,18 @@ func New(opts Options) (*Simulator, error) {
 		return nil, err
 	}
 	s.server = m.Service.NewServer()
+	signOnSettings(m, opts.PublicAddress)
 	vsanhealth.Install(m.Service, s.Env)
 	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}, license: *newLicenseSessions(creds, opts.Authenticate), tls: opts.Certificate}
 	h.timeout.Store(int64(opts.SessionTimeout))
 	h.rest.timeout = &h.timeout
 	h.license.timeout = &h.timeout
+	h.sim, h.trust, h.managerChanged = s, opts.Trust, opts.LicenseManagerChanged
+	if h.issuer = opts.Issuer; h.issuer == nil {
+		h.issuer = signon.Open("", topo.Seed)
+	}
 	s.Handler = h
+	s.SetLicensing(opts.Licensing)
 	return s, nil
 }
 
@@ -807,6 +831,17 @@ type handler struct {
 	rest        restSessions
 	license     licenseSessions
 	tls         *serve.Certificate
+
+	sim       *Simulator
+	issuer    *signon.Issuer
+	trust     *TrustSource
+	licensing atomic.Pointer[scenario.Licensing]
+
+	// managerMu guards manager, the "license managed by" marker as last
+	// set or reported, and orders the reports of its changes.
+	managerMu      sync.Mutex
+	manager        *scenario.LicenseManager
+	managerChanged func(*scenario.LicenseManager)
 }
 
 // UpdateCredentials serializes a policy change with requests and revokes
@@ -922,7 +957,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.serveLicense(w, r) {
 		return
 	}
-	if serveLookup(w, r) {
+	if h.serveLookup(w, r) || h.serveSSOAdmin(w, r) || h.serveSTS(w, r) {
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -971,6 +1006,22 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					invalidLogin(w)
 					return
 				}
+				if bytes.Contains(body, []byte("LoginBySessionTicket")) && soapOperation(body) == "LoginBySessionTicket" {
+					invalidTicket(w)
+					return
+				}
+				if bytes.Contains(body, []byte("Extension")) {
+					switch op := soapOperation(body); {
+					case extensionWrites[op]:
+						// after the answer, whatever it was: report the
+						// marker if this request changed it
+						defer h.reportLicenseManager()
+					case op == "FindExtension":
+						plain := &plainDescription{ResponseWriter: w}
+						defer plain.finish()
+						w = plain
+					}
+				}
 				if d := h.env.Knobs.SDKDelay(); d != nil {
 					time.Sleep(d.Duration(rand.Float64()))
 				}
@@ -986,6 +1037,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		h.mux.ServeHTTP(w, r)
 	}
+}
+
+// invalidTicket answers LoginBySessionTicket the way a real vCenter answers a
+// ticket it did not issue. The simulator issues no session tickets, so every
+// ticket is one it did not issue; a tool that tries a stored session id as a
+// ticket falls back to signing in, as it does against a real vCenter.
+func invalidTicket(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><soapenv:Body><soapenv:Fault><faultcode>ServerFaultCode</faultcode><faultstring>The session ticket is invalid.</faultstring><detail><InvalidTicketFault xmlns="urn:vim25" xsi:type="InvalidTicket"></InvalidTicketFault></detail></soapenv:Fault></soapenv:Body></soapenv:Envelope>`)
 }
 
 // A read-only user may query inventory, create ephemeral views and log out;

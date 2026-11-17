@@ -65,7 +65,7 @@ func main() {
 	seed := flag.String("seed", "phase1", "identity seed for the built-in scenario (ignored with -scenario)")
 	queryLog := flag.String("query-log", "", "enable full query capture to this JSONL path (may contain inventory identifiers)")
 	unansweredStdout := flag.Bool("unanswered-stdout", false, "write unanswered requests as JSON lines to stdout")
-	debugCapture := flag.Bool("debug-capture", true, "initially write license-service requests (/ls/) to stdout, with secrets scrubbed; the console's choice overrides this default")
+	debugCapture := flag.Bool("debug-capture", true, "initially write the requests a tool makes about licensing and sign-on (/ls, /lookupservice, /sso-adminserver, /sts, POST /api and the session-ticket operations of /sdk) to stdout, with secrets scrubbed; the console's choice overrides this default")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
 	tlsManaged := flag.Bool("tls-managed", false, "the deployment manages the certificate pair in -tls-dir")
 	tlsDir := flag.String("tls-dir", "", "directory holding the persisted self-signed certificate (default <data>/tls)")
@@ -84,6 +84,7 @@ func main() {
 	adminHosts := flag.String("admin-allowed-hosts", "", "comma-separated Host names the control console answers to besides localhost, 127.0.0.1 and ::1; any other Host gets 403 (env VCSIM_ADMIN_ALLOWED_HOSTS)")
 	sessionTimeout := flag.Duration("session-timeout", 0, "idle session timeout (0: sessions never expire)")
 	publicURL := flag.String("public-url", "", "the address tools should use, shown in the console (env VCSIM_PUBLIC_URL; default https://<name>:<port>)")
+	lookupTrust := flag.String("lookup-trust-cert", "", "PEM file with the certificate tools see at the simulator's address when a proxy in front of it ends TLS; the lookup service names it as the certificate to trust instead of the simulator's own (env VCSIM_LOOKUP_TRUST_CERT)")
 	reportURL := flag.String("report-url", "", "where the console sends people to report a request the simulator cannot answer (env VCSIM_REPORT_URL; default the project's new-issue page)")
 	flag.Parse()
 	adminSet := false
@@ -112,6 +113,9 @@ func main() {
 	}
 	if *reportURL == "" {
 		*reportURL = os.Getenv("VCSIM_REPORT_URL")
+	}
+	if *lookupTrust == "" {
+		*lookupTrust = os.Getenv("VCSIM_LOOKUP_TRUST_CERT")
 	}
 	if *role != "" && *role != "administrator" && *role != "read-only" {
 		log.Fatal("-role must be administrator or read-only")
@@ -175,7 +179,7 @@ func main() {
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
 		Credentials: extra, CredentialRole: *role, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
-		PublicURL: *publicURL, ReportURL: *reportURL,
+		PublicURL: *publicURL, ReportURL: *reportURL, LookupTrustFile: *lookupTrust,
 	})
 	if err != nil {
 		log.Fatal(err)

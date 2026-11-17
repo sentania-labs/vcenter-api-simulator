@@ -54,9 +54,11 @@ type Scenario struct {
 	HostVersions    map[string]Version `yaml:"hostVersions,omitempty" json:"hostVersions,omitempty"`
 	ForceNewerHosts bool               `yaml:"forceNewerHosts,omitempty" json:"forceNewerHosts,omitempty"`
 	Auth            Auth               `yaml:"auth" json:"auth,omitempty"`
-	TLS             TLS                `yaml:"tls" json:"tls,omitempty"`
-	Faults          []Fault            `yaml:"faults" json:"faults,omitempty"`
-	Latency         Latency            `yaml:"latency" json:"latency,omitempty"`
+	// Licensing is how the vCenter presents its own licensing to tools.
+	Licensing Licensing `yaml:"licensing,omitempty" json:"licensing,omitzero"`
+	TLS       TLS       `yaml:"tls" json:"tls,omitempty"`
+	Faults    []Fault   `yaml:"faults" json:"faults,omitempty"`
+	Latency   Latency   `yaml:"latency" json:"latency,omitempty"`
 	// Conditions are the slowness and faults the console switched on. The
 	// console also turns Faults, Latency and statsPrimary: false into
 	// conditions when it starts, so there is one list of what is on.
@@ -628,6 +630,9 @@ func (s *Scenario) Validate() error {
 	}
 	if (s.TLS.CertFile == "") != (s.TLS.KeyFile == "") {
 		return errors.New("scenario: tls: certFile and keyFile go together")
+	}
+	if err := s.Licensing.validate(); err != nil {
+		return err
 	}
 	cat, err := catalog.Load()
 	if err != nil {

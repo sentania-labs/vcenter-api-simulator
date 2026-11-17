@@ -33,7 +33,17 @@ type Topology struct {
 	Seed           string
 	TelemetrySeed  string // feeds metric values; identities never depend on it
 	InstanceUUID   string // ServiceContent.about.instanceUuid
-	Datacenters    []*Datacenter
+	// The lookup service's own identities. NodeID is the node the vCenter
+	// and its sign-on service are registered under and the scope of its
+	// license service; it is never the instance UUID. HostID is the third
+	// one, named in the vCenter registration's owner. SignOnID is the id of
+	// the sign-on registration. ManagerID is a made-up Operations id the
+	// console suggests for "license managed by another Operations".
+	NodeID      string
+	HostID      string
+	SignOnID    string
+	ManagerID   string
+	Datacenters []*Datacenter
 }
 
 // Datacenter holds clusters and the one vDS their hosts share.
@@ -294,7 +304,8 @@ var (
 // its numbers.
 func Generate(s *scenario.Scenario, r *registry.Registry) *Topology {
 	vc, _ := s.VCenterVersion()
-	t := &Topology{Seed: s.Seed, TelemetrySeed: s.TelemetrySeed, InstanceUUID: r.UUID("vcenter", 0), VCenterVersion: vc}
+	t := &Topology{Seed: s.Seed, TelemetrySeed: s.TelemetrySeed, InstanceUUID: r.UUID("vcenter", 0), VCenterVersion: vc,
+		NodeID: r.UUID("lookup-node", 0), HostID: r.UUID("lookup-host", 0), SignOnID: r.UUID("lookup-sign-on", 0), ManagerID: r.UUID("license-manager", 0)}
 	if t.TelemetrySeed == "" {
 		t.TelemetrySeed = s.Seed
 	}

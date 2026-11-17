@@ -18,7 +18,7 @@ import (
 
 // licenseNote is why an unanswered license request matters even when the
 // tool that asked carried on.
-const licenseNote = "The vCenter adapter built into VCF Operations is different: it asks for the license first and will not start collecting without an answer."
+const licenseNote = "The vCenter adapter built into VCF Operations is different: it asks about the license first and decides from the answers whether to start collecting."
 
 // Ask is one kind of thing a tool asked for.
 type Ask struct {
@@ -382,7 +382,9 @@ type CaptureView struct {
 	Available  bool `json:"available"`
 	Unanswered bool `json:"unanswered"`
 	Full       bool `json:"full"`
-	// Debug is the license-service request log on stdout.
+	// Debug is the log, on stdout, of what tools ask about licensing: the
+	// license, lookup and sign-on services and the session-ticket
+	// operations.
 	Debug bool `json:"debug"`
 	// Kept and Kinds count the unanswered requests held; FullKept the
 	// requests full capture holds.
@@ -604,9 +606,10 @@ func (c *Controller) Supported() (rows []SupportRow, vcenter string) {
 		{"The newer web interface (REST) for lists", "part", "Reading lists works. Some details of VMs are missing."},
 		{"The files that describe how to talk to vCenter", "part", "One of the two files is served."},
 		{"Distributed switches", "part", "Present, but reported as the basic type rather than the VMware type."},
+		{"Sign-on tokens, and where vCenter's other services are", "part", "A tool can find the sign-on service and get a signed token for an account. Built from what a real vCenter answers; not yet tried with VCF Operations itself."},
+		{"Licensing", "part", "Tools are told vCenter and its hosts are in evaluation, and which VCF Operations manages the license if one does (see Security). A licensed vCenter is not simulated."},
 		{"The list of measurements vCenter can report (performance counters)", "no", "Tools that ask for the list get no answer. vSAN performance data itself, above, is answered."},
 		{"Kubernetes (Supervisor) information", "no", "Tools that ask the older web interface whether Kubernetes is turned on get no answer."},
-		{"Licensing", "no", "Tools that ask which license vCenter has get no answer. Most carry on. " + licenseNote},
 		{"Fibre Channel storage, and vSAN itself acting as a file server or an iSCSI server", "no", "Tools are told there are none. This does not affect the iSCSI and NFS datastores above."},
 	}, scenario.VersionLabel(c.applied().topo.VCenterVersion)
 }

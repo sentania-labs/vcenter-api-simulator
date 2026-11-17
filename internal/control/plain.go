@@ -216,6 +216,7 @@ func init() {
 		}
 	}
 	add(kindSignIn, "Login", "Logout", "LoginByToken", "LoginBySSPI", "LoginExtensionByCertificate", "LoginExtensionBySubjectName",
+		"LoginBySessionTicket", "AcquireSessionTicket",
 		"SessionIsActive", "RetrieveServiceContent", "RetrieveContent", "CurrentTime", "CloneSession", "AcquireCloneTicket", "AcquireGenericServiceTicket")
 	add(kindInventory, "CreateContainerView", "CreateListView", "CreateListViewFromView", "CreateInventoryView", "DestroyView",
 		"RetrieveProperties", "RetrievePropertiesEx", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx",
@@ -228,7 +229,8 @@ func init() {
 	add("vCenter's own performance measurements", "QueryPerf", "QueryPerfComposite")
 	add(kindLicense, "QueryAssignedLicenses", "QueryLicenseSourceAvailability", "QueryLicenseUsage", "QuerySupportedFeatures", "DecodeLicense", "CheckLicenseFeature")
 	add("vCenter's advanced settings", "QueryOptions", "QueryView")
-	add("Add-ons registered with vCenter", "FindExtension", "QueryExtensionIpAllocationUsage", "GetPublicKey")
+	add("Add-ons registered with vCenter", "FindExtension", "QueryExtensionIpAllocationUsage", "GetPublicKey",
+		"RegisterExtension", "UpdateExtension", "UnregisterExtension")
 	add("Events and tasks", "CreateCollectorForEvents", "CreateCollectorForTasks", "QueryEvents", "ReadNextEvents", "ReadPreviousEvents",
 		"ReadNextTasks", "ReadPreviousTasks", "DestroyCollector", "ResetCollector", "RewindCollector", "SetCollectorPageSize", "RetrieveArgumentDescription")
 	add("Alarms", "GetAlarm", "GetAlarmState", "AreAlarmActionsEnabled")
@@ -262,6 +264,9 @@ var restKinds = []struct {
 	{regexp.MustCompile(`^/(api|rest)/esx/settings/`), "Host image settings"},
 	{regexp.MustCompile(`^/(api|rest)/vcenter/(topology|system-config|vcha)/`), "How this vCenter is installed"},
 	{regexp.MustCompile(`^/ls/|/license`), kindLicense},
+	{regexp.MustCompile(`^/lookupservice(/|$)`), "Where vCenter's other services are (the lookup service)"},
+	{regexp.MustCompile(`^/sso-adminserver(/|$)`), "How vCenter's sign-on is set up"},
+	{regexp.MustCompile(`^/sts(/|$)`), "A sign-on token for an account"},
 	{regexp.MustCompile(`^/sdk/(vimServiceVersions|vsanServiceVersions)\.xml$`), "Which versions of its interface vCenter offers"},
 	{regexp.MustCompile(`\.(wsdl|xsd)$`), "The file that describes how to talk to vCenter"},
 	{regexp.MustCompile(`^/(sdk|vsanHealth)/?$`), "A plain visit to the address, the way a browser makes one"},

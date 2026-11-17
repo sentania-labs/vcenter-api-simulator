@@ -439,6 +439,8 @@ type SecurityView struct {
 	Certificate *CertificateView `json:"certificate,omitempty"`
 	// ConsoleManaged: the console password comes from the deployment.
 	ConsoleManaged bool `json:"consoleManaged"`
+	// Licensing is how the vCenter presents its licensing to tools.
+	Licensing LicensingView `json:"licensing"`
 }
 
 func (c *Controller) certificateView() *CertificateView {
@@ -476,7 +478,7 @@ func fingerprint(hexed string) string {
 func (c *Controller) Security() SecurityView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	v := SecurityView{Certificate: c.certificateView(), ConsoleManaged: c.ConsoleManaged != nil && c.ConsoleManaged()}
+	v := SecurityView{Certificate: c.certificateView(), ConsoleManaged: c.ConsoleManaged != nil && c.ConsoleManaged(), Licensing: c.licensingView()}
 	if c.opts.SessionTimeout > 0 {
 		v.Idle = idleLabel(c.opts.SessionTimeout)
 	}

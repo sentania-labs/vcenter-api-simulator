@@ -28,11 +28,12 @@ go build ./cmd/vcsimulator
 | Flag | Meaning |
 |---|---|
 | `-scenario FILE` | the scenario ([reference](SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
-| `-data DIR` | holds `registry.json` (identities) and `tls/` (the self-signed certificate, created once); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
+| `-data DIR` | holds `registry.json` (identities), `tls/` (the self-signed certificate, created once) and `sign-on-key.json` (the key sign-on tokens are signed with, created when first needed and kept for as long as the seed is the same); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
 | `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. A start-up default: see the saved capture settings below |
 | `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; a start-up default, and the console has no switch for it |
-| `-debug-capture=false` | initially stop writing license-service requests (`/ls/`) to stdout; on by default. A start-up default: see the saved capture settings below |
+| `-debug-capture=false` | initially stop writing what tools ask about licensing and sign-on to stdout (the requests listed under "Debug capture" below); on by default. A start-up default: see the saved capture settings below |
+| `-lookup-trust-cert FILE` | a PEM file with the certificate tools see at the simulator's address when a proxy in front of it ends TLS (env `VCSIM_LOOKUP_TRUST_CERT`). The lookup service names it as the certificate to trust for the sign-on addresses it hands out, in place of the simulator's own, which such a tool never sees. The file is read again when it changes. Without it the simulator's own certificate is named |
 | `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
 | `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
 | `-session-timeout` | idle session timeout; sessions never expire by default |
@@ -66,20 +67,38 @@ every start.
 Debug capture is on by default. **Requests** has a third capture switch,
 "Record what tools ask about licensing", that turns it on and off; the choice
 is saved with the other capture settings. It
-writes one JSON line to stdout (`"event":"request-capture"`) for
-every request to `/ls/`, with the method, path, query, the names of all
-headers, the values of Content-Type, SOAPAction, User-Agent, Accept and
-Content-Length, and the request body. Before
+writes one JSON line to stdout (`"event":"request-capture"`) for:
+
+- every request to the license service (`/ls`), the lookup service
+  (`/lookupservice`), the sign-on admin service (`/sso-adminserver`) and the
+  token service (`/sts`);
+- a `POST` to `/api` itself, which is how a tool opens a session on the
+  interface licenses are assigned through;
+- on `/sdk`, the four operations by which a tool carries a session from one
+  connection to another: `LoginBySessionTicket`, `AcquireSessionTicket`,
+  `AcquireCloneTicket` and `CloneSession`. No other `/sdk` request is logged.
+
+Each line has the method, path, query, the SOAP operation, the status, the
+type of the fault when the answer was one (so a refused `AcquireCloneTicket`
+shows as `NotAuthenticated`, which no other list records), `cookieSent`
+(whether a session cookie came with the request; its value is never logged),
+the names of all headers, the values of Content-Type, SOAPAction, User-Agent,
+Accept and Content-Length, and the request body. Before
 logging, the content of any element, and the value of any attribute, JSON or
 form field or query parameter, whose name contains a credential word (password,
 secret, token, cookie, ticket, credential, session, hash, assertion, license
-key, signed entitlement, private key, security, signature, x509 or user) is
+key, signed entitlement, private key, security, signature, x509, sslTrust,
+user, owner id or principal) is
 replaced by a `[scrubbed:Name len=N]` marker, as is any run of more than 64
 base64 or hex characters. Element names, namespaces, other attributes and order
-are kept. Authorization, Cookie and session headers never have their values
-logged. A body over 64 KiB is cut and flagged. Every request to `/ls/`,
-`/lookupservice/` and the REST paths above is captured with its operation name,
-whether the simulator answered it locally or the vcsim mux did.
+are kept. A request to the token service is treated the other way round, so
+that its shape can be learned: every element and attribute is kept, and the
+text of every element is removed unless the element is one whose text is a
+fixed name or a time (the kind of token, of key and of signature asked for,
+and its lifetime). An assertion loses everything inside it. Authorization,
+Cookie and session headers never have their values
+logged. A body over 64 KiB is cut and flagged. Nothing of an answer is logged
+but its status and fault type.
 
 The console uses a separate password from vCenter. The first time it is
 opened it asks for two things: a password for the console itself (at least 8
@@ -159,15 +178,44 @@ What the scenario controls, and what the simulator guarantees:
   `administrator@vsphere.local`, and nothing signs in before then. Set
   `auth.anyLogin: true` or `-any-login` to accept arbitrary non-empty credentials. The certificate persists,
   so the 2.0.0 pack's certificate pin survives restarts.
-- **License and lookup services.** `/ls/sdk` answers `Login` and `Logout` of
-  the license session-management service, and `/lookupservice/sdk` answers
-  `RetrieveServiceContent`, both anonymously where the real server does. The
-  same accounts as `/sdk` are accepted. An anonymous or logged-out
+- **Lookup, sign-on and license services.** The chain VCF Operations walks
+  before it collects ([what each answers and what is unverified](../README.md#licensing-and-sign-on)):
+  - `/lookupservice/sdk`: `RetrieveServiceContent`, and `List` for three
+    filters (`vcenterserver` with `vmomi` / `com.vmware.vim`; `cs.identity`
+    with `vmomi` / `com.vmware.cis.cs.identity.admin`; `cs.identity` with
+    `wsTrust` / `com.vmware.cis.cs.identity.sso`). Any other filter, and no
+    filter, returns an empty list. Addresses are built on the address the
+    client used: `X-Forwarded-Host` when a proxy sets it, else `Host`.
+    `sslTrust` is the listener's certificate, or the one in
+    `-lookup-trust-cert`. The node id is its own UUID and is the scope of the
+    license service; the vCenter registration's service id is
+    `about.instanceUuid`.
+  - `/sso-adminserver/sdk/vsphere.local`: `SsoAdminServiceInstance`,
+    `IdS_getSystemDomainName` and `GetIssuersCertificates`, without a
+    sign-in.
+  - `/sts/STSService/vsphere.local`: a WS-Trust `Issue` for a bearer token
+    with a username token, checked against the same accounts as `/sdk`. The
+    SAML assertion carries an enveloped RSA-SHA256 signature over its
+    exclusive canonical form, made with an RSA 3072 key kept in
+    `sign-on-key.json`; `GetIssuersCertificates` returns that key's
+    certificate. The vCenter settings `config.vpxd.sso.sts.uri`,
+    `config.vpxd.sso.admin.uri` and `config.vpxd.sso.groupcheck.uri` name
+    these two paths under `-public-url`.
+  - `/ls/sdk`: `Login` and `Logout` of the session-management service, and,
+    signed in, `SearchAssets` (the plain form and the forms by product family
+    names, by license state and by license id, with `maxResults` and
+    `offset`), `SearchLicenses` and `QuerySystemTime`. A license session never
+    authenticates `/sdk`; the two stores are separate.
+  - `/sdk`: `LoginBySessionTicket` answers `InvalidTicket`. The extension
+    `com.vmware.vrops.license.managed` is seeded from the scenario, and
+    `RegisterExtension`, `UpdateExtension` and `UnregisterExtension` of it
+    are saved, so that a claim by an Operations outlives a restart.
+
+  An anonymous or logged-out
   `SessionManager.currentSession` read answers an empty `FetchResponse`.
   `/rest/vcenter/certificate-authority/get-root` and its `/api` and numbered
   forms return the simulator's own certificate as PEM once the request carries
-  a valid `vmware-api-session-id`. A license session never authenticates
-  `/sdk`; the two stores are separate.
+  a valid `vmware-api-session-id`.
 - **Faults and latency.** Per-family or per-method SOAP faults
   (`invalid-argument`, `not-supported`, `system-error`, `timeout`) by
   cluster and time window; per-family and `/sdk` latency with jitter.
@@ -176,12 +224,15 @@ Known gaps: the vDS is served under vcsim's base type
 `DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
 populated vSAN iSCSI target service, file service, and FC-backed datastores
 are not modeled because the walk captured no populated examples.
-The license data model (assigned-license records, entitlements, the
-`LicenseManager` managed object), the STS token services, and the console's
+A licensed vCenter (a signed entitlement), license assignment, the
+`LicenseManager` managed object on `/sdk`, and the console's
 per-service `currentSession` shapes beyond what was captured are not modelled.
 Among the answered operations, the bad-credential fault of a real vCenter's
-license service was never observed, so a refused license login answers the
-captured invalid-request fault shape and that shape is not claimed as verified. Shared NFS
+license service was never observed, so a refused license login, and a license
+read that is not signed in, answer the
+captured invalid-request fault shape and that shape is not claimed as verified;
+the other unverified parts of the licensing and sign-on answers are listed in
+the [README](../README.md#licensing-and-sign-on). Shared NFS
 v3 and iSCSI-backed VMFS datastores can be configured in a scenario; the
 iSCSI shape is plausible but not verified against a lab iSCSI host. REST
 inventory reads share SOAP inventory identities. List endpoints honour `names`, the parent and state
@@ -217,7 +268,10 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
   next to the running one and swap them, so connected tools are signed out
   and sign in again, as after a vCenter restart. Every identity the change
   keeps is unchanged. Users, the certificate, idle sign-out, and slowness and
-  faults change in place.
+  faults change in place. So does how licensing looks to tools (Security):
+  whether the evaluation is running or has run out, whether accounts are
+  licensing administrators, and which VCF Operations, if any, vCenter says
+  manages its license.
 - **The simulator names clusters** (`cluster-12`) and invents storage
   connection details; hosts are removed by name and a removed host's number
   is not reused. "Replace everything with a new environment" is the one
@@ -407,6 +461,14 @@ The Ingress backend is HTTPS; tell the controller
 (`nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"` for ingress-nginx).
 When the Ingress terminates TLS, collectors pin the ingress certificate, not
 the simulator's.
+
+For VCF Operations' own vCenter adapter, two more things are needed behind an
+Ingress. Add `/lookupservice`, `/sso-adminserver`, `/sts`, `/ls`, `/api` and
+`/rest` to `ingress.paths` (the default is `/sdk` and `/vsanHealth` only).
+And set `simulator.lookupTrustSecret` to the name of the Secret that holds the
+Ingress's certificate (its `tls.crt` is mounted, nothing else): the lookup
+service then tells Operations to trust that certificate at the sign-on
+addresses, which is the one Operations will see there.
 
 [`charts/vcenter-api-simulator/ci`](../charts/vcenter-api-simulator/ci) holds
 example values for the Ingress, an existing TLS Secret, cert-manager, and no
