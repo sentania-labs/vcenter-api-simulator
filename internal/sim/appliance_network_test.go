@@ -35,6 +35,10 @@ func TestApplianceNetworkingIdentity(t *testing.T) {
 		t.Fatal("DNS override lost")
 	}
 	ip := full["interfaces"].(map[string]any)["nic0"].(map[string]any)["ipv4"].(map[string]any)
+	nic := full["interfaces"].(map[string]any)["nic0"].(map[string]any)
+	if nic["mac"] != "00:50:56:14:00:0a" || ip["default_gateway"] != "10.20.0.1" || ip["configurable"] != true {
+		t.Fatalf("interface fields missing: %+v", nic)
+	}
 	if ip["address"] != "10.20.0.10" || ip["prefix"] != float64(20) || full["vcenter_base_url"] != "https://sim.example.test:8443" {
 		t.Fatalf("wrong networking: %+v", full)
 	}

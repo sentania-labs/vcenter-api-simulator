@@ -598,8 +598,12 @@ Appliance networking reads use the hostname in `simulator.publicUrl` (or the
 chart's `hostname`). `simulator.applianceNetworking.dnsServers` overrides the
 reported DNS server list; `simulator.applianceNetworking.ipv4` overrides the
 reported address/prefix, for example `10.20.0.10/24`. Empty settings report the
-pod's resolver and first non-loopback IPv4 interface. No gateway or MAC address
-is invented. These read-only APIs do not change the pod's networking.
+pod's resolver and first non-loopback IPv4 interface. The interface's `mac` is
+the local interface's hardware address and `default_gateway` is the pod's
+default route when it falls in that subnet; for an address the pod does not
+hold, they are derived from the address (VMware OUI plus its low three bytes,
+and the first host of the subnet). These read-only APIs do not change the pod's
+networking.
 
 VCF Operations' DNS alert uses its own forward and reverse DNS lookups of the
 vCenter endpoint. Correct appliance answers do not repair an ingress address's

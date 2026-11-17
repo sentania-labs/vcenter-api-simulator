@@ -33,13 +33,18 @@ func (s *restSessions) appliance(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/appliance/recovery/backup/schedules":
 		value = map[string]any{}
 	case "/api/appliance/networking":
-		ipv4 := map[string]any{"mode": "static", "configurable": false}
+		ipv4 := map[string]any{"mode": "static", "configurable": true}
+		nic := map[string]any{"name": "nic0", "status": "up", "ipv4": ipv4}
 		if s.network.IPv4 != "" {
 			ip, subnet, _ := net.ParseCIDR(s.network.IPv4)
 			prefix, _ := subnet.Mask.Size()
 			ipv4["address"], ipv4["prefix"] = ip.String(), prefix
+			nic["mac"] = s.network.mac
+			if s.network.gateway != "" {
+				ipv4["default_gateway"] = s.network.gateway
+			}
 		}
-		value = map[string]any{"interfaces": map[string]any{"nic0": map[string]any{"name": "nic0", "status": "up", "ipv4": ipv4}}, "dns": map[string]any{"mode": "is_static", "hostname": hostname, "servers": s.network.DNSServers}, "vcenter_base_url": "https://" + host}
+		value = map[string]any{"interfaces": map[string]any{"nic0": nic}, "dns": map[string]any{"mode": "is_static", "hostname": hostname, "servers": s.network.DNSServers}, "vcenter_base_url": "https://" + host}
 	case "/api/appliance/networking/dns/hostname":
 		value = hostname
 	case "/api/appliance/networking/dns/servers":
