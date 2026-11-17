@@ -119,9 +119,9 @@ func shapeCount(shape string, cl *topology.Cluster) (int, error) {
 			}
 		}
 	case "vm":
-		return len(cl.VMs), nil
+		return len(cl.LiveVMs()), nil
 	case "vm|scsiN:M", "vdisk-path":
-		for _, vm := range cl.VMs {
+		for _, vm := range cl.LiveVMs() {
 			n += len(vm.Disks)
 		}
 	default:
@@ -206,17 +206,17 @@ func byShape(shape string, cl *topology.Cluster) ([]string, error) {
 			return r
 		})
 	case "vm":
-		for _, vm := range cl.VMs {
+		for _, vm := range cl.LiveVMs() {
 			out = append(out, vm.InstanceUUID)
 		}
 	case "vm|scsiN:M":
-		for _, vm := range cl.VMs {
+		for _, vm := range cl.LiveVMs() {
 			for _, d := range vm.Disks {
 				out = append(out, vm.InstanceUUID+"|"+d.Device)
 			}
 		}
 	case "vdisk-path":
-		for _, vm := range cl.VMs {
+		for _, vm := range cl.LiveVMs() {
 			for _, d := range vm.Disks {
 				out = append(out, d.Path)
 			}

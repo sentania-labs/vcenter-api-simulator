@@ -243,6 +243,12 @@ type ClusterOverride struct {
 	// (the console's Remove hosts). The numbers of the other hosts do not
 	// shift, and a removed number is not given to a host added later.
 	RemovedHosts []int `yaml:"removedHosts,omitempty" json:"removedHosts,omitempty"`
+	// RemovedVMs lists VM numbers (1 is <cluster>-vm-001) the cluster leaves
+	// out, and AddedVMs the numbers it has beyond the ones its hosts
+	// generate: what Activity removed and added while the simulator ran.
+	// A number is never given to another VM.
+	RemovedVMs []int `yaml:"removedVMs,omitempty" json:"removedVMs,omitempty"`
+	AddedVMs   []int `yaml:"addedVMs,omitempty" json:"addedVMs,omitempty"`
 	ClusterSpec  `yaml:",inline" json:",omitempty"`
 }
 
@@ -560,6 +566,17 @@ func (s *Scenario) Validate() error {
 			return fmt.Errorf("scenario: clusters[%s]: removedHosts leaves fewer than %d hosts (vSAN needs three hosts)", c.Key, MinHosts)
 		}
 	}
+	for _, c := range s.Clusters {
+		for name, list := range map[string][]int{"removedVMs": c.RemovedVMs, "addedVMs": c.AddedVMs} {
+			seen := map[int]bool{}
+			for _, n := range list {
+				if n < 1 || seen[n] {
+					return fmt.Errorf("scenario: clusters[%s]: %s: %d is not a VM number, or is listed twice", c.Key, name, n)
+				}
+				seen[n] = true
+			}
+		}
+	}
 	for _, v := range s.Vary.Hosts {
 		if v < MinHosts {
 			return fmt.Errorf("scenario: vary.hosts values must be at least %d (vSAN needs three hosts)", MinHosts)
@@ -828,6 +845,39 @@ func (s *Scenario) RemovedHosts(key string) map[int]bool {
 		}
 	}
 	return nil
+}
+
+// VMNumbers is the VM numbers a cluster has, in order: the ones its hosts
+// generate (1..generated) and the ones Activity added, without the ones it
+// removed. High is the highest number the cluster has ever used, so the next
+// VM takes High+1 and no number is used twice.
+func (s *Scenario) VMNumbers(key string, generated int) (numbers []int, high int) {
+	var removed, added []int
+	for _, c := range s.Clusters {
+		if c.Key == key {
+			removed, added = c.RemovedVMs, c.AddedVMs
+		}
+	}
+	gone := make(map[int]bool, len(removed))
+	high = generated
+	for _, n := range removed {
+		gone[n] = true
+		high = max(high, n)
+	}
+	for n := 1; n <= generated; n++ {
+		if !gone[n] {
+			numbers = append(numbers, n)
+		}
+	}
+	extra := append([]int(nil), added...)
+	sort.Ints(extra)
+	for _, n := range extra {
+		high = max(high, n)
+		if n > generated && !gone[n] {
+			numbers = append(numbers, n)
+		}
+	}
+	return numbers, high
 }
 
 // ClusterKeys lists every cluster the scenario generates, in order.

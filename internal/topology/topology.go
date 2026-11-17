@@ -99,6 +99,13 @@ type Cluster struct {
 	Hosts         []*Host
 	VMs           []*VM
 	Spec          scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
+	// VMHigh is the highest VM number the cluster has ever used.
+	VMHigh int
+
+	// live, when set, is the VM list as Activity has changed it since the
+	// inventory was built. VMs stays as built; everything that answers a
+	// request reads LiveVMs.
+	live *atomic.Pointer[[]*VM]
 
 	// perfOff is the console's "performance service switched off" switch.
 	// It is a pointer so that a copy of the cluster shares it, and atomic
@@ -124,6 +131,25 @@ func (c *Cluster) SetPerfOff(off bool) {
 	}
 }
 
+// LiveVMs is the cluster's VMs as they are now: as built, or as Activity
+// has added and removed them since. The slice must not be changed.
+func (c *Cluster) LiveVMs() []*VM {
+	if c.live != nil {
+		if p := c.live.Load(); p != nil {
+			return *p
+		}
+	}
+	return c.VMs
+}
+
+// SetLiveVMs replaces the list LiveVMs returns while requests are being
+// answered. The caller hands over a slice it no longer changes.
+func (c *Cluster) SetLiveVMs(vms []*VM) {
+	if c.live != nil {
+		c.live.Store(&vms)
+	}
+}
+
 // VsanCapacity and VsanUsed are shared by datastore and vSAN capacity reads.
 func VsanCapacity(cl *Cluster) int64 {
 	var total int64
@@ -139,7 +165,7 @@ func VsanCapacity(cl *Cluster) int64 {
 
 func VsanUsed(cl *Cluster) int64 {
 	var used int64
-	for _, vm := range cl.VMs {
+	for _, vm := range cl.LiveVMs() {
 		for _, d := range vm.Disks {
 			used += d.CapacityKB << 10 / 2
 		}
@@ -242,7 +268,7 @@ func (t *Topology) Counts() (clusters, hosts, vms, devices int) {
 	for _, c := range t.Clusters() {
 		clusters++
 		hosts += len(c.Hosts)
-		vms += len(c.VMs)
+		vms += len(c.LiveVMs())
 		for _, h := range c.Hosts {
 			devices += len(h.Devices)
 		}
@@ -359,6 +385,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		Compression:   *spec.Compression && spec.Architecture != "osa",
 		Spec:          spec,
 		perfOff:       new(atomic.Bool),
+		live:          new(atomic.Pointer[[]*VM]),
 	}
 	if e := s.SeedEpoch(key); e > 0 {
 		cl.TelemetrySeed = fmt.Sprintf("%s/%s#%d", telemetrySeed, key, e)
@@ -385,12 +412,17 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		host.Version, _ = s.HostVersion(cl.Key, host.Key)
 		cl.Hosts = append(cl.Hosts, host)
 	}
-	nvms := len(cl.Hosts) * scenario.Int(spec.VMs.PerHost)
-	for vi := 1; vi <= nvms; vi++ {
+	numbers, high := s.VMNumbers(key, len(cl.Hosts)*scenario.Int(spec.VMs.PerHost))
+	for _, vi := range numbers {
 		cl.VMs = append(cl.VMs, generateVM(r, cl, vi))
 	}
+	cl.VMHigh = high
 	return cl
 }
+
+// NewVM makes the VM with number n of a cluster that is already built, for
+// a VM added while the simulator runs. It allocates the VM's serial.
+func NewVM(r *registry.Registry, cl *Cluster, n int) *VM { return generateVM(r, cl, n) }
 
 // draw makes a cluster's independent draws from Vary with its own seed.
 func draw(v scenario.Vary, sub uint64) scenario.ClusterSpec {
@@ -512,7 +544,7 @@ func generateVM(r *registry.Registry, cl *Cluster, n int) *VM {
 	name := fmt.Sprintf("%s-vm-%03d", cl.Name, n)
 	key := cl.Key + "/" + name
 	vm := &VM{
-		Index:   n - 1,
+		Index:   n - 1, // the VM's number less one; with VMs removed it is not its place in Cluster.VMs
 		Name:    name,
 		Key:     key,
 		Serial:  r.Serial("vm/" + key),

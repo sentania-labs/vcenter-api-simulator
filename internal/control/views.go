@@ -464,10 +464,10 @@ func (c *Controller) Clusters() ClustersView {
 		if mixed {
 			label = "Mixed: " + label
 		}
-		v.Rows = append(v.Rows, ClusterRow{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, Hosts: len(cl.Hosts), VMs: len(cl.VMs),
+		v.Rows = append(v.Rows, ClusterRow{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, Hosts: len(cl.Hosts), VMs: len(cl.LiveVMs()),
 			VSAN: vsanName(cl.Spec.Architecture), Version: label})
 		v.Hosts += len(cl.Hosts)
-		v.VMs += len(cl.VMs)
+		v.VMs += len(cl.LiveVMs())
 	}
 	return v
 }
@@ -523,7 +523,7 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 	if mixed {
 		label = "Mixed: " + label
 	}
-	v := &ClusterDetail{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, VSAN: vsanName(cl.Spec.Architecture), Version: label, VMs: len(cl.VMs),
+	v := &ClusterDetail{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, VSAN: vsanName(cl.Spec.Architecture), Version: label, VMs: len(cl.LiveVMs()),
 		Hosts: []HostRow{}, Storage: []ClusterStorage{}, Local: scenario.Int(cl.Spec.Host.LocalDevices), VsanID: cl.VsanUUID,
 		Only: len(r.topo.Clusters()) == 1, CanShrink: len(cl.Hosts) > scenario.MinHosts, CanGrow: len(cl.Hosts) < maxHosts}
 	var refs []string
@@ -534,7 +534,7 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 		}
 	}
 	vmsOn := map[int]int{}
-	for _, vm := range cl.VMs {
+	for _, vm := range cl.LiveVMs() {
 		vmsOn[vm.Host]++
 	}
 	for _, h := range cl.Hosts {
