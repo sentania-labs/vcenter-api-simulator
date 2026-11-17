@@ -426,3 +426,51 @@ func TestActivityNeverReusesANumberAfterHostsAreRemoved(t *testing.T) {
 		t.Errorf("the next VM: %+v, %v; want cluster-01-vm-041", done, err)
 	}
 }
+
+// What Activity does without writing a line is saved too. Datastores fill
+// every half hour and say so once a day; a restart in between must find
+// them as full as they were.
+func TestActivityThatWritesNoLineIsSaved(t *testing.T) {
+	dir := t.TempDir()
+	clk := &clock{t: monday9}
+	c := newCtlAt(t, lively(t), dir, "h", clk.now)
+	startActivity(t, c)
+	zero, ten := 0.0, 10.0
+	for _, b := range []string{life.Moves, life.Power, life.Adds, life.Removes} {
+		if _, err := c.ActivityDial(ActDial{Behaviour: b, Level: &zero}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := c.ActivityDial(ActDial{Behaviour: life.DiskGrowth, N: &ten, Unit: life.UnitPercent}); err != nil {
+		t.Fatal(err)
+	}
+	// everything so far is saved, as it is a few seconds after any change:
+	// the clock ticks once, noticing the lines those changes wrote, and
+	// the save that follows leaves nothing waiting to be saved
+	c.lifeStep()
+	c.mu.Lock()
+	c.saveLife(true)
+	waiting := c.lifeDirty
+	c.mu.Unlock()
+	if waiting {
+		t.Fatal("something is still waiting to be saved straight after a save")
+	}
+	lines := len(c.life.Log)
+	play(c, clk, 3*time.Hour)
+	if len(c.life.Log) != lines {
+		t.Fatalf("%d lines were written; this test needs hours in which datastores fill and nothing is said", len(c.life.Log)-lines)
+	}
+	want := c.applied().sim.Life().Snapshot().Filled
+	var filled int64
+	for _, n := range want {
+		filled += n
+	}
+	if filled == 0 {
+		t.Fatal("no datastore filled in three hours at 10% a day")
+	}
+	c.Close()
+	again := newCtlAt(t, lively(t), dir, "h", clk.now)
+	if got := again.applied().sim.Life().Snapshot().Filled; !reflect.DeepEqual(got, want) {
+		t.Errorf("after a restart the datastores are filled by %v; before it, by %v", got, want)
+	}
+}

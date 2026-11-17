@@ -413,7 +413,7 @@ means in numbers.
 |---|---|---|
 | Load balancing (DRS) | about 25 vMotions a day for every 100 VMs, in bursts of a few VMs, more in working hours | each VM on another host; one DRS vMotion task and its events for each |
 | VMs powered off and on | about 2 a day for every 100 VMs, mostly in working hours; a VM stays off for a while and comes back; never more than one VM in ten is off | power state, guest state, the VM's performance numbers at zero while it is off |
-| New VMs | about 1 a day for every 100 VMs, mostly in working hours | a new VM with a number its cluster has not used since Activity was first started, powered on |
+| New VMs | about 1 a day for every 100 VMs, mostly in working hours; a cluster with fewer VMs than hosts counts as having one for each host, so an empty cluster can gain VMs | a new VM with a number its cluster has not used since Activity was first started, powered on |
 | VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed; its number and identities are not used again |
 | Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode; a host that comes out gets some VMs back |
 | Datastores filling | 0.4% of each vSAN datastore's capacity a day, a little every half hour | datastore free space, vSAN used capacity and the datastore's performance numbers |

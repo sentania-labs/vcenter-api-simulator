@@ -206,11 +206,17 @@ func (c *Controller) lifeStep() {
 	r := c.applied()
 	w := r.sim.Life()
 	now := c.now()
+	at := c.life.State.At
 	if c.paused.Load() {
 		// nothing happens while the simulator is paused, and nothing is caught up after
 		c.life.Skip(now)
 	} else {
 		c.life.Step(now, w)
+		// a minute that was played changes what must be saved even when it
+		// writes no line: datastores fill, and every pace moves on
+		if c.life.Settings.Running && c.life.State.At != at {
+			c.lifeDirty = true
+		}
 	}
 	w.Sweep(now)
 	if c.life.State.Seq != c.lifeSeq {

@@ -438,3 +438,61 @@ func TestNothingIsCaughtUp(t *testing.T) {
 		t.Fatalf("%d lines were written for the time the simulator was off", added)
 	}
 }
+
+// An exact pace is kept, not merely approached: one new VM a minute is
+// 1,440 in a day. (Losing what was left over at each one made it 966.)
+func TestAnExactPaceIsKept(t *testing.T) {
+	w := newWorld(2, 8, 25)
+	e := started(w, "pace", func(s *Settings) {
+		for _, b := range []string{Moves, Power, Removes, Maintenance, DiskGrowth, DiskShrink} {
+			s.Global[b] = Dial{}
+		}
+		s.Global[Adds] = Dial{Exact: &Exact{N: 1, Unit: UnitMinutes}}
+		s.MinVMs, s.MaxVMs = 0, 100000
+	})
+	before, _ := totalVMs(w.Clusters())
+	run(e, w, monday, 24*time.Hour)
+	after, _ := totalVMs(w.Clusters())
+	if n := after - before; n < 1435 || n > 1441 {
+		t.Errorf("one new VM a minute made %d in 1,440 minutes", n)
+	}
+	// and a slower pace is as exact: one every 7 minutes is 205 or 206
+	w = newWorld(2, 8, 25)
+	e = started(w, "pace", func(s *Settings) {
+		for _, b := range []string{Moves, Power, Removes, Maintenance, DiskGrowth, DiskShrink} {
+			s.Global[b] = Dial{}
+		}
+		s.Global[Adds] = Dial{Exact: &Exact{N: 7, Unit: UnitMinutes}}
+		s.MinVMs, s.MaxVMs = 0, 100000
+	})
+	run(e, w, monday, 24*time.Hour)
+	after, _ = totalVMs(w.Clusters())
+	if n := after - before; n < 204 || n > 207 {
+		t.Errorf("one new VM every 7 minutes made %d in a day, want 205 or 206", n)
+	}
+}
+
+// A cluster with hosts and no VMs can gain VMs: by the vCenter's exact
+// number, by its own, and by a level.
+func TestAnEmptyClusterGainsVMs(t *testing.T) {
+	for name, set := range map[string]func(*Settings){
+		"the vCenter's exact number": func(s *Settings) { s.Global[Adds] = Dial{Exact: &Exact{N: 1, Unit: UnitMinutes}} },
+		"the cluster's own exact number": func(s *Settings) {
+			s.Clusters = map[string]map[string]Dial{"dc-01/cluster-01": {Adds: Dial{Exact: &Exact{N: 1, Unit: UnitMinutes}}}}
+		},
+		"a level": func(s *Settings) { s.Global[Adds] = Dial{Level: 4} },
+	} {
+		w := newWorld(1, 8, 0)
+		e := started(w, "empty", func(s *Settings) {
+			for _, b := range []string{Moves, Power, Removes, Maintenance, DiskGrowth, DiskShrink} {
+				s.Global[b] = Dial{}
+			}
+			s.MinVMs, s.MaxVMs = 0, 100000
+			set(s)
+		})
+		run(e, w, monday, 7*24*time.Hour)
+		if n, _ := totalVMs(w.Clusters()); n == 0 {
+			t.Errorf("with %s, a cluster of 8 hosts and no VMs still has none after a week", name)
+		}
+	}
+}

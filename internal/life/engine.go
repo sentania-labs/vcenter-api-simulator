@@ -177,7 +177,7 @@ func totalVMs(cs []Cluster) (vms, off int) {
 func (e *Engine) PerDay(cs []Cluster, c Cluster, behaviour string) float64 {
 	d, own := e.Settings.Dial(c.Key, behaviour)
 	if d.Exact == nil {
-		return Baseline.Per100[behaviour] * float64(c.VMs) / 100 * d.Level
+		return Baseline.Per100[behaviour] * float64(weight(c, behaviour)) / 100 * d.Level
 	}
 	if own {
 		return d.Exact.perDay()
@@ -186,28 +186,38 @@ func (e *Engine) PerDay(cs []Cluster, c Cluster, behaviour string) float64 {
 	var all int
 	for _, o := range cs {
 		if _, has := e.Settings.Clusters[o.Key][behaviour]; !has {
-			all += o.VMs
+			all += weight(o, behaviour)
 		}
 	}
 	if all == 0 {
 		return 0
 	}
-	return d.Exact.perDay() * float64(c.VMs) / float64(all)
+	return d.Exact.perDay() * float64(weight(c, behaviour)) / float64(all)
 }
 
 // burst is how many VMs a load-balancing burst moves on average.
 const burst = 4
 
+// weight is what a cluster counts for when a behaviour's amount is shared
+// out: its VMs. For new VMs a cluster counts for at least its hosts, so
+// that one with no VMs, or hardly any, can still gain them.
+func weight(c Cluster, b string) int {
+	if b == Adds {
+		return max(c.VMs, len(c.Hosts))
+	}
+	return c.VMs
+}
+
 // follower picks the cluster the next occurrence of the vCenter's own exact
 // number falls in: one of the clusters that follow the vCenter's dial, in
-// proportion to their VMs.
+// proportion to their size.
 func (e *Engine) follower(cs []Cluster, b string) (Cluster, bool) {
 	var all []Cluster
 	total := 0
 	for _, c := range cs {
-		if _, own := e.Settings.Clusters[c.Key][b]; !own && c.VMs > 0 {
+		if _, own := e.Settings.Clusters[c.Key][b]; !own && weight(c, b) > 0 {
 			all = append(all, c)
-			total += c.VMs
+			total += weight(c, b)
 		}
 	}
 	if total == 0 {
@@ -215,10 +225,10 @@ func (e *Engine) follower(cs []Cluster, b string) (Cluster, bool) {
 	}
 	n := int(pick(e.Seed, "*", b+"/where", e.State.K["*|"+b]) % uint64(total))
 	for _, c := range all {
-		if n < c.VMs {
+		if n < weight(c, b) {
 			return c, true
 		}
-		n -= c.VMs
+		n -= weight(c, b)
 	}
 	return all[len(all)-1], true
 }
@@ -255,7 +265,10 @@ func (e *Engine) due(t int64, stream, b string, per float64, steady bool) bool {
 		e.State.Acc[key] = acc
 		return false
 	}
-	e.State.Acc[key] = 0
+	// what is left over counts towards the next one, so the pace asked for
+	// is the pace kept; never more than one occurrence's worth, so a pace
+	// faster than one a minute does not build up a backlog
+	e.State.Acc[key] = min(acc-need, 1)
 	if stream == "*" {
 		e.State.K[key]++
 	}
