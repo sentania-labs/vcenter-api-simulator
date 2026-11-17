@@ -226,7 +226,6 @@ func TestActivityReadAndUpdateAgreement(t *testing.T) {
 						t.Errorf("missing enter %s", ref)
 					}
 					changed++
-					continue
 				}
 				for name, value := range props {
 					if strings.HasPrefix(name, "summary.quickStats.") && tc.name != "cpu" && tc.name != "memory" {
@@ -247,7 +246,24 @@ func TestActivityReadAndUpdateAgreement(t *testing.T) {
 					}
 				}
 			}
-			for ref := range before {
+			for ref, oldProps := range before {
+				if newProps, exists := after[ref]; exists {
+					for name := range oldProps {
+						if _, exists := newProps[name]; exists {
+							continue
+						}
+						changed++
+						found := false
+						for _, change := range updates[ref].ChangeSet {
+							if change.Name == name && change.Op == types.PropertyChangeOpRemove {
+								found = true
+							}
+						}
+						if !found {
+							t.Errorf("fresh read removed %s %s without matching remove update", ref, name)
+						}
+					}
+				}
 				if _, ok := after[ref]; !ok {
 					if updates[ref].Kind != types.ObjectUpdateKindLeave {
 						t.Errorf("missing leave %s", ref)
