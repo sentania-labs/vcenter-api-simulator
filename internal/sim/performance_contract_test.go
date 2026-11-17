@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sentania/vcenter-api-simulator/internal/registry"
+	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -163,5 +166,59 @@ func TestPerformanceDiscoveryInstancesAndQuickStats(t *testing.T) {
 	composite, err := methods.QueryPerfComposite(ctx, e.client, &types.QueryPerfComposite{This: pm, QuerySpec: types.PerfQuerySpec{Entity: e.cl().Ref, IntervalId: 300, MaxSample: 1, MetricId: []types.PerfMetricId{{CounterId: 6}}}})
 	if err != nil || len(composite.Returnval.ChildEntity) != len(e.cl().Hosts) {
 		t.Fatal("composite missing children", err)
+	}
+}
+
+func TestPerformanceInstanceSemantics(t *testing.T) {
+	sc := scenario.Phase1("performance-instance-semantics")
+	sc.Defaults.VMs.DisksPerVM = 3
+	e := startTopology(t, topology.Generate(sc, registry.InMemory(sc.Seed)))
+	ctx := context.Background()
+	pm := *e.client.ServiceContent.PerfManager
+	query := func(ref types.ManagedObjectReference, counter int32) map[string]int64 {
+		r, err := methods.QueryPerf(ctx, e.client, &types.QueryPerf{This: pm, QuerySpec: []types.PerfQuerySpec{{Entity: ref, IntervalId: 20, MaxSample: 1, MetricId: []types.PerfMetricId{{CounterId: counter, Instance: "*"}}}}})
+		if err != nil || len(r.Returnval) != 1 {
+			t.Fatal(err)
+		}
+		values := map[string]int64{}
+		for _, series := range r.Returnval[0].(*types.PerfEntityMetric).Value {
+			s := series.(*types.PerfMetricIntSeries)
+			values[s.Id.Instance] = s.Value[0]
+		}
+		return values
+	}
+	checked := false
+	for _, vm := range e.cl().VMs {
+		for _, counter := range []int32{175, 177} {
+			values := query(vm, counter)
+			if len(values) < 3 {
+				continue
+			}
+			checked = true
+			if values[""] == 0 {
+				t.Fatal("latency aggregate is zero", counter)
+			}
+			for instance, v := range values {
+				if v != values[""] {
+					t.Fatalf("counter %d instance %q = %d, aggregate %d", counter, instance, v, values[""])
+				}
+			}
+		}
+		if checked {
+			break
+		}
+	}
+	if !checked {
+		t.Fatal("no VM with multiple disks")
+	}
+	values := query(e.cl().Hosts[0], 12)
+	var sum int64
+	for instance, v := range values {
+		if instance != "" {
+			sum += v
+		}
+	}
+	if len(values) < 3 || values[""] == 0 || sum != values[""] {
+		t.Fatal("cpu.ready instances do not partition the aggregate", sum, values)
 	}
 }
