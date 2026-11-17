@@ -1,7 +1,7 @@
 // Requests: what connected tools ask for and whether they are answered;
 // request capture; and, one level down for engineers, every single request
 // and the list of what the simulator can answer.
-import { api, html, raw, badge, btn, link, lbtn, card, table, fit, plural, num, rich, ago, timeSeconds, today, pager, pageOf } from './lib.js';
+import { api, html, raw, badge, btn, link, lbtn, card, table, fit, plural, num, rich, ago, timeSeconds, today, pager, pageOf, unknownToolAddress } from './lib.js';
 
 const SHOW = [['all', 'Everything'], ['unknown', 'Not answered'], ['fault', 'Failing on purpose'], ['denied', 'Sign-in refused'], ['ok', 'Answered']];
 const inShow = (x, show) => show === 'all' || x.st === show;
@@ -25,9 +25,9 @@ function main(q) {
     title: 'Requests', tab: 'requests', poll: true,
     load: () => api('/requests'),
     render(ctx, d) {
-      const v = d.verdict, cap = d.capture, cnt = d.counts, u = cnt.unknown, address = ctx.home && ctx.home.address || window.location.origin;
+      const v = d.verdict, cap = d.capture, cnt = d.counts, u = cnt.unknown, address = ctx.home && ctx.home.address;
       const tone = v.tone === 'none' ? 'info' : v.tone;
-      const verdict = html`<div class="lat-banner lat-banner--${tone} m-verdict"><div><div class="big">${v.big}</div>${v.tone === 'none' ? html`Point a tool at <code>${address}</code> and what it asks for will appear here within a few seconds.` : v.line}</div>
+      const verdict = html`<div class="lat-banner lat-banner--${tone} m-verdict"><div><div class="big">${v.big}</div>${v.tone === 'none' ? address ? html`Point a tool at <code>${address}</code> and what it asks for will appear here within a few seconds.` : unknownToolAddress : v.line}</div>
         ${v.tone === 'bad' && show !== 'unknown' ? html`<div class="m-row">${lbtn('Show the ones not answered', '/requests?show=unknown')}</div>` : ''}</div>`;
       const per = fit(540, 43), sorted = d.asks.filter((x) => inShow(x, show));
       const rows = pageOf(ctx, 'req', sorted, per).map((x) => ({ t: x.t, who: x.who, n: num(x.n),

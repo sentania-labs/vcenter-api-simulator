@@ -1671,6 +1671,17 @@ func TestSupportClaimsForAnsweredServices(t *testing.T) {
 	c := newCtl(t, small(t), "", "support")
 	tool := newTool(t, c, "support-test")
 	rows, _ := c.Supported()
+	// The states are the observed extent of each service, including empty
+	// storage features and missing WSDLs, rather than a count of 2xx replies.
+	want := []string{"full", "full", "full", "full", "full", "part", "part", "part", "part", "part", "part", "full", "part", "no"}
+	if len(rows) != len(want) {
+		t.Fatalf("support rows: %d", len(rows))
+	}
+	for i, state := range want {
+		if rows[i].State != state {
+			t.Errorf("%s: state %s, want %s", rows[i].Part, rows[i].State, state)
+		}
+	}
 	if !tool.login("administrator@vsphere.local", "first-password") {
 		t.Fatal("login")
 	}
@@ -1682,13 +1693,16 @@ func TestSupportClaimsForAnsweredServices(t *testing.T) {
 	for _, row := range rows {
 		if row.Part == "vSphere performance counters and values" {
 			foundPerf = true
-			if row.State == "no" {
-				t.Error("performance counters marked unanswered")
+			if row.State != "full" {
+				t.Errorf("performance counter state: %s", row.State)
 			}
 		}
 	}
 	if !foundPerf {
 		t.Error("performance counter claim missing")
+	}
+	if status, _ := tool.do(http.MethodGet, "/sdk/vim.wsdl", ""); status != http.StatusNotFound {
+		t.Errorf("missing service description: %d", status)
 	}
 	checks := []struct{ title, path string }{{"Kubernetes (Supervisor) information", "/wcp"}, {"The files that describe how to talk to vCenter", "/vsanHealth/vsanServiceVersions.xml"}}
 	for _, check := range checks {
@@ -1696,8 +1710,8 @@ func TestSupportClaimsForAnsweredServices(t *testing.T) {
 		for _, row := range rows {
 			if row.Part == check.title {
 				found = true
-				if row.State == "no" {
-					t.Errorf("%s marked unanswered", check.title)
+				if row.State != "part" {
+					t.Errorf("%s state: %s", check.title, row.State)
 				}
 			}
 		}

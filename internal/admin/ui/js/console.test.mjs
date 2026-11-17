@@ -389,3 +389,16 @@ test('Activity: the full list says what the lines add up to and who started them
   const none = text(s.render(ctxOf(homeView), { ...view, count: 0, sum: '', you: 0, lines: [], pages: 1 }));
   assert.match(none, /nothing happened\./); assert.match(none, /Nothing of that kind/);
 });
+
+test('an unknown tool address is not replaced with the console address', () => {
+  const unknown = { ...homeView, address: '' };
+  const markup = String(home.screen(['home']).render(ctxOf(unknown)));
+  const t = text(markup);
+  assert.match(t, /cannot tell which address your tool should use/);
+  assert.match(t, /VCSIM_PUBLIC_URL/);
+  assert.doesNotMatch(markup, /data-text="http/);
+  const d = { verdict: { tone: 'none', big: 'Nothing connected', line: '' }, counts: { all: 0, unknown: 0, fault: 0, denied: 0, ok: 0 }, asks: [], multiTool: false, capture: { available: true, unanswered: false, full: false, debug: false, kept: 0, kinds: 0, fullKept: 0 }, reportUrl: '' };
+  const req = text(requests.screen(['requests'], {}).render(ctxOf(unknown), d));
+  assert.match(req, /cannot tell which address your tool should use/);
+  assert.doesNotMatch(req, /Point a tool at/);
+});

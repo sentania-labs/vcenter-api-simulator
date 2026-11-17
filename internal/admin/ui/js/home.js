@@ -1,7 +1,7 @@
 // Home: what is running, what needs attention, who is connected and how to
 // connect a tool. Everything on it comes from /api/home, which the shell
 // already holds, so Home and the header cannot disagree.
-import { api, html, raw, badge, btn, link, lbtn, card, dot, rich, plural, num, timeText, ago, pager, pageOf, table } from './lib.js';
+import { api, html, raw, badge, btn, link, lbtn, card, dot, rich, plural, num, timeText, ago, pager, pageOf, table, unknownToolAddress } from './lib.js';
 
 const toolState = (t) => {
   const at = t.since ? timeText(t.since) : '';
@@ -88,7 +88,7 @@ const main = {
       : con.cert === 'managed' ? 'Supplied by whoever installed the simulator. A tool that does not know it will ask whether to trust it.'
         : 'Made by the simulator, so your tool will ask whether to trust it. Say yes.';
     const connect = card('Connect a tool', html`<dl class="m-kv">
-        <dt>Address</dt><dd><code>${h.address || window.location.origin}</code> ${btn('Copy', 'copy', 'lat-btn--ghost', { text: h.address || window.location.origin, what: 'The address' })}${!h.address ? html`<div class="m-small">This is the address you used for the console; your tool may need a different port. Set VCSIM_PUBLIC_URL to show the exact address.</div>` : ''}</dd>
+        <dt>Address</dt><dd>${h.address ? html`<code>${h.address}</code> ${btn('Copy', 'copy', 'lat-btn--ghost', { text: h.address, what: 'The address' })}` : unknownToolAddress}</dd>
         <dt>Username</dt><dd>${con.anyLogin ? 'Any username is accepted' : html`<code>${con.username}</code> ${btn('Copy', 'copy', 'lat-btn--ghost', { text: con.username, what: 'The username' })}`}</dd>
         <dt>Password</dt><dd>${pwLine}</dd>
         <dt>Certificate</dt><dd>${certLine} ${link('Details', '/security')}</dd></dl>

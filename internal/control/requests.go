@@ -610,13 +610,13 @@ func (c *Controller) Supported() (rows []SupportRow, vcenter string) {
 		{"iSCSI and NFS datastores that hosts connect to (the ones on the Storage screen)", "full", "Tools see them, with their size and free space. Their activity counters read zero."},
 		{"vSAN health summary", "part", "The main results are there. Some detailed checks are missing."},
 		{"The newer web interface (REST) for lists", "part", "Reading lists works. Some details of VMs are missing."},
-		{"The files that describe how to talk to vCenter", "full", "The vCenter and vSAN version files are served."},
+		{"The files that describe how to talk to vCenter", "part", "The version files are served; some service descriptions are missing."},
 		{"Distributed switches", "part", "Present, but reported as the basic type rather than the VMware type."},
 		{"Sign-on tokens, and where vCenter's other services are", "part", "A tool can find the sign-on service and get a signed token for an account. Built from what a real vCenter answers."},
 		{"Licensing", "part", "Tools are told vCenter and its hosts are in evaluation, and which VCF Operations manages the license if one does (see Security). A licensed vCenter is not simulated."},
 		{"vSphere performance counters and values", "full", "Tools can read the counter list and changing values."},
 		{"Kubernetes (Supervisor) information", "part", "Tools can check whether Kubernetes is enabled and read empty lists."},
-		{"Fibre Channel storage, and vSAN itself acting as a file server or an iSCSI server", "part", "Tools are told there are none. This does not affect the iSCSI and NFS datastores above."},
+		{"Fibre Channel storage, and vSAN itself acting as a file server or an iSCSI server", "no", "Tools are told there are none. This does not affect the iSCSI and NFS datastores above."},
 	}, scenario.VersionLabel(c.applied().topo.VCenterVersion)
 }
 
