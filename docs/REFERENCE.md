@@ -194,8 +194,8 @@ What the scenario controls, and what the simulator guarantees:
     `IdS_getSystemDomainName`, `IdS_getSslCertificateManager` and
     `GetIssuersCertificates`, without a
     sign-in.
-  - `/sts/STSService/vsphere.local`: a WS-Trust `Issue` for a bearer token
-    with a username token, checked against the same accounts as `/sdk`. The
+  - `/sts/STSService/vsphere.local` (and `/sts/STSService`): a WS-Trust `Issue`
+    for a bearer token with a username token, checked against the same accounts as `/sdk`. The
     SAML assertion carries an enveloped RSA-SHA256 signature over its
     exclusive canonical form, made with an RSA 3072 key kept in
     `sign-on-key.json`; `GetIssuersCertificates` returns that key's
@@ -469,8 +469,8 @@ When the Ingress terminates TLS, collectors pin the ingress certificate, not
 the simulator's.
 
 For VCF Operations' own vCenter adapter, two more things are needed behind an
-Ingress. Add `/lookupservice`, `/sso-adminserver`, `/sts`, `/ls`, `/api` and
-`/rest` to `ingress.paths` (the default is `/sdk` and `/vsanHealth` only).
+Ingress. Add `/lookupservice`, `/sso-adminserver`, `/sts`, `/ls`, `/api`, `/rest`
+and `/stats` to `ingress.paths` (the default is `/sdk` and `/vsanHealth` only).
 And set `simulator.lookupTrustSecret` to the name of the Secret that holds the
 Ingress's certificate (its `tls.crt` is mounted, nothing else): the lookup
 service then tells Operations to trust that certificate at the sign-on

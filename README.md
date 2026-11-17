@@ -94,8 +94,8 @@ to tools") and in the [scenario file](docs/SCENARIO.md#licensing).
 proxy's certificate with `-lookup-trust-cert` (the chart's
 `simulator.lookupTrustSecret`), and route `/lookupservice`,
 `/sso-adminserver`, `/sts`, `/ls`, `/api`, `/rest` and `/stats` to it as well
-as `/sdk`. The lookup service tells a tool which certificate to trust at the sign-on addresses, and
-behind a proxy that is the proxy's, not the simulator's.
+as `/sdk`. The lookup service tells a tool which certificate to trust at the
+sign-on addresses, and behind a proxy that is the proxy's, not the simulator's.
 
 **Not built:** a licensed vCenter (see above), assigning a license to the
 simulator, the REST lists of license assignments, session tickets that work
