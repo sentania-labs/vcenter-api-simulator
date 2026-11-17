@@ -31,6 +31,9 @@ type workloadNode struct {
 	datastores        []perfRef
 	nics, disks       []string
 	capacity, used    int64 // datastore KiB
+	// loadCPU and loadMem are how loaded Activity says a VM's cluster looks:
+	// 1 is as built.
+	loadCPU, loadMem float64
 	boot              time.Time
 }
 
@@ -52,7 +55,7 @@ func readPerformanceSubset(ctx *simulator.Context, selected *perfRef) *performan
 			}
 		}
 		for _, entity := range entities {
-			n := &workloadNode{ref: entity.Reference(), active: true}
+			n := &workloadNode{ref: entity.Reference(), active: true, loadCPU: 1, loadMem: 1}
 			ctx.Map.WithLock(ctx, entity, func() {
 				if entity.Entity().Parent != nil {
 					n.parent = *entity.Entity().Parent
@@ -151,6 +154,7 @@ func readPerformanceSubset(ctx *simulator.Context, selected *perfRef) *performan
 			if h := s.nodes[n.host]; h != nil {
 				n.cpu = int64(n.cpus) * h.cpu / int64(max(h.cpus, 1))
 				n.active = n.active && h.active
+				n.loadCPU, n.loadMem = loadOf(ctx, h.parent)
 			} else {
 				n.active = false
 			}
@@ -222,11 +226,20 @@ func vmWorkload(seed string, n *workloadNode, t time.Time, cpuScale, memScale fl
 	drift := 0.85 + 0.15*math.Sin(2*math.Pi*(seconds+phase)/2700)
 	level := []float64{0.025, 0.18, 0.28, 0.42, 0.60, 0.80}[h%6]
 	pulse := math.Pow(math.Max(0, math.Cos(2*math.Pi*(seconds+phase)/86400)), 120)
-	usage := math.Min(.95, level*day*week*drift+.25*pulse)
-	readyPct := .002 + .008*usage + .09*pulse
+	base := math.Min(.95, level*day*week*drift+.25*pulse)
+	if n.loadCPU == 0 {
+		n.loadCPU = 1
+	}
+	if n.loadMem == 0 {
+		n.loadMem = 1
+	}
+	// Activity's CPU dial scales what the VM uses; a busier place also
+	// contends more, so ready time rises faster than usage does
+	usage := math.Min(.95, base*n.loadCPU)
+	readyPct := .002 + .008*usage + .09*pulse + .06*math.Max(0, n.loadCPU-1)*usage
 	w.cpu = int64(float64(n.cpu) * usage * cpuScale)
 	w.demand = min(n.cpu, int64(float64(w.cpu)*(1+readyPct)))
-	w.memory = int64(float64(n.memory) * (.23 + .55*usage) * memScale)
+	w.memory = min(n.memory, int64(float64(n.memory)*(.23+.55*base)*memScale*n.loadMem))
 	w.activeMemory = int64(float64(w.memory) * (.45 + .4*usage))
 	w.read = int64((16 + float64(h%400) + usage*10000) * (1 + pulse))
 	w.write = int64(float64(w.read) * (.3 + float64(h%70)/100))

@@ -107,6 +107,10 @@ type Cluster struct {
 	// request reads LiveVMs.
 	live *atomic.Pointer[[]*VM]
 
+	// usedDelta is how many bytes Activity has added to the cluster's vSAN
+	// datastore (or freed, when negative) on top of what its VMs use.
+	usedDelta *atomic.Int64
+
 	// perfOff is the console's "performance service switched off" switch.
 	// It is a pointer so that a copy of the cluster shares it, and atomic
 	// because the console flips it while requests are being answered.
@@ -150,6 +154,21 @@ func (c *Cluster) SetLiveVMs(vms []*VM) {
 	}
 }
 
+// AddUsed changes how much Activity has filled the cluster's vSAN
+// datastore, and UsedDelta reads it.
+func (c *Cluster) AddUsed(bytes int64) {
+	if c.usedDelta != nil {
+		c.usedDelta.Add(bytes)
+	}
+}
+
+func (c *Cluster) UsedDelta() int64 {
+	if c.usedDelta == nil {
+		return 0
+	}
+	return c.usedDelta.Load()
+}
+
 // VsanCapacity and VsanUsed are shared by datastore and vSAN capacity reads.
 func VsanCapacity(cl *Cluster) int64 {
 	var total int64
@@ -164,7 +183,7 @@ func VsanCapacity(cl *Cluster) int64 {
 }
 
 func VsanUsed(cl *Cluster) int64 {
-	var used int64
+	used := cl.UsedDelta()
 	for _, vm := range cl.LiveVMs() {
 		for _, d := range vm.Disks {
 			used += d.CapacityKB << 10 / 2
@@ -386,6 +405,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		Spec:          spec,
 		perfOff:       new(atomic.Bool),
 		live:          new(atomic.Pointer[[]*VM]),
+		usedDelta:     new(atomic.Int64),
 	}
 	if e := s.SeedEpoch(key); e > 0 {
 		cl.TelemetrySeed = fmt.Sprintf("%s/%s#%d", telemetrySeed, key, e)
