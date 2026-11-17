@@ -200,6 +200,7 @@ func New(opts Options) (*Simulator, error) {
 	h := &handler{mux: m.Service.ServeMux, cat: cat, env: s.Env, strictLogin: len(creds) > 0 || opts.Authenticate != nil, role: opts.UserRole, registry: m.Service.Context.Map, rest: restSessions{tokens: map[string]restSession{}, credentials: creds, check: opts.Authenticate, registry: m.Service.Context.Map, catalog: cat}, license: *newLicenseSessions(creds, opts.Authenticate), tls: opts.Certificate}
 	h.timeout.Store(int64(opts.SessionTimeout))
 	h.rest.timeout = &h.timeout
+	h.rest.access = &h.accessMu
 	h.license.timeout = &h.timeout
 	h.sim, h.trust, h.managerChanged = s, opts.Trust, opts.LicenseManagerChanged
 	if h.issuer = opts.Issuer; h.issuer == nil {
@@ -968,7 +969,7 @@ var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginByS
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Serialize session creation with credential changes, without making a
 	// slow inventory or performance query delay an administrative update.
-	if (r.URL.Path == "/api/session" || r.URL.Path == legacySessionPath || r.URL.Path == "/api") && r.Method == http.MethodPost {
+	if (r.URL.Path == "/api/session" || r.URL.Path == legacySessionPath) && r.Method == http.MethodPost {
 		h.accessMu.RLock()
 		defer h.accessMu.RUnlock()
 	}

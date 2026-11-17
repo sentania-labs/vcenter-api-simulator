@@ -44,7 +44,7 @@ func optionalValue(raw any) any {
 // The Operations vStats spec asks for GPU device and VM counters. This
 // topology has no GPU devices, so each sample has no snapshots. A live
 // query and stream still have the same lifecycle as a real vCenter.
-func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, id json.RawMessage, service, operation, user string, input any) (any, string, bool) {
+func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, release func(), id json.RawMessage, service, operation, user string, input any) (any, string, bool) {
 	fields := vapiFields(input)
 	if service == "com.vmware.stats.provider.queries" && operation == "create" {
 		spec := vapiFields(fields["spec"])
@@ -122,6 +122,7 @@ func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, id json.
 		q.active++
 		s.mu.Unlock()
 		defer func() { s.mu.Lock(); q.active--; q.expires = time.Now().Add(q.ttl); s.mu.Unlock() }()
+		release()
 		s.writeStatsStream(w, r, id, qid, interval, done)
 		return nil, "", true
 	default:

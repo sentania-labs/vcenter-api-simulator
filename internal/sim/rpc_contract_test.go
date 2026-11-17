@@ -240,3 +240,42 @@ func TestOperationsVstatsQueryAndStream(t *testing.T) {
 		t.Fatal("deleted query was reusable")
 	}
 }
+
+// A stream attached on /api must not hold the credential-change lock for its
+// lifetime: the update has to complete and then end the stream.
+func TestStatsStreamOnAPIDoesNotBlockCredentialUpdate(t *testing.T) {
+	e := start(t, "ops-stats-api")
+	out := requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.cis.session", "create", map[string]any{"userName": "user", "password": "pass"}, nil)))
+	security := map[string]any{"sessionId": out.(map[string]any)["SECRET"]}
+	spec := rpcStruct("com.vmware.stats.provider.queries.create_spec", map[string]any{"view": map[string]any{"OPTIONAL": "vstats"}, "instances": []any{rpcStruct("com.vmware.stats.provider.counter_instance", map[string]any{"counter": map[string]any{"OPTIONAL": "gpu.compute.clock.used.DEVICE"}, "resource_ids": map[string]any{}})}})
+	fields := structFields(t, requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.stats.provider.queries", "create", security, map[string]any{"spec": spec}))), "com.vmware.stats.provider.queries.create_result")
+	qid := fields["query"].(string)
+	requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.stats.provider.stream", "create", security, map[string]any{"query": qid, "spec": rpcStruct("com.vmware.stats.provider.stream.create_spec", map[string]any{"interval": map[string]any{"OPTIONAL": 1}})})))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, "POST", e.srv.URL+"/api", bytes.NewReader(rpcRequest("com.vmware.stats.provider.stream", "attach", security, map[string]any{"query": qid, "spec": rpcStruct("com.vmware.stats.provider.stream.attach_spec", map[string]any{"client_id": "test-client"})})))
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	reader := bufio.NewReader(response.Body)
+	if _, err := reader.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	updated := make(chan error, 1)
+	go func() {
+		updated <- e.sim.UpdateCredentials(func() ([]string, error) { return []string{"user"}, nil })
+	}()
+	select {
+	case err := <-updated:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("credential update blocked behind an attached stream")
+	}
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+}

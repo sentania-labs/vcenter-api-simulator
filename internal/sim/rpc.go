@@ -33,6 +33,15 @@ func (s *restSessions) serveRPC(w http.ResponseWriter, r *http.Request) bool {
 		restError(w, 400, "INVALID_ARGUMENT")
 		return true
 	}
+	s.access.RLock()
+	locked := true
+	release := func() {
+		if locked {
+			locked = false
+			s.access.RUnlock()
+		}
+	}
+	defer release()
 	var output any
 	errorType := ""
 	readSecret := func(key string) string {
@@ -99,7 +108,7 @@ func (s *restSessions) serveRPC(w http.ResponseWriter, r *http.Request) bool {
 			default:
 				if req.Params.Service == "com.vmware.stats.provider.queries" || req.Params.Service == "com.vmware.stats.provider.stream" {
 					var streamed bool
-					output, errorType, streamed = s.statsRPC(w, r, req.ID, req.Params.Service, req.Params.Operation, user, req.Params.Input)
+					output, errorType, streamed = s.statsRPC(w, r, release, req.ID, req.Params.Service, req.Params.Operation, user, req.Params.Input)
 					if streamed {
 						return true
 					}

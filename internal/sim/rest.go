@@ -36,6 +36,7 @@ type restSessions struct {
 	check       func(string, string) bool
 	bearer      func(string) (string, bool)
 	exchange    func(string, map[string]any) (any, string)
+	access      *sync.RWMutex
 	timeout     *atomic.Int64
 	registry    *simulator.Registry
 	catalog     *catalog.Catalog
