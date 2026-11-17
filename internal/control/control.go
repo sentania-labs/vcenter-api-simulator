@@ -79,6 +79,10 @@ type Options struct {
 	// ReportURL is where the console sends people to report a request the
 	// simulator cannot answer.
 	ReportURL string
+	// Resolved, when set, is called with the scenario the simulator will
+	// build (the console-saved one when it exists) before the inventory
+	// is built.
+	Resolved func(*scenario.Scenario)
 	// APIAddrs and AdminAddr are the listeners.
 	APIAddrs  []string
 	AdminAddr string
@@ -220,6 +224,9 @@ func New(opts Options) (*Controller, error) {
 	c.lift(sc)
 	if err := sc.Validate(); err != nil {
 		return nil, err
+	}
+	if opts.Resolved != nil {
+		opts.Resolved(sc)
 	}
 	baseCredentials, err := c.credentials(sc)
 	if err != nil {

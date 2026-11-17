@@ -181,8 +181,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	versions := sim.VimVersions(catalog.MustLoad().VimServiceVersions, vc.APIVersion)
-	health := &serve.Health{Versions: versions}
+	vimVersions := func(vc scenario.Version) string {
+		return sim.VimVersions(catalog.MustLoad().VimServiceVersions, vc.APIVersion)
+	}
+	health := &serve.Health{}
+	health.SetVersions(vimVersions(vc))
 	ls, err := serve.Listen(listen, health, cert)
 	if err != nil {
 		log.Fatal(err)
@@ -194,6 +197,11 @@ func main() {
 		Credentials: extra, CredentialRole: *role, SessionTimeout: *sessionTimeout, AnyLogin: *anyLogin, Certificate: cert,
 		Version: version, Commit: commit, Endpoint: endpointName(*names), APIAddrs: listen, AdminAddr: *adminAddr,
 		PublicURL: *publicURL, ReportURL: *reportURL, LookupTrustFile: *lookupTrust,
+		Resolved: func(effective *scenario.Scenario) {
+			if vc, err := effective.VCenterVersion(); err == nil {
+				health.SetVersions(vimVersions(vc))
+			}
+		},
 	})
 	if err != nil {
 		log.Fatal(err)

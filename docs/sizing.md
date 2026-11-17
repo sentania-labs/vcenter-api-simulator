@@ -92,7 +92,7 @@ Startup allows five minutes (150 attempts every 2s), with a 5s timeout;
 readiness allows 3s and liveness 5s. A nonempty probes.path overrides all
 three paths for existing custom configurations. The default four-host
 scenario keeps a 512Mi memory limit and 1 CPU, with requests of 128Mi and
-250m CPU, and a 1Gi data volume. Larger inventories need explicit sizing.
+250m CPU, and a 100Mi data volume. Larger inventories need explicit sizing.
 
 ## Full storage
 

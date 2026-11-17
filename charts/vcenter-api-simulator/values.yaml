@@ -125,7 +125,7 @@ persistence:
   storageClass: ""
   accessModes:
     - ReadWriteOnce
-  size: 1Gi
+  size: 100Mi
   annotations: {}
 
 service:

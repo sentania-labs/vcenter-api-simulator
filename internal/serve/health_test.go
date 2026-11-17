@@ -7,7 +7,8 @@ import (
 )
 
 func TestHealthDuringBuild(t *testing.T) {
-	h := &Health{Versions: "<versions/>"}
+	h := &Health{}
+	h.SetVersions("<versions/>")
 	for _, tc := range []struct {
 		path   string
 		status int
