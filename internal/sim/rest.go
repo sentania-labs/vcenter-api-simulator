@@ -255,7 +255,7 @@ func (s *restSessions) serveAPI(w http.ResponseWriter, r *http.Request, legacy b
 	if s.appliance(w, r) {
 		return true
 	}
-	if s.inventory(w, r) {
+	if s.inventory(w, r, legacy) {
 		return true
 	}
 	status := http.StatusNotFound

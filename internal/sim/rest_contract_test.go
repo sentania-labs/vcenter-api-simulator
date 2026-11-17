@@ -282,6 +282,35 @@ func TestLegacyReadEnvelopes(t *testing.T) {
 			}
 		})
 	}
+	// Every inventory list rejects an unsupported filter using the error
+	// envelope of the API version requested by the client.
+	for _, path := range []string{"datacenter", "cluster", "host", "datastore", "network", "vm", "folder", "resource-pool"} {
+		for _, prefix := range []string{"/rest/vcenter/", "/api/vcenter/"} {
+			t.Run(prefix+path+"/invalid-filter", func(t *testing.T) {
+				req, _ := http.NewRequest(http.MethodGet, e.srv.URL+prefix+path+"?unsupported=value", nil)
+				req.Header.Set("vmware-api-session-id", token)
+				res, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer res.Body.Close()
+				var body map[string]any
+				if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if res.StatusCode != http.StatusBadRequest {
+					t.Fatalf("status %d: %v", res.StatusCode, body)
+				}
+				if prefix == "/rest/vcenter/" {
+					if body["majorErrorCode"] != float64(400) || body["name"] != "INVALID_ARGUMENT" || body["type"] != "com.vmware.vapi.std.errors.invalid_argument" || body["value"] == nil || body["localizableMessages"] == nil || body["error_type"] != nil {
+						t.Fatalf("legacy error: %v", body)
+					}
+				} else if body["error_type"] != "INVALID_ARGUMENT" || body["messages"] == nil || body["majorErrorCode"] != nil {
+					t.Fatalf("modern error: %v", body)
+				}
+			})
+		}
+	}
 	for _, path := range []string{"tag", "category"} {
 		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/rest/com/vmware/cis/tagging/"+path, nil)
 		req.Header.Set("vmware-api-session-id", token)
