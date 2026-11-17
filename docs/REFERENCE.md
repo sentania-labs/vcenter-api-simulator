@@ -356,7 +356,8 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
   next to the running one and swap them, so connected tools are signed out
   and sign in again, as after a vCenter restart. Every identity the change
   keeps is unchanged. Users, the certificate, idle sign-out, slowness and
-  faults, and everything Activity does change in place. So does how licensing looks to tools (Security):
+  faults, and everything Activity does change in place. So does how licensing
+  looks to tools (Security):
   whether the evaluation is running or has run out, whether accounts are
   licensing administrators, and which VCF Operations, if any, vCenter says
   manages its license.
@@ -438,6 +439,9 @@ means in numbers.
   limit, adding or removing waits and says so once a day. At most a quarter
   of a cluster's hosts are in maintenance mode at once. A vSAN datastore is
   not filled past 90%, and a cleanup frees only what Activity filled.
+- **The Clusters tab shows where Activity has put things**: each host's VM
+  count and whether it is connected or in maintenance mode, and each
+  cluster's VM count, follow what Activity has done.
 - **"Do it now"** on a cluster's dial does that thing once, straight away,
   after saying what it will do.
 - **A change that moves hosts asks first**: starting, stopping, and raising
@@ -501,8 +505,10 @@ finds them). And a tool that is streaming events at the instant one is posted
 can see it with its own key as chain id; for a new VM that instant is the
 whole creation, about a millisecond, during which its creation events also
 carry the UUIDs vcsim first gave it. A tool that reads events in pages
-afterwards, as the VCF Operations adapter does, sees the finished chain. Nothing Activity does raises an alarm. Rolling patching, nightly
-backups and snapshots, and a host that crashes are not built yet.
+afterwards, as the VCF Operations adapter does, sees the finished chain.
+
+Nothing Activity does raises an alarm. Rolling patching, nightly backups and
+snapshots, and a host that crashes are not built yet.
 
 ### Checks
 

@@ -1,4 +1,4 @@
-// The console shell: header, the eight tabs, the bars shown on every screen
+// The console shell: header, the nine tabs, the bars shown on every screen
 // (paused, a change failed, scheduled), the green "Done." line, dialogs,
 // routing and polling. Screens are plain objects:
 //

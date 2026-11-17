@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
-	"sort"
 	"time"
 )
 
@@ -307,14 +306,4 @@ func balanceShape(t time.Time) float64 {
 		return 0.5 / 24
 	}
 	return balanceHours[t.Hour()]
-}
-
-// sortedKeys is the keys of a map in order, so nothing depends on map order.
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
