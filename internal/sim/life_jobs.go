@@ -45,7 +45,7 @@ func (l *Life) SnapshotVM(cluster, name string) error {
 	host := l.hostOf(ctx, vm)
 	_, maint, down := l.hostState(ctx, host)
 	if maint || down {
-		return fmt.Errorf("VM host is not available")
+		return life.ErrHostUnavailable
 	}
 	te, chain := l.head(ctx, l.vmEvent(refs, vm, host).Event, types.TaskInfo{Name: "CreateSnapshot_Task", DescriptionId: "VirtualMachine.createSnapshot", Entity: &vm.ref, EntityName: name, Reason: byUser(), QueueTime: l.now()})
 	// vcsim writes a tiny snapshot file; keep its real backing directory available.

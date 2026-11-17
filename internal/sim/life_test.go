@@ -302,7 +302,7 @@ func TestLifePowerShowsInStateAndPerformance(t *testing.T) {
 		t.Errorf("the engine counts %d VMs off, want 1", c.Off)
 	}
 	m1 := mark(s)
-	if !l.PowerOn(refs.Cluster.Key, name) || obj.Runtime.PowerState != types.VirtualMachinePowerStatePoweredOn || obj.Guest.GuestState != "running" {
+	if l.PowerOn(refs.Cluster.Key, name) != nil || obj.Runtime.PowerState != types.VirtualMachinePowerStatePoweredOn || obj.Guest.GuestState != "running" {
 		t.Errorf("after power on: %s, guest %s", obj.Runtime.PowerState, obj.Guest.GuestState)
 	}
 	chainIs(t, l, events(s, m1), "VirtualMachine.powerOn", lifeUser, "VmStartingEvent", "VmPoweredOnEvent")

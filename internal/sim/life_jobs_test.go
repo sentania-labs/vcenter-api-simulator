@@ -2,6 +2,7 @@ package sim
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -366,5 +367,50 @@ func TestActivityPatchAndCrashShareHostLimit(t *testing.T) {
 				t.Fatalf("%s has %d of %d hosts out", c.Key, out, len(c.Hosts))
 			}
 		}
+	}
+}
+
+func TestActivityVMsOnADownHostWaitAndAreNotFailures(t *testing.T) {
+	s := lifeSim(t, lifeScenario(t), registry.InMemory("down-host"))
+	w := s.Life()
+	c := w.Clusters()[0]
+	settings := life.Defaults(40)
+	for b := range settings.Global {
+		if !life.IsLoad(b) {
+			settings.Global[b] = life.Dial{}
+		}
+	}
+	at := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	e := life.New("down-host", time.UTC, settings)
+	e.Start(at, w)
+	name := w.VMNames(c.Key)[0]
+	ctx := w.as(lifeUser)
+	host := w.host(w.hostOf(ctx, w.vms[c.Key][name])).Name
+	if !w.power(c.Key, name, false) {
+		t.Fatal("could not power the VM off")
+	}
+	if _, err := w.CrashHost(c.Key, host); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.PowerOn(c.Key, name); !errors.Is(err, life.ErrHostUnavailable) {
+		t.Fatalf("power on with the host down: %v", err)
+	}
+	if err := w.SnapshotVM(c.Key, name); !errors.Is(err, life.ErrHostUnavailable) {
+		t.Fatalf("snapshot with the host down: %v", err)
+	}
+	if !e.DoNow(at, w, c.Key, life.Backups) {
+		t.Fatal("backups did not start")
+	}
+	for i := 1; i <= 10; i++ {
+		e.Step(at.Add(time.Duration(i)*time.Minute), w)
+	}
+	if e.State.Held[life.Backups] != 0 || e.State.Fails[life.Backups] != 0 {
+		t.Fatalf("a VM on a down host counted as a failure: held %v, fails %v", e.State.Held, e.State.Fails)
+	}
+	if err := w.RecoverHost(c.Key, host); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.PowerOn(c.Key, name); err != nil {
+		t.Fatalf("power on after the host is back: %v", err)
 	}
 }

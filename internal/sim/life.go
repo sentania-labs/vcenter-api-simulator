@@ -692,11 +692,22 @@ func (l *Life) PowerOff(cluster string, pick uint64) string {
 }
 
 // PowerOn implements life.World.
-func (l *Life) PowerOn(cluster, vm string) bool {
-	if !l.off[cluster][vm] {
-		return l.vms[cluster][vm] != nil
+func (l *Life) PowerOn(cluster, vm string) error {
+	v := l.vms[cluster][vm]
+	if v == nil {
+		return fmt.Errorf("VM no longer exists")
 	}
-	return l.power(cluster, vm, true)
+	if !l.off[cluster][vm] {
+		return nil
+	}
+	ctx := l.as(lifeUser)
+	if _, maint, down := l.hostState(ctx, l.hostOf(ctx, v)); maint || down {
+		return life.ErrHostUnavailable
+	}
+	if !l.power(cluster, vm, true) {
+		return fmt.Errorf("VM could not be powered on")
+	}
+	return nil
 }
 
 // counts keeps the cluster's own count of VMs, and of those that are off,

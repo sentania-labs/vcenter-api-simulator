@@ -22,6 +22,7 @@ type world struct {
 	used  map[string]float64 // cluster -> share of capacity used
 	load  map[string][2]float64
 	fail  error
+	hold  map[string]bool // cluster/vm whose host is unavailable
 }
 
 func newWorld(clusters, hosts, perHost int) *world {
@@ -111,12 +112,15 @@ func (w *world) PowerOff(cluster string, pick uint64) string {
 	return vm
 }
 
-func (w *world) PowerOn(cluster, vm string) bool {
+func (w *world) PowerOn(cluster, vm string) error {
 	if _, ok := w.at[cluster][vm]; !ok {
-		return false
+		return errors.New("gone")
+	}
+	if w.hold[cluster+"/"+vm] {
+		return ErrHostUnavailable
 	}
 	delete(w.off, cluster+"/"+vm)
-	return true
+	return nil
 }
 
 func (w *world) AddVM(cluster string, pick uint64) (string, string, error) {
@@ -493,6 +497,46 @@ func TestAnEmptyClusterGainsVMs(t *testing.T) {
 		run(e, w, monday, 7*24*time.Hour)
 		if n, _ := totalVMs(w.Clusters()); n == 0 {
 			t.Errorf("with %s, a cluster of 8 hosts and no VMs still has none after a week", name)
+		}
+	}
+}
+
+func TestAVMOnAnUnavailableHostIsPoweredOnWhenItIsBack(t *testing.T) {
+	w := newWorld(1, 8, 25)
+	e := started(w, "held-off", func(s *Settings) { s.Global[Power] = Dial{Exact: &Exact{N: 5, Unit: UnitMinutes}} })
+	w.hold = map[string]bool{}
+	run(e, w, monday.Add(9*time.Hour), 20*time.Minute)
+	held := map[string]OffVM{}
+	for _, o := range e.State.Off {
+		held[o.Cluster+"/"+o.VM] = o
+		w.hold[o.Cluster+"/"+o.VM] = true
+	}
+	if len(held) == 0 {
+		t.Fatal("nothing was powered off")
+	}
+	latest := int64(0)
+	for _, o := range held {
+		latest = max(latest, o.On)
+	}
+	from := monday.Add(9*time.Hour + 21*time.Minute)
+	run(e, w, from, time.Duration(latest-from.Unix()/60+5)*time.Minute)
+	waiting := map[string]bool{}
+	for _, o := range e.State.Off {
+		waiting[o.Cluster+"/"+o.VM] = true
+	}
+	for k := range held {
+		if !waiting[k] || !w.off[k] {
+			t.Fatalf("%s was dropped while its host was unavailable", k)
+		}
+	}
+	for k := range held {
+		delete(w.hold, k)
+	}
+	at := from.Add(time.Duration(latest-from.Unix()/60+6) * time.Minute)
+	run(e, w, at, time.Minute)
+	for k := range held {
+		if w.off[k] {
+			t.Errorf("%s stayed off after its host came back", k)
 		}
 	}
 }

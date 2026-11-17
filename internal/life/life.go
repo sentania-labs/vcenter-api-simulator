@@ -17,6 +17,7 @@
 package life
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -249,6 +250,11 @@ type Store struct {
 	UsedPercent int   // how full it is now
 }
 
+// ErrHostUnavailable says a VM cannot be acted on now because its host is
+// down or in maintenance mode. It passes, so the work is tried again later
+// and is not counted as a failure.
+var ErrHostUnavailable = errors.New("VM host is not available")
+
 // World is the inventory the engine acts on. Every method changes the
 // running vCenter in place, with the events and tasks a real one records,
 // and reports what it did. A pick is a number the engine drew; a World uses
@@ -261,8 +267,10 @@ type World interface {
 	Balance(cluster string, n int, pick uint64) []Move
 	// PowerOff powers one running VM off and names it; "" when none can be.
 	PowerOff(cluster string, pick uint64) string
-	// PowerOn powers a VM on again; false when it is no longer there.
-	PowerOn(cluster, vm string) bool
+	// PowerOn powers a VM on again. ErrHostUnavailable means its host is
+	// down or in maintenance mode and the VM should be tried again later;
+	// any other error means it is no longer there.
+	PowerOn(cluster, vm string) error
 	AddVM(cluster string, pick uint64) (vm, host string, err error)
 	RemoveVM(cluster string, pick uint64) (vm string, err error)
 	// EnterMaintenance moves every VM off a host and puts it in maintenance

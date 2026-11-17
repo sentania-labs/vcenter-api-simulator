@@ -1,6 +1,7 @@
 package life
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -145,8 +146,11 @@ func (e *Engine) minute(t int64, w World) {
 			still = append(still, o)
 			continue
 		}
-		if w.PowerOn(o.Cluster, o.VM) {
+		switch err := w.PowerOn(o.Cluster, o.VM); {
+		case err == nil:
 			e.add(t, Entry{Kind: KindOn, Cluster: o.Cluster, Why: Power, Text: fmt.Sprintf("%s was powered on again.", o.VM), Counts: map[string]int{"on": 1}})
+		case errors.Is(err, ErrHostUnavailable):
+			still = append(still, o)
 		}
 	}
 	e.State.Off = still
@@ -719,7 +723,7 @@ func (e *Engine) Stop(now time.Time, w World) {
 	e.State.Maint = nil
 	e.stopJobs(t, w)
 	for _, o := range e.State.Off {
-		if w.PowerOn(o.Cluster, o.VM) {
+		if w.PowerOn(o.Cluster, o.VM) == nil {
 			e.add(t, Entry{Kind: KindOn, Cluster: o.Cluster, Why: Power, Text: fmt.Sprintf("%s was powered on again, early, because activity was stopped.", o.VM), Counts: map[string]int{"on": 1}})
 		}
 	}

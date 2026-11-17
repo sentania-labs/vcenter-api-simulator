@@ -1,6 +1,7 @@
 package life
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -95,7 +96,7 @@ func (e *Engine) startJob(t int64, world World, c Cluster, b string) bool {
 	j := &e.State.Jobs
 	switch b {
 	case Patching:
-		if j.Patch != nil || j.Backup != nil || len(j.Snapshots) > 0 {
+		if j.Patch != nil || (j.Backup != nil && e.State.Held[Backups] == 0) || len(j.Snapshots) > 0 {
 			e.jobWait(t, c, b, "Patching is waiting for the current patch or backup to finish.")
 			return false
 		}
@@ -112,7 +113,7 @@ func (e *Engine) startJob(t int64, world World, c Cluster, b string) bool {
 		e.add(t, Entry{Kind: "patch", Cluster: c.Key, Why: b, Text: "Started patching " + c.Name + ", one host at a time."})
 		e.patchStep(t, w, c)
 	case Backups:
-		if j.Patch != nil || j.Backup != nil || len(j.Snapshots) > 0 {
+		if (j.Patch != nil && e.State.Held[Patching] == 0) || j.Backup != nil || len(j.Snapshots) > 0 {
 			e.jobWait(t, c, b, "Backups are waiting for the current patch or backup to finish.")
 			return false
 		}
@@ -328,12 +329,15 @@ func (e *Engine) jobs(t int64, world World) {
 				live[vm] = true
 			}
 			n := min(b.Batch, len(b.Pending))
-			retry := []string{}
+			retry, later := []string{}, []string{}
 			for i, vm := range b.Pending[:n] {
 				if !live[vm] {
 					continue
 				}
-				if err := w.SnapshotVM(b.Cluster, vm); err != nil {
+				if err := w.SnapshotVM(b.Cluster, vm); errors.Is(err, ErrHostUnavailable) {
+					later = append(later, vm)
+					continue
+				} else if err != nil {
 					e.failed(t, Backups, by[b.Cluster], reason(err))
 					retry = append(retry, vm)
 					if e.State.Held[Backups] != 0 {
@@ -346,7 +350,7 @@ func (e *Engine) jobs(t int64, world World) {
 				j.Snapshots = append(j.Snapshots, Backup{b.Cluster, vm, t + 10})
 				e.backupLog(t, b.Cluster, vm, true)
 			}
-			b.Pending = append(retry, b.Pending[n:]...)
+			b.Pending = append(append(retry, b.Pending[n:]...), later...)
 			if len(b.Pending) == 0 {
 				j.Backup = nil
 			}
