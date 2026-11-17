@@ -21,7 +21,7 @@ func (s *ClusterHealthSystem) osaHealthDetail(ctx *simulator.Context, sum *vsan.
 	sum.OverallHealth = "yellow"
 	sum.OverallHealthDescription = "Hardware compatibility"
 	healthy := vsan.VsanObjectHealth{Health: "healthy", ObjUuids: []string{cl.StatsUUID}}
-	for _, vm := range cl.VMs {
+	for _, vm := range cl.LiveVMs() {
 		healthy.ObjUuids = append(healthy.ObjUuids, vm.NamespaceUUID)
 	}
 	healthy.NumObjects = int32(len(healthy.ObjUuids))

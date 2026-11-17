@@ -36,7 +36,7 @@ function detailScreen(key) {
       const nNew = c.hosts.filter(isNew).length, tail = nNew > 0 && n > per && !ctx.F.fromTop;
       const from = tail ? Math.max(0, n - Math.max(per, nNew)) : 0;
       const slice = tail ? c.hosts.slice(from) : pageOf(ctx, 'h-' + c.key, c.hosts, per);
-      const rows = slice.map((h) => ({ _cls: isNew(h) ? 'is-new' : '', n: html`${h.name} ${isNew(h) ? badge('ok', isNew(h)) : ''}`, v: h.version, vms: h.vms, d: h.disks, st: 'Connected' }));
+      const rows = slice.map((h) => ({ _cls: isNew(h) ? 'is-new' : '', n: html`${h.name} ${isNew(h) ? badge('ok', isNew(h)) : ''}`, v: h.version, vms: h.vms, d: h.disks, st: h.state }));
       const own = c.local === 1 ? 'Made automatically, with one local disk per host.' : c.local > 1 ? `Made automatically, with ${c.local} local disks per host.` : 'Made automatically.';
       return html`<div class="m-page"><div class="m-crumb">${link('Clusters', '/clusters')} ${raw('&rsaquo;')} ${c.name}</div>
         <div class="m-head"><div><h1>${c.name} ${ctx.mark('cluster', c.key) ? badge('ok', ctx.mark('cluster', c.key)) : ''}</h1><p class="sub">In ${c.dc}. ${c.vsan}. ${plural(n, 'host')} and ${plural(c.vms, 'VM')}. ${c.version}.</p></div>

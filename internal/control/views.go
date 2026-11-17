@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sentania/vcenter-api-simulator/internal/life"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
@@ -119,6 +120,8 @@ type HomeView struct {
 	Unanswered int  `json:"unanswered"`
 	Faults     int  `json:"faults"`
 	Capturing  bool `json:"capturing"`
+	// Activity is what changes by itself: the tab badge and Home's line.
+	Activity HomeActivity `json:"activity"`
 	// AccountNeeded: first-run set-up has not chosen the tools' password.
 	AccountNeeded bool `json:"accountNeeded"`
 	// Build says which simulator is running; Stats how busy it has been.
@@ -344,6 +347,7 @@ func (c *Controller) Home() *HomeView {
 	}
 
 	v.Unanswered, v.Capturing = counts["unknown"], capture.Full
+	v.Activity = c.homeActivity(r)
 	v.HistoryCount = len(c.timeline)
 	for i := len(c.timeline) - 1; i >= 0 && len(v.Recent) < 3; i-- {
 		v.Recent = append(v.Recent, c.timeline[i])
@@ -464,10 +468,10 @@ func (c *Controller) Clusters() ClustersView {
 		if mixed {
 			label = "Mixed: " + label
 		}
-		v.Rows = append(v.Rows, ClusterRow{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, Hosts: len(cl.Hosts), VMs: len(cl.VMs),
+		v.Rows = append(v.Rows, ClusterRow{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, Hosts: len(cl.Hosts), VMs: len(cl.LiveVMs()),
 			VSAN: vsanName(cl.Spec.Architecture), Version: label})
 		v.Hosts += len(cl.Hosts)
-		v.VMs += len(cl.VMs)
+		v.VMs += len(cl.LiveVMs())
 	}
 	return v
 }
@@ -478,6 +482,7 @@ type HostRow struct {
 	Version string `json:"version"`
 	VMs     int    `json:"vms"`
 	Disks   string `json:"disks"`
+	State   string `json:"state"`
 	// ID is the internal id tools use for the host.
 	ID string `json:"id"`
 }
@@ -510,6 +515,16 @@ type ClusterDetail struct {
 	CanGrow   bool `json:"canGrow"`
 }
 
+func hostState(h life.Host) string {
+	switch {
+	case h.Down:
+		return "Not responding"
+	case h.Maintenance:
+		return "In maintenance mode"
+	}
+	return "Connected"
+}
+
 // Cluster returns one cluster's page.
 func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 	c.mu.Lock()
@@ -523,7 +538,7 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 	if mixed {
 		label = "Mixed: " + label
 	}
-	v := &ClusterDetail{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, VSAN: vsanName(cl.Spec.Architecture), Version: label, VMs: len(cl.VMs),
+	v := &ClusterDetail{Key: cl.Key, Name: cl.Name, DC: cl.Datacenter.Name, VSAN: vsanName(cl.Spec.Architecture), Version: label, VMs: len(cl.LiveVMs()),
 		Hosts: []HostRow{}, Storage: []ClusterStorage{}, Local: scenario.Int(cl.Spec.Host.LocalDevices), VsanID: cl.VsanUUID,
 		Only: len(r.topo.Clusters()) == 1, CanShrink: len(cl.Hosts) > scenario.MinHosts, CanGrow: len(cl.Hosts) < maxHosts}
 	var refs []string
@@ -533,9 +548,13 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 			refs = append(refs, h.Value)
 		}
 	}
-	vmsOn := map[int]int{}
-	for _, vm := range cl.VMs {
-		vmsOn[vm.Host]++
+	live := map[string]life.Host{}
+	for _, lc := range r.sim.Life().Clusters() {
+		if lc.Key == key {
+			for _, h := range lc.Hosts {
+				live[h.Name] = h
+			}
+		}
 	}
 	for _, h := range cl.Hosts {
 		claimed, local := 0, 0
@@ -546,7 +565,7 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 				local++
 			}
 		}
-		row := HostRow{Name: shortHost(h.Name), Version: "ESX " + scenario.VersionLabel(h.Version), VMs: vmsOn[h.Index], Disks: fmt.Sprintf("%d vSAN, %d local", claimed, local)}
+		row := HostRow{Name: shortHost(h.Name), Version: "ESX " + scenario.VersionLabel(h.Version), VMs: live[h.Name].VMs, Disks: fmt.Sprintf("%d vSAN, %d local", claimed, local), State: hostState(live[h.Name])}
 		if h.Index < len(refs) {
 			row.ID = refs[h.Index]
 		}

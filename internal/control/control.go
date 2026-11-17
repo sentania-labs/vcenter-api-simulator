@@ -38,6 +38,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/credentials"
+	"github.com/sentania/vcenter-api-simulator/internal/life"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -75,7 +76,8 @@ type Options struct {
 	Endpoint string
 	// PublicURL, when set, is the address tools should use, as one string
 	// (a deployment behind an ingress knows it; the simulator does not).
-	PublicURL string
+	PublicURL        string
+	ApplianceNetwork sim.ApplianceNetwork
 	// ReportURL is where the console sends people to report a request the
 	// simulator cannot answer.
 	ReportURL string
@@ -157,6 +159,15 @@ type Controller struct {
 	signins   map[string]time.Time
 	signinsAt time.Time // when signins was last written
 
+	// activity: the engine that makes the environment change by itself, and
+	// what is needed to save it. Guarded by mu.
+	life      *life.Engine
+	lifeSetUp bool      // activity has been started at least once
+	lifeSeq   int64     // the engine's last log id that was seen
+	lifeDirty bool      // there is something to save
+	lifeSaved time.Time // when life.json was last written
+	lifeStop  chan struct{}
+
 	drainMu  sync.Mutex // guards the two below
 	draining map[*sim.Simulator]bool
 	closed   bool
@@ -217,8 +228,13 @@ func New(opts Options) (*Controller, error) {
 			sc, version, fromFile = restored, st.Version, false
 		} else {
 			// the scenario file changed since the console last changed
-			// anything: the file wins
+			// anything: the file wins, for everything it says
 			version = st.Version + 1
+			if st.Scenario != nil {
+				if saved, err := decodeScenarioJSON(st.Scenario, opts.Scenario); err == nil {
+					keepActivityVMs(sc, saved)
+				}
+			}
 		}
 	}
 	c.lift(sc)
@@ -257,6 +273,7 @@ func New(opts Options) (*Controller, error) {
 	}
 	c.cur.Store(r)
 	c.syncConditions(r)
+	c.initLife(r)
 	cl, h, v, _ := r.topo.Counts()
 	started := fmt.Sprintf("Simulator started with %s, %s and %s.", plural(cl, "cluster"), plural(h, "host"), plural(v, "VM"))
 	if st != nil && fromFile {
@@ -288,7 +305,7 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	s, err := sim.New(sim.Options{
 		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Conditions: sc.Conditions, Now: c.now, Certificate: c.opts.Certificate,
-		Licensing: sc.Licensing, Issuer: signon.Open(c.opts.DataDir, sc.Seed), Trust: c.trust, PublicAddress: c.Address(),
+		Licensing: sc.Licensing, Issuer: signon.Open(c.opts.DataDir, sc.Seed), Trust: c.trust, PublicAddress: c.Address(), ApplianceNetwork: c.opts.ApplianceNetwork,
 		LicenseManagerChanged: func() { c.licenseManagerChanged(built.Load()) },
 	})
 	if err != nil {
@@ -359,6 +376,7 @@ func dropVanishedHostVersions(sc *scenario.Scenario) {
 
 // Close stops the running vCenter and every scheduled change.
 func (c *Controller) Close() {
+	c.closeLife()
 	c.mu.Lock()
 	for _, s := range c.sched {
 		if s.timer != nil {

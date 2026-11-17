@@ -27,11 +27,12 @@ below. Use it in a lab, with made-up credentials.
 | Tag collection through vAPI JSON (`POST /api`) | Answers sign-in, an empty tag list, and sign-out. |
 | Standard vSphere performance (`/sdk`) and host/VM quickStats | Changing CPU, memory, storage and network values, with VM-to-host-to-cluster totals, realtime samples and historical rollups. [Semantics](docs/REFERENCE.md#standard-vsphere-performance). |
 | Operations' GPU vStats query and live stream (`/api`, `/stats`) | Accepts the query and leaves the stream idle, matching GPU-less lab vCenters. Tokens use only the simulator's signing key. Direct connections to separate ESX endpoints are not simulated. |
-| Appliance settings, backup lists, topology and supervisor discovery (`/api`, and the Kubernetes listener `/wcp`) | Answers with invented appliance settings, no backups, no storage policies and no supervisors. `/wcp` answers as a vCenter with Kubernetes turned off does. |
+| Appliance settings, backup lists, topology and supervisor discovery (`/api`, and the Kubernetes listener `/wcp`) | Answers with invented appliance account settings and the simulator's own hostname, DNS servers and address ([appliance networking](docs/REFERENCE.md#helm)), no backups, no storage policies and no supervisors. `/wcp` answers as a vCenter with Kubernetes turned off does. |
 | Licensing (the license service, `/ls/sdk`) | Answers that vCenter and its hosts are **in evaluation**, or that the evaluation has run out. It cannot say vCenter is licensed. |
 | Which VCF Operations manages vCenter's license | Answers "none", or the one you name, or the one that registered itself. |
 | The root certificate (`/rest/vcenter/certificate-authority/get-root`) | Answers. |
 | iSCSI and NFS datastores | Answers when you add them. Capacity matches inventory; I/O follows the VMs using each datastore, and remains zero on unused stores. |
+| An environment that changes while a tool watches (events, tasks, and the numbers that follow them) | Off until you start **Activity** in the console. Then VMs move by vMotion, are powered off and on, are added and removed, hosts go into and out of maintenance mode with their VMs moved off first, datastores fill and are cleaned up, and CPU and memory load can be turned up or down. Each of these is recorded with the events and the task a real vCenter 9.1.1 records for it, and shows in the performance numbers and datastore usage. [What it does and does not do](docs/REFERENCE.md#activity). |
 | Which version vCenter and its hosts are | Answers as 8.0 Update 3, 9.0 or 9.1.1, or a number you type. One cluster can hold a mix of ESX versions. |
 
 Names and internal ids stay the same across restarts and changes (until you
@@ -59,6 +60,9 @@ the simulator slow or make it fail on purpose, to see how a tool copes.
 - **Management packs that bring their own collector do work.** The vSAN Host
   Metrics pack 2.0.0 collected from the simulator through a real VCF
   Operations 9.1.1 ([how that was checked](docs/OPERATIONS-ACCEPTANCE.md)).
+- **Activity does not yet patch hosts one after another, take nightly backups
+  and snapshots, or crash a host** (with the restarts and alarms that follow).
+  Nothing it does raises an alarm yet.
 - Not answered: the older license manager on the main interface (`/sdk`).
 - Reported as absent: Fibre Channel storage, and vSAN acting as a file server
   or an iSCSI server.
@@ -178,7 +182,7 @@ See [inventory sizing and probes](docs/sizing.md) before growing an environment.
 ## Change what it simulates
 
 Use the console. Its tabs are named for what you want to do: Home, Clusters,
-Storage, Versions, Users, Security, Slowness and faults, Requests.
+Storage, Versions, Users, Security, Activity, Slowness and faults, Requests.
 
 <img src="docs/console/07-clusters.png" width="900" alt="The Clusters screen: a list of clusters with their hosts, VMs and ESX version, a button to add a cluster, and a link to replace everything with a new environment">
 
@@ -196,11 +200,15 @@ the same day.
 | Change the vCenter or ESX version | Versions |
 | Add, change or remove the accounts tools sign in with | Users |
 | Replace the certificate, sign idle tools out, change the console password, change how licensing looks to tools | Security |
+| Make the environment change by itself, as one in use does, and turn each kind of change up or down | Activity |
 | Make requests slow or fail on purpose | Slowness and faults |
 | See what your tool asks for and what got no answer | Requests |
 
 Adding or removing clusters, hosts, storage or versions signs connected tools
-out, as a vCenter restart would; they sign in again by themselves.
+out, as a vCenter restart would; they sign in again by themselves. Activity
+changes the running vCenter in place, so tools stay connected.
+
+<img src="docs/console/51-activity.png" width="900" alt="The Activity screen: it is running, a dial for each thing that happens for the whole vCenter, and what has happened in the last hour">
 
 <img src="docs/console/36-requests.png" width="900" alt="The Requests screen: what was asked for in the last hour, which kinds were not answered, and the request capture switches">
 

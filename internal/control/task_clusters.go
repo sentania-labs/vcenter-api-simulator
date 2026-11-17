@@ -594,7 +594,7 @@ func planRemoveHosts(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error
 	}
 	p.Sum = []Item{
 		say("Removes %s.", bold(listAnd(pick))),
-		say("%s goes from %d to %s, and from %s to %s.", cl.Name, len(cl.Hosts), plural(left, "host"), num(len(cl.VMs)), plural(left*perHost, "VM")),
+		say("%s goes from %d to %s, and from %s to %s.", cl.Name, len(cl.Hosts), plural(left, "host"), num(len(cl.LiveVMs())), plural(left*perHost, "VM")),
 		vmsLine,
 		note("The other clusters are not touched.")}
 	if len(p.Errors) > 0 {

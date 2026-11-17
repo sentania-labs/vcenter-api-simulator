@@ -62,6 +62,23 @@ in 4.82s using 5.96 CPU seconds; two-client collection took 11.97s, peak RSS
 was 783Mi, and maximum successful discovery latency was 153ms. This supports
 reserving two CPUs for this size.
 
+## With Activity running
+
+Measured on Linux, November 17, 2026, with the large inventory above inside a
+systemd scope with a 2Gi memory limit, no swap and a two-CPU quota. Activity
+changes the running vCenter in place, so it adds no second copy of the
+inventory; what it keeps is its settings, the last 1,000 lines of "What has
+happened", and the tasks of the last ten minutes.
+
+| What ran | Result |
+| --- | --- |
+| A week of activity at every dial's baseline, played as fast as it goes (`VCSIM_LARGE=7`, see [Testing](TESTING.md)) | 3.5ms to 3.7ms for each simulated minute; a day is 1,466 vMotions, 101 VMs powered off and on, 46 added, 45 removed and 11 hosts into maintenance mode, which vCenter records as 7,107 events and 1,861 tasks. Heap in use after each day: 192Mi to 194Mi, level from the fourth day (the test fails if it grows by more than 24Mi). Peak RSS 324Mi. |
+| The simulator itself with full query capture, Activity started, then every counted dial and the share of hosts in maintenance mode at their busiest, while two clients each collected every VM, host, cluster and datastore twice | Built and listening in 9s at 255Mi RSS. 269Mi while hosts were being emptied. **Peak RSS 745Mi** during the two-client collection (each round of 5,453 objects took 20s to 23s), 339Mi afterwards. 49.7 CPU seconds in all. The scope's memory limit was never reached (`memory.events`: max 0, oom 0). |
+
+Activity in real time is cheap: at the baseline the large inventory sees about
+one vMotion a minute. The 2Gi and two-CPU recommendation above stands with
+Activity on; the collecting clients, not Activity, set the peak.
+
 ## Standard performance collection
 
 A separate November 17, 2026 run used the Operations 9.1.1 adapter's own

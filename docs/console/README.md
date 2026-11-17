@@ -2,7 +2,7 @@
 
 Taken from the running app at 1440 × 900 (phone shots at 390 wide), on a throwaway instance started from `examples/scenarios/ten-clusters.yaml` with a stand-in tool collecting from it. No real vCenter or VCF Operations was involved. The screens the redesign replaced are in [`before/`](before/).
 
-The console has eight tabs: Home, Clusters, Storage, Versions, Users, Security, Slowness and faults, Requests. Every change is one screen with its fields on the left and "What will happen" on the right, one button, and a green "Done" bar (or a red bar that stays) afterwards. There is no shared draft and no review step.
+The console has nine tabs: Home, Clusters, Storage, Versions, Users, Security, Activity, Slowness and faults, Requests. Every change is one screen with its fields on the left and "What will happen" on the right, one button, and a green "Done" bar (or a red bar that stays) afterwards. There is no shared draft and no review step.
 
 ## The ten jobs
 
@@ -30,6 +30,24 @@ On every screen:
 | Which build is running, and how busy it has been | [Home](before/36-home-before-stats.png) | [Home, last hour](50-home-stats.png), [since it started](50b-home-stats-since-start.png), [phone](50c-phone-home-stats.png) |
 | Dark theme | | [Home](42-home-dark.png), [Requests](43-requests-dark.png), [add a cluster](44-add-cluster-dark.png) |
 | Phone | [overview](before/32-phone-overview.png), [settings](before/33-phone-settings.png), [topology](before/34-phone-topology.png) | [Home](45-phone-home.png), [menu](46-phone-menu.png), [Clusters](47-phone-clusters.png), [add a cluster](48-phone-add-cluster.png), [Requests](49-phone-requests.png) |
+
+## Activity
+
+Added after the redesign, so there is no "before". Taken on a throwaway instance of four clusters, each with 8 hosts and 200 VMs, with a few things done by "Do it now" so the list has something in it.
+
+| | Screens |
+|---|---|
+| Before it has ever been started | [Activity, nothing happens by itself](51a-activity-before-start.png), [starting says what will happen first](51b-activity-start-asks-first.png) |
+| Running: a dial for each thing that happens, for the whole vCenter | [Activity](51-activity.png), [Home says so, and the tab shows On](56-home-with-activity.png) |
+| One cluster's own dials | [a cluster with two dials of its own, the rest following the vCenter](52-activity-one-cluster.png), ["Do it now" says what it will do](52b-activity-do-it-now-asks-first.png) |
+| An exact number instead of a level | [type an exact number](53-activity-exact-number.png) |
+| Changes that move hosts ask first | [more hosts in maintenance mode](54-activity-more-hosts-asks-first.png), [stop](54c-activity-stop-asks-first.png) |
+| The limits on the number of VMs | [change the limits](54b-activity-limits.png) |
+| What has happened | [the full list, one line for each cause, with its detail open](55-what-has-happened.png) |
+| Dark theme | [Activity](59-activity-dark.png) |
+| Phone | [Activity](57-phone-activity.png), [the dials](57b-phone-activity-dials.png), [an exact number](57c-phone-exact-number.png), [what has happened](58-phone-what-has-happened.png) |
+
+The Activity screens follow the design the owner approved, with one change he asked for: instead of one "Quiet, Typical or Busy" answer there is a dial for each thing that happens, for the whole vCenter and for each cluster.
 
 ## Where the built console differs from the approved mockup
 

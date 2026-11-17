@@ -336,3 +336,56 @@ test('the Requests screen shows the log\'s space against its limit', () => {
   }));
   assert.match(t, /4,096 KiB of 24,576 KiB used by 4 files/);
 });
+
+// ---- Activity -------------------------------------------------------------------
+const activity = (await import('./activity.js')).default;
+const dialLevels = (text) => [['Off', 0], ['Much quieter', 0.25], ['Quieter', 0.5], ['Baseline', 1], ['Busier', 2], ['Much busier', 4]].map(([label, v]) => ({ v, label, text: `${text} at ${label}` }));
+const actRow = (key, name, more = {}) => ({ key, name, what: `What ${name} is.`, text: `${name} at the baseline.`, level: 1, levels: dialLevels(name), units: ['minutes', 'hours', 'days'], ...more });
+const activityView = {
+  setUp: true, running: true, paused: false, scope: '', hosts: 32, vms: 801, built: 800, minVMs: 760, maxVMs: 840,
+  last: `{{time:${now}}}, DRS moved 4 VMs in cluster-02 to balance the load.`, now: 'At the moment 2 hosts are in maintenance mode.',
+  day: 'On a working day at this size (32 hosts and 801 VMs) that comes to about 200 vMotions: about 230 changes for a monitoring tool to see.',
+  rows: [actRow('moves', 'Load balancing (DRS)', { units: ['perDay'] }), actRow('adds', 'New VMs', { exact: { n: 30, unit: 'minutes' }, text: 'A new VM is added every 30 minutes, day and night.' }),
+    actRow('removes', 'VMs removed', { note: 'Waiting: the environment has the fewest VMs it may have (760).' }), actRow('power', 'VMs powered off and on', { held: true, note: `Stopped itself at {{time:${now}}} after failing 3 times in a row.` })],
+  clusters: [{ key: 'dc-01/cluster-01', label: 'cluster-01', hosts: 8, vms: 201, own: 0 }, { key: 'dc-01/cluster-02', label: 'cluster-02', hosts: 8, vms: 200, own: 2 }],
+  hour: '12 vMotions, 1 VM powered off', today: '180 vMotions, 9 VMs powered off, 9 powered on again', hourYou: 2,
+  lines: [{ at: now, text: 'DRS moved 4 VMs in cluster-02 to balance the load.', why: 'Load balancing (DRS)', details: ['cluster-02-vm-017 from esx03 to esx07'] }, { at: now, text: 'Failed: no VM was added to cluster-01.', why: 'New VMs', bad: true }], more: 0,
+};
+
+test('Activity: one dial for each thing, what has happened, and one button to stop', () => {
+  const s = activity.screen(['activity'], {});
+  const page = s.render(ctxOf(homeView), activityView);
+  clean(page, 'Activity');
+  const t = text(page);
+  for (const want of ['Activity is running.', 'Stop all activity…', 'the whole vCenter (32 hosts, 801 VMs)', 'cluster-02 (8 hosts, 200 VMs) · 2 of its own', 'Load balancing (DRS)', 'Your own number', 'A new VM is added every 30 minutes',
+    'Type an exact number…', 'Switch it on again', 'In the last hour: 12 vMotions, 1 VM powered off. 2 lines came from a button you pressed.', 'Since midnight: 180 vMotions', 'stays between 760 and 840', 'Change the limits…']) {
+    assert.ok(t.includes(want), `Activity should say "${want}": ${t.slice(0, 600)}`);
+  }
+  assert.equal((String(page).match(/type="range"/g) || []).length, 4, 'one dial for each row');
+  assert.ok(!t.includes('Do it now'), 'Do it now is offered for one cluster, not for the whole vCenter');
+
+  const never = text(s.render(ctxOf(homeView), { ...activityView, setUp: false, running: false, lines: [], hour: '', today: '', last: '' }));
+  assert.match(never, /Nothing happens by itself\./); assert.match(never, /Start activity…/); assert.match(never, /Nothing yet\./);
+  const stopped = text(s.render(ctxOf(homeView), { ...activityView, running: false }));
+  assert.match(stopped, /Activity is stopped\./); assert.match(stopped, /Start activity again…/);
+  const paused = text(s.render(ctxOf(homeView), { ...activityView, paused: true }));
+  assert.match(paused, /Activity is waiting\./);
+
+  const one = activity.screen(['activity'], { cluster: 'dc-01/cluster-02' });
+  const cl = text(one.render(ctxOf(homeView), { ...activityView, scope: 'dc-01/cluster-02', rows: [actRow('moves', 'Load balancing (DRS)', { follows: true, doNow: true }), actRow('adds', 'New VMs', { own: true, level: 4 }), actRow('removes', 'VMs removed', { follows: true, exact: { n: 45, unit: 'minutes' } })] }));
+  for (const want of ['Follows the vCenter', 'Set for this cluster', 'Follow the vCenter again', 'Do it now…', 'cluster-02 follows the vCenter', "The vCenter's number"]) assert.ok(cl.includes(want), `a cluster's dials should say "${want}"`);
+});
+
+test('Activity: the full list says what the lines add up to and who started them', () => {
+  const s = activity.screen(['activity', 'log'], { range: 'today', show: 'hosts' });
+  const view = { range: 'today', show: 'hosts', count: 2, sum: '50 vMotions, 2 hosts into maintenance mode', you: 2, page: 1, pages: 3, full: false, first: now,
+    lines: [{ at: now, text: 'esx08 in cluster-03 went into maintenance mode. Its 25 VMs moved to other hosts first.', why: 'Hosts in maintenance mode', you: true, details: ['cluster-03-vm-008 from esx08 to esx01', 'cluster-03-vm-016 from esx08 to esx02'] }, { at: now, text: 'Activity was started.', why: 'You', you: true }] };
+  const page = s.render(ctxOf(homeView), view);
+  clean(page, 'What has happened');
+  const t = text(page);
+  for (const want of ['Today, hosts: 2 lines.', 'They add up to: 50 vMotions, 2 hosts into maintenance mode.', '2 lines came from a button you pressed, and say so under Because of.', 'Hosts in maintenance mode, after a button you pressed', 'Show the 2 lines of detail', 'Page 1 of 3', 'Older', 'Last 24 hours']) {
+    assert.ok(t.includes(want), `the list should say "${want}": ${t.slice(0, 700)}`);
+  }
+  const none = text(s.render(ctxOf(homeView), { ...view, count: 0, sum: '', you: 0, lines: [], pages: 1 }));
+  assert.match(none, /nothing happened\./); assert.match(none, /Nothing of that kind/);
+});
