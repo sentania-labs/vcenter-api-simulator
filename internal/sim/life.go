@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,10 +34,16 @@ type Life struct {
 	vms map[string]map[string]*lifeVM // by cluster key, then VM name
 	off map[string]map[string]bool    // by cluster key: VMs that are powered off
 	old []oldTask                     // tasks to forget once they are old
+	// posted counts the events and tasks recorded, by type.
+	posted map[string]int
+	ctxs   map[string]*simulator.Context
 
 	// VMAdded and VMRemoved are told a VM number a cluster gained or lost,
 	// so the caller can record it where a rebuild will find it.
 	VMAdded, VMRemoved func(cluster string, number int)
+	// Now is the clock a finished task's age is counted on; the real one
+	// unless the owner of the simulator keeps another.
+	Now func() time.Time
 }
 
 type lifeVM struct {
@@ -80,7 +87,7 @@ func loadOf(ctx *simulator.Context, cluster types.ManagedObjectReference) (cpu, 
 // Life returns the simulator's in-place operations.
 func (s *Simulator) Life() *Life {
 	s.lifeOnce.Do(func() {
-		l := &Life{s: s, reg: s.model.Service.Context.Map, vms: map[string]map[string]*lifeVM{}, off: map[string]map[string]bool{}}
+		l := &Life{s: s, reg: s.model.Service.Context.Map, vms: map[string]map[string]*lifeVM{}, off: map[string]map[string]bool{}, posted: map[string]int{}, ctxs: map[string]*simulator.Context{}}
 		for _, refs := range s.Clusters {
 			idx := map[string]*lifeVM{}
 			for i, vm := range refs.Cluster.VMs {
@@ -110,8 +117,14 @@ func (s *Simulator) Life() *Life {
 
 // as is a context that acts as a user: "" for what the system does itself.
 func (l *Life) as(user string) *simulator.Context {
+	// one context for each user, kept: vcsim's object locks remember who
+	// held them last, so a new one for every operation would never be freed
+	if c, ok := l.ctxs[user]; ok {
+		return c
+	}
 	c := *l.s.model.Service.Context
 	c.Session = &simulator.Session{UserSession: types.UserSession{UserName: user}, Registry: simulator.NewRegistry(), Map: c.Map}
+	l.ctxs[user] = &c
 	return &c
 }
 
@@ -159,6 +172,7 @@ func (l *Life) post(ctx *simulator.Context, chain *int32, events ...types.BaseEv
 	em := ctx.Map.EventManager()
 	for _, ev := range events {
 		ctx.WithLock(em, func() { em.PostEvent(ctx, &types.PostEvent{EventToPost: ev}) })
+		l.posted[reflect.TypeOf(ev).Elem().Name()]++
 		e := ev.GetEvent()
 		if *chain == 0 {
 			*chain = e.Key
@@ -179,7 +193,25 @@ func (l *Life) record(ctx *simulator.Context, entity types.ManagedObjectReferenc
 	t.Info.EventChainId = chain
 	ref := t.Run(ctx)
 	t.Wait()
-	l.old = append(l.old, oldTask{ref: ref, entity: entity, at: time.Now()})
+	l.posted["task "+description]++
+	l.old = append(l.old, oldTask{ref: ref, entity: entity, at: l.now()})
+}
+
+func (l *Life) now() time.Time {
+	if l.Now != nil {
+		return l.Now()
+	}
+	return time.Now()
+}
+
+// Posted is how many events and tasks have been recorded since the vCenter
+// was built, by event type and by task ("task " and its description id).
+func (l *Life) Posted() map[string]int {
+	out := make(map[string]int, len(l.posted))
+	for k, v := range l.posted {
+		out[k] = v
+	}
+	return out
 }
 
 func byUser() types.BaseTaskReason   { return &types.TaskReasonUser{UserName: lifeUser} }
@@ -211,7 +243,10 @@ func (l *Life) Sweep(now time.Time) {
 		}
 		l.reg.Remove(ctx, o.ref)
 	}
-	l.old = l.old[n:]
+	if n > 0 {
+		// copied, so the tasks already forgotten do not stay in memory behind the rest
+		l.old = append([]oldTask(nil), l.old[n:]...)
+	}
 }
 
 func without(list []types.ManagedObjectReference, ref types.ManagedObjectReference) []types.ManagedObjectReference {

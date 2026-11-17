@@ -90,6 +90,7 @@ func (c *Controller) wireLife(r *running, live sim.Live) {
 	w.Restore(live)
 	w.VMAdded = func(cluster string, n int) { c.recordVM(cluster, n, true) }
 	w.VMRemoved = func(cluster string, n int) { c.recordVM(cluster, n, false) }
+	w.Now = c.now
 	c.life.Seed = r.sc.Seed
 	c.life.Reconcile(w)
 	c.life.Load(w)
@@ -165,7 +166,7 @@ func (c *Controller) lifeStep() {
 	} else {
 		c.life.Step(now, w)
 	}
-	w.Sweep(time.Now())
+	w.Sweep(now)
 	if c.life.State.Seq != c.lifeSeq {
 		c.lifeSeq = c.life.State.Seq
 		c.lifeDirty = true
