@@ -483,7 +483,7 @@ func (c *Controller) Activity(scope string) (*ActivityView, error) {
 		row.Level, row.Exact = d.Level, d.Exact
 		row.Text = lifeText(b, d, rowScope)
 		if row.Exact != nil && rowScope.share != 1 && row.Exact.Unit != life.UnitPerDay {
-			row.Text = "Follows the vCenter's own number: " + lower1(lifeText(b, e.Settings.Global[b], all))
+			row.Text = "Follows the vCenter's own number: " + lowerWord(lifeText(b, e.Settings.Global[b], all))
 		}
 		levels, labels := life.Levels, levelLabels
 		if life.IsLoad(b) {
@@ -512,7 +512,7 @@ func (c *Controller) Activity(scope string) (*ActivityView, error) {
 	now := c.now()
 	for i := len(e.Log) - 1; i >= 0; i-- {
 		if e.Log[i].Kind != life.KindNote {
-			v.Last = fmt.Sprintf("%s, %s", timeToken(e.Log[i].At), lower1(e.Log[i].Text))
+			v.Last = fmt.Sprintf("%s, %s", timeToken(e.Log[i].At), lowerWord(e.Log[i].Text))
 			break
 		}
 	}
@@ -958,9 +958,9 @@ func (c *Controller) ActivityDial(req ActDial) (*ActDone, error) {
 		}
 	}
 	e.Apply(c.now(), next, r.sim.Life())
-	e.Note(c.now(), fmt.Sprintf("You changed %s for %s. %s", lower1(life.Names[b]), where, text))
+	e.Note(c.now(), fmt.Sprintf("You changed %s for %s. %s", lowerWord(life.Names[b]), where, text))
 	c.lifeDirty = true
-	c.addHistory(fmt.Sprintf("Activity: %s for %s. %s", lower1(life.Names[b]), where, text))
+	c.addHistory(fmt.Sprintf("Activity: %s for %s. %s", lowerWord(life.Names[b]), where, text))
 	c.save()
 	c.saveLife(true)
 	return &ActDone{Done: "**Done.** " + text, Tone: "ok"}, nil
@@ -988,7 +988,7 @@ func (c *Controller) ActivityLimits(lo, hi int) (*ActDone, error) {
 	text := fmt.Sprintf("The number of VMs now stays between %s and %s.", num(lo), num(hi))
 	c.life.Note(c.now(), "You changed the limits. "+text)
 	c.lifeDirty = true
-	c.addHistory("Activity: " + lower1(text))
+	c.addHistory("Activity: " + lowerWord(text))
 	c.save()
 	c.saveLife(true)
 	return &ActDone{Done: "**Done.** " + text, Tone: "ok"}, nil
@@ -1046,8 +1046,17 @@ func (c *Controller) ActivityResume(b string) (*ActDone, error) {
 		return nil, &Invalid{"That has not stopped itself."}
 	}
 	c.life.Resume(b)
-	c.life.Note(c.now(), fmt.Sprintf("You switched %s on again.", lower1(life.Names[b])))
+	c.life.Note(c.now(), fmt.Sprintf("You switched %s on again.", lowerWord(life.Names[b])))
 	c.lifeDirty = true
 	c.saveLife(true)
 	return &ActDone{Done: fmt.Sprintf("**Switched on again.** %s happens again from now on.", life.Names[b]), Tone: "ok"}, nil
+}
+
+// lowerWord is lower1 for a name that may begin with an abbreviation: "New
+// VMs" becomes "new VMs", and "VMs removed" and "CPU load" stay as they are.
+func lowerWord(s string) string {
+	if len(s) > 1 && s[1] >= 'A' && s[1] <= 'Z' {
+		return s
+	}
+	return lower1(s)
 }

@@ -266,3 +266,12 @@ func TestActivitySurvivesAChangeThatRebuilds(t *testing.T) {
 		t.Error("nothing happened after the rebuild")
 	}
 }
+
+func TestActivityKeepsAbbreviationsWhenASentenceIsJoined(t *testing.T) {
+	for in, want := range map[string]string{"VMs removed": "VMs removed", "CPU load": "CPU load", "DRS moved 4 VMs in cluster-01 to balance the load.": "DRS moved 4 VMs in cluster-01 to balance the load.",
+		"New VMs": "new VMs", "Load balancing (DRS)": "load balancing (DRS)", "A new VM is added every 30 minutes, day and night.": "a new VM is added every 30 minutes, day and night.", "": ""} {
+		if got := lowerWord(in); got != want {
+			t.Errorf("lowerWord(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

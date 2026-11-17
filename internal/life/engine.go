@@ -307,7 +307,7 @@ func (e *Engine) fire(t int64, w World, c Cluster, b string) bool {
 			return false
 		}
 		delete(e.State.Fails, b)
-		e.add(t, Entry{Kind: KindAdd, Cluster: c.Key, Why: Adds, Text: fmt.Sprintf("%s was added to %s, on %s.", vm, c.Name, host), Counts: map[string]int{"add": 1}})
+		e.add(t, Entry{Kind: KindAdd, Cluster: c.Key, Why: Adds, Text: fmt.Sprintf("%s was added to %s, on %s.", vm, c.Name, short(host)), Counts: map[string]int{"add": 1}})
 	case Removes:
 		if vms, _ := totalVMs(clusters(w)); vms <= e.Settings.MinVMs {
 			return false
