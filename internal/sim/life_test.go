@@ -3,6 +3,7 @@ package sim
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +68,62 @@ func mark(s *Simulator) (key int32) {
 	return
 }
 
-func kindOf(e types.BaseEvent) string { return reflect.TypeOf(e).Elem().Name() }
+func kindOf(e types.BaseEvent) string { return eventName(e) }
+
+// chainsOf groups events by the chain they carry, each chain's events in
+// the order they were posted, and the chains in the order they began.
+func chainsOf(evs []types.BaseEvent) (order []int32, by map[int32][]types.BaseEvent) {
+	by = map[int32][]types.BaseEvent{}
+	for _, e := range evs {
+		c := e.GetEvent().ChainId
+		if by[c] == nil {
+			order = append(order, c)
+		}
+		by[c] = append(by[c], e)
+	}
+	return
+}
+
+// chainIs checks one operation's events against what a real vCenter
+// records: a TaskEvent first, whose key every event carries as its chain
+// id, with the task as queued, then the named events; and a finished task
+// that carries the chain too.
+func chainIs(t *testing.T, l *Life, evs []types.BaseEvent, description, user string, kinds ...string) {
+	t.Helper()
+	var got []string
+	for _, e := range evs {
+		got = append(got, kindOf(e))
+	}
+	want := append([]string{"TaskEvent"}, kinds...)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("%s: events %v, want %v", description, got, want)
+		return
+	}
+	head := evs[0].(*types.TaskEvent)
+	for _, e := range evs {
+		if b := e.GetEvent(); b.ChainId != head.Key || b.UserName != user || b.FullFormattedMessage == "" {
+			t.Errorf("%s: %s has chain %d (the TaskEvent is %d), user %q and message %q", description, kindOf(e), b.ChainId, head.Key, b.UserName, b.FullFormattedMessage)
+		}
+	}
+	if i := head.Info; i.DescriptionId != description || i.State != types.TaskInfoStateQueued || i.Task.Value == "" || i.Key != i.Task.Value || i.EventChainId != 0 || i.Entity == nil || i.EntityName == "" || head.FullFormattedMessage != "Task: "+description {
+		t.Errorf("%s: the TaskEvent carries %+v and says %q", description, i, head.FullFormattedMessage)
+	}
+	task, ok := l.reg.Get(head.Info.Task).(*simulator.Task)
+	if !ok || task.Info.EventChainId != head.Key || task.Info.State != types.TaskInfoStateSuccess || task.Info.DescriptionId != description {
+		t.Errorf("%s: no finished task carries chain %d", description, head.Key)
+		return
+	}
+	switch r := task.Info.Reason.(type) {
+	case *types.TaskReasonUser:
+		if user == "" || r.UserName != user {
+			t.Errorf("%s: started by user %q, want %q", description, r.UserName, user)
+		}
+	case *types.TaskReasonSystem:
+		if user != "" {
+			t.Errorf("%s: started by the system, want %q", description, user)
+		}
+	}
+}
 
 // placement checks that every VM is on exactly one host's list, and that it
 // is the host the VM says it is on.
@@ -122,38 +178,23 @@ func TestLifeBalanceMovesWithEventsAndTasks(t *testing.T) {
 			t.Errorf("%s both gave and took a VM in one pass", h)
 		}
 	}
-	// two events for each move, sharing one chain, and a task that names it
-	var evs []types.BaseEvent
-	for _, e := range events(s, m0) {
-		if k := kindOf(e); k == "VmBeingHotMigratedEvent" || k == "DrsVmMigratedEvent" {
-			evs = append(evs, e)
-		}
-	}
-	if len(evs) != 6 {
-		t.Fatalf("%d migration events, want 6", len(evs))
+	// each move is a chain of its own, as DRS records a vMotion
+	order, by := chainsOf(events(s, m0))
+	if len(order) != 3 {
+		t.Fatalf("%d chains of events, want one for each of the 3 moves", len(order))
 	}
 	ctx := l.as("")
-	for i := 0; i < len(evs); i += 2 {
-		a, b := evs[i].GetEvent(), evs[i+1].GetEvent()
-		if kindOf(evs[i]) != "VmBeingHotMigratedEvent" || kindOf(evs[i+1]) != "DrsVmMigratedEvent" || a.ChainId != a.Key || b.ChainId != a.ChainId {
-			t.Errorf("events %d and %d: %s chain %d key %d, %s chain %d", i, i+1, kindOf(evs[i]), a.ChainId, a.Key, kindOf(evs[i+1]), b.ChainId)
+	for _, c := range order {
+		chainIs(t, l, by[c], "Drm.ExecuteVMotionLRO", "", "VmHotMigratingWithEncryptionEvent", "VmEmigratingEvent", "DrsVmMigratedEvent")
+		if len(by[c]) != 4 {
+			continue
 		}
-		done := evs[i+1].(*types.DrsVmMigratedEvent)
-		if a.FullFormattedMessage == "" {
-			t.Error("the event that starts a vMotion has no message")
+		head, start, done := by[c][0].(*types.TaskEvent), by[c][1].(*types.EventEx), by[c][3].(*types.DrsVmMigratedEvent)
+		if head.Info.Name != "" || *head.Info.Entity != done.Vm.Vm || head.Vm == nil || head.Host == nil || head.Ds != nil {
+			t.Errorf("the TaskEvent of a vMotion: name %q, %+v", head.Info.Name, head.Event)
 		}
-		if done.SourceHost.Name == done.Host.Name || done.UserName != "" || done.FullFormattedMessage == "" {
-			t.Errorf("the DRS event must name two hosts, no user and a message: %+v", done.Event)
-		}
-		found := false
-		for _, o := range l.old {
-			task := ctx.Map.Get(o.ref).(*simulator.Task)
-			if task.Info.EventChainId == a.ChainId {
-				found = task.Info.DescriptionId == "Drm.ExecuteVMotionLRO" && task.Info.State == types.TaskInfoStateSuccess && *task.Info.Entity == done.Vm.Vm
-			}
-		}
-		if !found {
-			t.Errorf("no finished DRS task names chain %d", a.ChainId)
+		if done.SourceHost.Name == done.Host.Name || start.Host.Name != done.SourceHost.Name || len(start.Arguments) != 3 || start.Arguments[0].Value != done.Host.Name || start.ObjectId != done.Vm.Vm.Value || !strings.Contains(start.FullFormattedMessage, "to "+done.Host.Name) {
+			t.Errorf("the vMotion from %s to %s starts with %+v", done.SourceHost.Name, done.Host.Name, start)
 		}
 	}
 	// old tasks are forgotten
@@ -179,12 +220,18 @@ func TestLifeMaintenanceEmptiesTheHostFirst(t *testing.T) {
 			t.Errorf("%s is still on %s", vm, host)
 		}
 	}
-	var order []string
-	for _, e := range events(s, m0) {
-		order = append(order, kindOf(e))
+	// the host's own chain, and one for each VM that DRS moved off it
+	order, by := chainsOf(events(s, m0))
+	if len(order) != 6 {
+		t.Fatalf("%d chains of events, want the host's and one for each of its 5 VMs", len(order))
 	}
-	if order[0] != "EnteringMaintenanceModeEvent" || order[len(order)-1] != "EnteredMaintenanceModeEvent" || len(order) != 12 {
-		t.Errorf("events were %v: want entering, five moves of two events, entered", order)
+	chainIs(t, l, by[order[0]], "HostSystem.enterMaintenanceMode", lifeUser, "EnteringMaintenanceModeEvent", "HostDasDisabledEvent", "EnteredMaintenanceModeEvent")
+	last := by[order[0]][len(by[order[0]])-1].GetEvent().Key
+	for _, c := range order[1:] {
+		chainIs(t, l, by[c], "Drm.ExecuteVMotionLRO", "", "VmHotMigratingWithEncryptionEvent", "VmEmigratingEvent", "DrsVmMigratedEvent")
+		if k := by[c][len(by[c])-1].GetEvent().Key; k > last {
+			t.Errorf("a VM left the host (event %d) after the host said it was in maintenance mode (event %d)", k, last)
+		}
 	}
 	cs := l.Clusters()
 	if !cs[0].Hosts[1].Maintenance || cs[0].Hosts[1].VMs != 0 || cs[0].VMs != 20 {
@@ -195,10 +242,16 @@ func TestLifeMaintenanceEmptiesTheHostFirst(t *testing.T) {
 	if n := state.nodes[refs.Hosts[1]]; n.active {
 		t.Error("a host in maintenance mode still counts as carrying load")
 	}
+	m1 := mark(s)
 	back := l.ExitMaintenance(refs.Cluster.Key, host, 3)
 	if len(back) == 0 || len(back) > 4 {
 		t.Errorf("%d VMs moved back onto the host, want a few", len(back))
 	}
+	order, by = chainsOf(events(s, m1))
+	if len(order) != 1+len(back) {
+		t.Fatalf("%d chains of events after the host came back, want its own and %d moves", len(order), len(back))
+	}
+	chainIs(t, l, by[order[0]], "HostSystem.exitMaintenanceMode", lifeUser, "ExitMaintenanceModeEvent", "HostDasEnabledEvent")
 	placement(t, s)
 }
 
@@ -220,16 +273,15 @@ func TestLifePowerShowsInStateAndPerformance(t *testing.T) {
 	if w := readPerformanceState(l.as("")).sample("life", at)[vm.ref]; w.cpu != 0 || w.memory != 0 {
 		t.Errorf("a powered-off VM still reports cpu %d and memory %d", w.cpu, w.memory)
 	}
-	evs := events(s, m0)
-	if len(evs) != 2 || kindOf(evs[0]) != "VmStoppingEvent" || kindOf(evs[1]) != "VmPoweredOffEvent" || evs[1].GetEvent().ChainId != evs[0].GetEvent().Key || evs[0].GetEvent().UserName != lifeUser {
-		t.Errorf("power-off events: %v", evs)
-	}
+	chainIs(t, l, events(s, m0), "VirtualMachine.powerOff", lifeUser, "VmStoppingEvent", "VmPoweredOffEvent")
 	if c := l.Clusters()[0]; c.Off != 1 {
 		t.Errorf("the engine counts %d VMs off, want 1", c.Off)
 	}
+	m1 := mark(s)
 	if !l.PowerOn(refs.Cluster.Key, name) || obj.Runtime.PowerState != types.VirtualMachinePowerStatePoweredOn || obj.Guest.GuestState != "running" {
 		t.Errorf("after power on: %s, guest %s", obj.Runtime.PowerState, obj.Guest.GuestState)
 	}
+	chainIs(t, l, events(s, m1), "VirtualMachine.powerOn", lifeUser, "VmStartingEvent", "VmPoweredOnEvent")
 	if w := readPerformanceState(l.as("")).sample("life", at)[vm.ref]; w.cpu == 0 {
 		t.Error("a VM that is on again reports no CPU")
 	}
@@ -246,14 +298,38 @@ func TestLifeAddedVMKeepsItsIdentityAcrossARebuild(t *testing.T) {
 	l.VMAdded = func(_ string, n int) { added = append(added, n) }
 	l.VMRemoved = func(_ string, n int) { removed = append(removed, n) }
 
+	m0 := mark(s)
 	name, host, err := l.AddVM(key, 1)
 	if err != nil || name != "cluster-01-vm-021" || host == "" {
 		t.Fatalf("AddVM = %q on %q, %v", name, host, err)
 	}
+	// created, then powered on: two operations, two chains
+	order, by := chainsOf(events(s, m0))
+	if len(order) != 2 {
+		t.Fatalf("%d chains of events for a new VM, want its creation and its power-on", len(order))
+	}
+	chainIs(t, l, by[order[0]], "Folder.createVm", lifeUser, "VmBeingCreatedEvent", "VmInstanceUuidAssignedEvent", "VmUuidAssignedEvent", "VmCreatedEvent")
+	chainIs(t, l, by[order[1]], "VirtualMachine.powerOn", lifeUser, "VmStartingEvent", "VmPoweredOnEvent")
+	if made := l.vms[key][name].vm; len(by[order[0]]) == 5 {
+		if u := by[order[0]][3].(*types.VmUuidAssignedEvent); u.Uuid != made.UUID || !strings.Contains(u.FullFormattedMessage, made.UUID) {
+			t.Errorf("the event says the new VM's UUID is %s (%q); it is %s", u.Uuid, u.FullFormattedMessage, made.UUID)
+		}
+		if u := by[order[0]][2].(*types.VmInstanceUuidAssignedEvent); u.InstanceUuid != made.InstanceUUID {
+			t.Errorf("the event says the new VM's instance UUID is %s; it is %s", u.InstanceUuid, made.InstanceUUID)
+		}
+	}
+	m1 := mark(s)
 	gone, err := l.RemoveVM(key, 2) // the third VM by name
 	if err != nil || gone != "cluster-01-vm-003" {
 		t.Fatalf("RemoveVM = %q, %v", gone, err)
 	}
+	// powered off, then destroyed
+	order, by = chainsOf(events(s, m1))
+	if len(order) != 2 {
+		t.Fatalf("%d chains of events for a removed VM, want its power-off and its removal", len(order))
+	}
+	chainIs(t, l, by[order[0]], "VirtualMachine.powerOff", lifeUser, "VmStoppingEvent", "VmPoweredOffEvent")
+	chainIs(t, l, by[order[1]], "VirtualMachine.destroy", lifeUser, "VmRemovedEvent")
 	if !reflect.DeepEqual(added, []int{21}) || !reflect.DeepEqual(removed, []int{3}) {
 		t.Fatalf("told of added %v and removed %v", added, removed)
 	}

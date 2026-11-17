@@ -103,13 +103,27 @@ func TestActivityADayAtLabSize(t *testing.T) {
 	if counts["min"] != 2 {
 		t.Errorf("%d hosts went into maintenance mode, want 2 (5%% of 32)", counts["min"])
 	}
-	// every vMotion is two events and one task; every host into maintenance mode two events and one task
-	moves := counts["move"]
-	if posted["VmBeingHotMigratedEvent"]+posted["VmBeingMigratedEvent"] != moves || posted["DrsVmMigratedEvent"] != moves || posted["task Drm.ExecuteVMotionLRO"] != moves {
-		t.Errorf("%d vMotions but %d start events, %d DRS events and %d tasks", moves, posted["VmBeingHotMigratedEvent"]+posted["VmBeingMigratedEvent"], posted["DrsVmMigratedEvent"], posted["task Drm.ExecuteVMotionLRO"])
+	// every move is one task and the events of a vMotion, or of a relocation
+	// for a VM that was off when its host went into maintenance mode
+	moves, hot, cold := counts["move"], posted["DrsVmMigratedEvent"], posted["VmRelocatedEvent"]
+	if hot+cold != moves || posted["VmHotMigratingWithEncryptionEvent"] != hot || posted["VmEmigratingEvent"] != hot || posted["task Drm.ExecuteVMotionLRO"] != hot || posted["VmBeingRelocatedEvent"] != cold {
+		t.Errorf("%d moves, but %d vMotions and %d relocations: %v", moves, hot, cold, posted)
 	}
-	if posted["EnteringMaintenanceModeEvent"] != 2 || posted["EnteredMaintenanceModeEvent"] != 2 || posted["task HostSystem.enterMaintenanceMode"] != 2 {
+	if posted["EnteringMaintenanceModeEvent"] != 2 || posted["EnteredMaintenanceModeEvent"] != 2 || posted["HostDasDisabledEvent"] != 2 || posted["task HostSystem.enterMaintenanceMode"] != 2 {
 		t.Errorf("maintenance mode events and tasks: %v", posted)
+	}
+	if posted["VmCreatedEvent"] != counts["add"] || posted["task Folder.createVm"] != counts["add"] || posted["VmRemovedEvent"] != counts["remove"] || posted["task VirtualMachine.destroy"] != counts["remove"] {
+		t.Errorf("%d VMs added and %d removed: %v", counts["add"], counts["remove"], posted)
+	}
+	// every operation starts with the event of its task
+	tasks := 0
+	for k, n := range posted {
+		if strings.HasPrefix(k, "task ") {
+			tasks += n
+		}
+	}
+	if posted["TaskEvent"] != tasks {
+		t.Errorf("%d tasks but %d TaskEvents", tasks, posted["TaskEvent"])
 	}
 	// removing a VM powers it off first, so power-offs are the day's own and the removed VMs'
 	if posted["VmPoweredOffEvent"] != counts["off"]+counts["remove"] || posted["VmPoweredOnEvent"] != counts["on"]+counts["add"] {

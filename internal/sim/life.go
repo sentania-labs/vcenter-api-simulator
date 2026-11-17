@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 
@@ -37,6 +38,8 @@ type Life struct {
 	// posted counts the events and tasks recorded, by type.
 	posted map[string]int
 	ctxs   map[string]*simulator.Context
+	// apart is who reads a task's state: never the one running it
+	apart simulator.Context
 
 	// VMAdded and VMRemoved are told a VM number a cluster gained or lost,
 	// so the caller can record it where a rebuild will find it.
@@ -97,18 +100,25 @@ func (s *Simulator) Life() *Life {
 			l.off[refs.Cluster.Key] = map[string]bool{}
 		}
 		l.reg.Put(&clusterLoad{ManagedObjectReference: loadRef})
-		// vcsim's event catalogue has no words for the start of a vMotion
+		// vcsim's event catalogue has no words for some of what a real
+		// vCenter records; these are a real vCenter 9.1.1's
 		em := l.reg.EventManager()
 		l.as("").WithLock(em, func() {
+			have := map[string]bool{}
 			for _, info := range em.Description.EventInfo {
-				if info.Key == "VmBeingHotMigratedEvent" {
-					return
+				have[info.Key] = true
+			}
+			for _, d := range [][3]string{
+				{"TaskEvent", "Task event", "Task: {{.Info.DescriptionId}}"},
+				{"VmEmigratingEvent", "VM emigrating", "Migrating {{.Vm.Name}} off host {{.Host.Name}} in {{.Datacenter.Name}}"},
+				{"VmBeingRelocatedEvent", "VM relocating", "Relocating {{.Vm.Name}} from {{.Host.Name}}, {{.Ds.Name}} in {{.Datacenter.Name}} to {{.DestHost.Name}}, {{.DestDatastore.Name}} in {{.DestDatacenter.Name}}"},
+				{"HostDasDisabledEvent", "vSphere HA agent disabled on host", "vSphere HA agent on {{.Host.Name}} in cluster {{.ComputeResource.Name}} in {{.Datacenter.Name}} is disabled"},
+				{"HostDasEnabledEvent", "vSphere HA agent enabled on host", "vSphere HA agent on {{.Host.Name}} in cluster {{.ComputeResource.Name}} in {{.Datacenter.Name}} is enabled"},
+			} {
+				if !have[d[0]] {
+					em.Description.EventInfo = append(em.Description.EventInfo, types.EventDescriptionEventDetail{Key: d[0], Description: d[1], Category: "info", FullFormat: d[2]})
 				}
 			}
-			em.Description.EventInfo = append(em.Description.EventInfo, types.EventDescriptionEventDetail{
-				Key: "VmBeingHotMigratedEvent", Description: "VM is hot migrating", Category: "info",
-				FullFormat: "Hot migrating {{.Vm.Name}} from {{.Host.Name}}, {{.Ds.Name}} in {{.Datacenter.Name}} to {{.DestHost.Name}}, {{.DestDatastore.Name}} in {{.DestDatacenter.Name}}",
-			})
 		})
 		s.life = l
 	})
@@ -165,36 +175,119 @@ func (l *Life) Clusters() []life.Cluster {
 // ---------------------------------------------------------------------------
 // events and tasks
 
-// post records events. The first one starts a chain when chain is 0, and
-// the rest join it, as the events of one operation do on a real vCenter.
-// vcsim gives every event its own chain, so the chain is set once posted.
-func (l *Life) post(ctx *simulator.Context, chain *int32, events ...types.BaseEvent) {
+// What a real vCenter 9.1.1 records for one operation, read from one:
+// first a TaskEvent that carries the task as it was queued, and then the
+// operation's own events, every one with the TaskEvent's key as its chain
+// id, which the task itself carries too.
+
+// post records events in a chain, as the user of ctx. Chain 0 starts one.
+// vcsim gives every event its own chain, so the chain is set as soon as
+// the event is posted, before anything else here can post another.
+func (l *Life) post(ctx *simulator.Context, chain int32, events ...types.BaseEvent) {
 	em := ctx.Map.EventManager()
 	for _, ev := range events {
-		ctx.WithLock(em, func() { em.PostEvent(ctx, &types.PostEvent{EventToPost: ev}) })
-		l.posted[reflect.TypeOf(ev).Elem().Name()]++
-		e := ev.GetEvent()
-		if *chain == 0 {
-			*chain = e.Key
-		}
-		e.ChainId = *chain
+		ctx.WithLock(em, func() {
+			em.PostEvent(ctx, &types.PostEvent{EventToPost: ev})
+			if chain != 0 {
+				ev.GetEvent().ChainId = chain
+			}
+		})
+		l.posted[eventName(ev)]++
 	}
 }
 
-// record makes the task record of something that was done: its name as a
-// real vCenter names it, who or what started it, and the chain of its
-// events. It is complete as soon as it exists.
-func (l *Life) record(ctx *simulator.Context, entity types.ManagedObjectReference, entityName, name, description string, reason types.BaseTaskReason, chain int32) {
-	t := simulator.CreateTask(entity, name, func(*simulator.Task) (types.AnyType, types.BaseMethodFault) { return nil, nil })
+// eventName is an event's type; for the events vCenter added later
+// (EventEx), the last part of its id.
+func eventName(ev types.BaseEvent) string {
+	if ex, ok := ev.(*types.EventEx); ok {
+		return ex.EventTypeId[strings.LastIndex(ex.EventTypeId, ".")+1:]
+	}
+	return reflect.TypeOf(ev).Elem().Name()
+}
+
+// head posts the TaskEvent that starts an operation: where it happens and
+// the task as queued. Its key is the chain id of the operation.
+func (l *Life) head(ctx *simulator.Context, at types.Event, info types.TaskInfo) (*types.TaskEvent, int32) {
+	at.Ds = nil
+	info.State = types.TaskInfoStateQueued
+	info.StartTime, info.CompleteTime, info.Result, info.EventChainId = nil, nil, nil, 0
+	info.Cancelable = true
+	ev := &types.TaskEvent{Event: at, Info: info}
+	l.post(ctx, 0, ev)
+	return ev, ev.Key
+}
+
+// begin starts an operation: its task, named as a real vCenter names it
+// and started by who or what starts it there, and the TaskEvent. It
+// returns the chain id for the operation's events. Name is empty for a
+// task vCenter starts by itself.
+func (l *Life) begin(ctx *simulator.Context, at types.Event, entity types.ManagedObjectReference, entityName, name, description string, reason types.BaseTaskReason) int32 {
+	t := simulator.CreateTask(entity, description, func(*simulator.Task) (types.AnyType, types.BaseMethodFault) { return nil, nil })
 	t.Info.Name = name
 	t.Info.DescriptionId = description
 	t.Info.EntityName = entityName
 	t.Info.Reason = reason
-	t.Info.EventChainId = chain
-	ref := t.Run(ctx)
-	t.Wait()
-	l.posted["task "+description]++
-	l.old = append(l.old, oldTask{ref: ref, entity: entity, at: l.now()})
+	t.Run(ctx)
+	l.wait(t)
+	var info types.TaskInfo
+	l.reg.WithLock(&l.apart, t, func() { info = t.Info })
+	_, chain := l.head(ctx, at, info)
+	l.own(ctx, t, entity, chain, nil)
+	return chain
+}
+
+// own gives a finished task the chain of its events and notes it, to be
+// forgotten when it is old. A task vcsim made itself is also told who
+// started it.
+func (l *Life) own(ctx *simulator.Context, t *simulator.Task, entity types.ManagedObjectReference, chain int32, by types.BaseTaskReason) {
+	ctx.WithLock(t, func() {
+		changes := []types.PropertyChange{{Name: "info.eventChainId", Val: chain}}
+		if by != nil {
+			changes = append(changes, types.PropertyChange{Name: "info.reason", Val: by})
+		}
+		ctx.Update(t, changes)
+	})
+	l.posted["task "+t.Info.DescriptionId]++
+	l.old = append(l.old, oldTask{ref: t.Self, entity: entity, at: l.now()})
+}
+
+// wait is vcsim's Task.Wait without its 10 ms naps: these tasks do
+// nothing, so they are done almost at once, and a host's 25 VMs must not
+// take a quarter of a second to leave it.
+func (l *Life) wait(t *simulator.Task) {
+	for {
+		done := false
+		l.reg.WithLock(&l.apart, t, func() {
+			done = t.Info.State == types.TaskInfoStateSuccess || t.Info.State == types.TaskInfoStateError
+		})
+		if done {
+			return
+		}
+		time.Sleep(50 * time.Microsecond)
+	}
+}
+
+// adopt puts the events vcsim itself posted about a VM, since the
+// TaskEvent of an operation, into that operation's chain.
+func (l *Life) adopt(ctx *simulator.Context, chain int32, vm types.ManagedObjectReference) []types.BaseEvent {
+	em := ctx.Map.EventManager()
+	var page, out []types.BaseEvent
+	ctx.WithLock(em, func() {
+		if body, ok := em.QueryEvents(ctx, &types.QueryEvents{This: em.Self, Filter: types.EventFilterSpec{MaxCount: 20}}).(*methods.QueryEventsBody); ok && body.Res != nil {
+			page = body.Res.Returnval
+		}
+		for _, ev := range page {
+			if e := ev.GetEvent(); e.Key > chain && e.Vm != nil && e.Vm.Vm == vm {
+				e.ChainId = chain
+				e.UserName = ctx.Session.UserName
+				out = append(out, ev)
+			}
+		}
+	})
+	for _, ev := range out {
+		l.posted[eventName(ev)]++
+	}
+	return out
 }
 
 func (l *Life) now() time.Time {
@@ -297,42 +390,58 @@ func (l *Life) hostOf(ctx *simulator.Context, vm *lifeVM) (ref types.ManagedObje
 	return
 }
 
-// move takes a VM to another host of its cluster: the VM's host, the two
-// hosts' VM lists, and the two events and the task of a vMotion. drs says
-// the move is one DRS made by itself.
-func (l *Life) move(refs *ClusterRefs, vm *lifeVM, to types.ManagedObjectReference, drs bool) (life.Move, bool) {
-	ctx := l.as("")
-	from := l.hostOf(ctx, vm)
+// move takes a VM to another host of its cluster: the VM's host and the two
+// hosts' VM lists, with what a real vCenter records. A running VM moves by
+// vMotion, which DRS starts by itself in a chain of its own. A VM that is
+// off is relocated, within the chain of the operation that moves it
+// (a host going into maintenance mode) or, with within 0, in its own.
+func (l *Life) move(refs *ClusterRefs, vm *lifeVM, to types.ManagedObjectReference, within int32) (life.Move, bool) {
+	sys := l.as("")
+	from := l.hostOf(sys, vm)
 	src, dst := l.host(from), l.host(to)
 	obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
 	if !ok || src == nil || dst == nil || from == to {
 		return life.Move{}, false
 	}
-	hot := !l.off[refs.Cluster.Key][vm.vm.Name]
-	var chain int32
 	begin := l.vmEvent(refs, vm, from)
-	dest := &types.HostEventArgument{EntityEventArgument: types.EntityEventArgument{Name: dst.Name}, Host: to}
-	if hot {
-		l.post(ctx, &chain, &types.VmBeingHotMigratedEvent{VmEvent: begin, DestHost: *dest, DestDatacenter: begin.Datacenter, DestDatastore: begin.Ds})
-	} else {
-		l.post(ctx, &chain, &types.VmBeingMigratedEvent{VmEvent: begin, DestHost: *dest, DestDatacenter: begin.Datacenter, DestDatastore: begin.Ds})
+	dest := types.HostEventArgument{EntityEventArgument: types.EntityEventArgument{Name: dst.Name}, Host: to}
+	source := types.HostEventArgument{EntityEventArgument: types.EntityEventArgument{Name: src.Name}, Host: from}
+	place := func(ctx *simulator.Context) {
+		ctx.WithLock(src, func() { ctx.Update(src, []types.PropertyChange{{Name: "vm", Val: without(src.Vm, vm.ref)}}) })
+		ctx.WithLock(dst, func() {
+			ctx.Update(dst, []types.PropertyChange{{Name: "vm", Val: append(without(dst.Vm, vm.ref), vm.ref)}})
+		})
+		ctx.WithLock(obj, func() {
+			ctx.Update(obj, []types.PropertyChange{{Name: "runtime.host", Val: to}, {Name: "summary.runtime.host", Val: to}})
+		})
 	}
-	ctx.WithLock(src, func() { ctx.Update(src, []types.PropertyChange{{Name: "vm", Val: without(src.Vm, vm.ref)}}) })
-	ctx.WithLock(dst, func() {
-		ctx.Update(dst, []types.PropertyChange{{Name: "vm", Val: append(without(dst.Vm, vm.ref), vm.ref)}})
-	})
-	ctx.WithLock(obj, func() {
-		ctx.Update(obj, []types.PropertyChange{{Name: "runtime.host", Val: to}, {Name: "summary.runtime.host", Val: to}})
-	})
-	done := types.VmMigratedEvent{VmEvent: l.vmEvent(refs, vm, to), SourceHost: types.HostEventArgument{EntityEventArgument: types.EntityEventArgument{Name: src.Name}, Host: from}, SourceDatacenter: begin.Datacenter, SourceDatastore: begin.Ds}
-	if drs {
-		l.post(ctx, &chain, &types.DrsVmMigratedEvent{VmMigratedEvent: done})
-		l.record(ctx, vm.ref, vm.vm.Name, "Drm.ExecuteVMotionLRO", "Drm.ExecuteVMotionLRO", bySystem(), chain)
+	if !l.off[refs.Cluster.Key][vm.vm.Name] {
+		chain := l.begin(sys, begin.Event, vm.ref, vm.vm.Name, "", "Drm.ExecuteVMotionLRO", bySystem())
+		leaving := begin
+		leaving.Ds = nil
+		l.post(sys, chain, hotMigrating(begin, dst.Name), &types.VmEmigratingEvent{VmEvent: leaving})
+		place(sys)
+		l.post(sys, chain, &types.DrsVmMigratedEvent{VmMigratedEvent: types.VmMigratedEvent{VmEvent: l.vmEvent(refs, vm, to), SourceHost: source, SourceDatacenter: begin.Datacenter, SourceDatastore: begin.Ds}})
 	} else {
-		l.post(ctx, &chain, &done)
-		l.record(ctx, vm.ref, vm.vm.Name, "RelocateVM_Task", "VirtualMachine.relocate", byUser(), chain)
+		ctx := l.as(lifeUser)
+		chain := within
+		if chain == 0 {
+			chain = l.begin(ctx, begin.Event, vm.ref, vm.vm.Name, "RelocateVM_Task", "VirtualMachine.relocate", byUser())
+		}
+		l.post(ctx, chain, &types.VmBeingRelocatedEvent{VmRelocateSpecEvent: types.VmRelocateSpecEvent{VmEvent: begin}, DestHost: dest, DestDatacenter: begin.Datacenter, DestDatastore: begin.Ds})
+		place(ctx)
+		l.post(ctx, chain, &types.VmRelocatedEvent{VmRelocateSpecEvent: types.VmRelocateSpecEvent{VmEvent: l.vmEvent(refs, vm, to)}, SourceHost: source, SourceDatacenter: begin.Datacenter, SourceDatastore: begin.Ds})
 	}
 	return life.Move{VM: vm.vm.Name, From: src.Name, To: dst.Name}, true
+}
+
+// hotMigrating is the event a vCenter of this age starts a vMotion with.
+func hotMigrating(at types.VmEvent, destHost string) *types.EventEx {
+	e := at.Event
+	e.FullFormattedMessage = fmt.Sprintf("Hot migrating %s from %s, %s in %s to %s, %s in %s with encryption", e.Vm.Name, e.Host.Name, e.Ds.Name, e.Datacenter.Name, destHost, e.Ds.Name, e.Datacenter.Name)
+	return &types.EventEx{Event: e, EventTypeId: "com.vmware.vc.vm.VmHotMigratingWithEncryptionEvent", Severity: "info",
+		Arguments: []types.KeyAnyValue{{Key: "destHost", Value: destHost}, {Key: "destDatastore", Value: e.Ds.Name}, {Key: "destDatacenter", Value: e.Datacenter.Name}},
+		ObjectId:  e.Vm.Vm.Value, ObjectType: "VirtualMachine", ObjectName: e.Vm.Name}
 }
 
 // loads is the in-service hosts of a cluster and the VMs on each.
@@ -426,7 +535,7 @@ func (l *Life) Balance(cluster string, n int, pick uint64) []life.Move {
 			}
 		}
 		vm := from.take(running[int((pick>>uint(8*(i%7)))%uint64(len(running)))])
-		if m, ok := l.move(refs, vm, to.ref, true); ok {
+		if m, ok := l.move(refs, vm, to.ref, 0); ok {
 			out = append(out, m)
 			gave[from.ref], took[to.ref] = true, true
 		}
@@ -504,19 +613,19 @@ func (l *Life) power(cluster, name string, on bool) bool {
 	}
 	ctx := l.as(lifeUser)
 	ev := l.vmEvent(refs, vm, l.hostOf(ctx, vm))
-	var chain int32
+	ev.Ds = nil
 	if on {
-		l.post(ctx, &chain, &types.VmStartingEvent{VmEvent: ev})
+		chain := l.begin(ctx, ev.Event, vm.ref, name, "PowerOnVM_Task", "VirtualMachine.powerOn", byUser())
+		l.post(ctx, chain, &types.VmStartingEvent{VmEvent: ev})
 		l.setPower(ctx, obj, vm.vm, true)
 		delete(l.off[cluster], name)
-		l.post(ctx, &chain, &types.VmPoweredOnEvent{VmEvent: ev})
-		l.record(ctx, vm.ref, name, "PowerOnVM_Task", "VirtualMachine.powerOn", byUser(), chain)
+		l.post(ctx, chain, &types.VmPoweredOnEvent{VmEvent: ev})
 	} else {
-		l.post(ctx, &chain, &types.VmStoppingEvent{VmEvent: ev})
+		chain := l.begin(ctx, ev.Event, vm.ref, name, "PowerOffVM_Task", "VirtualMachine.powerOff", byUser())
+		l.post(ctx, chain, &types.VmStoppingEvent{VmEvent: ev})
 		l.setPower(ctx, obj, vm.vm, false)
 		l.off[cluster][name] = true
-		l.post(ctx, &chain, &types.VmPoweredOffEvent{VmEvent: ev})
-		l.record(ctx, vm.ref, name, "PowerOffVM_Task", "VirtualMachine.powerOff", byUser(), chain)
+		l.post(ctx, chain, &types.VmPoweredOffEvent{VmEvent: ev})
 	}
 	l.counts(ctx, refs)
 	return true
@@ -604,6 +713,11 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	if ds != nil {
 		ctx.WithLock(ds, func() { address, ds.Summary.Url = ds.Summary.Url, ds.Info.GetDatastoreInfo().Url })
 	}
+	// the creation starts as on a real vCenter, with the event of its task;
+	// vcsim then makes the task and posts the rest, which join the chain
+	folder := l.s.dcs[cl.Datacenter].vmFolder
+	queued := time.Now()
+	te, chain := l.head(ctx, types.Event{Datacenter: l.where(refs, to.ref).Datacenter}, types.TaskInfo{Name: "CreateVM_Task", DescriptionId: "Folder.createVm", Entity: &folder.Self, EntityName: folder.Name, Reason: byUser(), QueueTime: queued})
 	l.s.tasks = newTaskWaiter(ctx)
 	err := l.s.createVM(ctx, refs, vm)
 	ctx.Map.RemoveHandler(l.s.tasks)
@@ -628,10 +742,31 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	ctx.WithLock(obj, func() {
 		ctx.Update(obj, []types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}})
 	})
-	var chain int32
+	var made types.ManagedObjectReference
+	ctx.WithLock(folder, func() {
+		if n := len(folder.RecentTask); n > 0 {
+			made = folder.RecentTask[n-1]
+		}
+	})
+	if t, ok := l.reg.Get(made).(*simulator.Task); ok {
+		te.Info.Key, te.Info.Task = t.Self.Value, t.Self
+		l.own(ctx, t, folder.Self, chain, byUser())
+	}
+	// vcsim announced the VM before the builder gave it its own identities
+	for _, e := range l.adopt(ctx, chain, ref) {
+		switch e := e.(type) {
+		case *types.VmUuidAssignedEvent:
+			e.FullFormattedMessage = strings.ReplaceAll(e.FullFormattedMessage, e.Uuid, vm.UUID)
+			e.Uuid = vm.UUID
+		case *types.VmInstanceUuidAssignedEvent:
+			e.FullFormattedMessage = strings.ReplaceAll(e.FullFormattedMessage, e.InstanceUuid, vm.InstanceUUID)
+			e.InstanceUuid = vm.InstanceUUID
+		}
+	}
 	ev := l.vmEvent(refs, lv, to.ref)
-	l.post(ctx, &chain, &types.VmStartingEvent{VmEvent: ev}, &types.VmPoweredOnEvent{VmEvent: ev})
-	l.record(ctx, ref, vm.Name, "PowerOnVM_Task", "VirtualMachine.powerOn", byUser(), chain)
+	ev.Ds = nil
+	on := l.begin(ctx, ev.Event, ref, vm.Name, "PowerOnVM_Task", "VirtualMachine.powerOn", byUser())
+	l.post(ctx, on, &types.VmStartingEvent{VmEvent: ev}, &types.VmPoweredOnEvent{VmEvent: ev})
 	l.counts(ctx, refs)
 	l.space(ctx, refs)
 	if l.VMAdded != nil {
@@ -658,17 +793,20 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 		l.power(cluster, name, false)
 	}
 	ctx := l.as(lifeUser)
+	te, chain := l.head(ctx, l.vmEvent(refs, vm, l.hostOf(ctx, vm)).Event, types.TaskInfo{Name: "Destroy_Task", DescriptionId: "VirtualMachine.destroy", Entity: &vm.ref, EntityName: name, Reason: byUser(), QueueTime: time.Now()})
 	body := obj.DestroyTask(ctx, &types.Destroy_Task{This: vm.ref})
 	if f := body.Fault(); f != nil {
 		return "", fmt.Errorf("remove %s: %s", name, f.String)
 	}
 	if t, ok := l.reg.Get(taskOfDestroy(body)).(*simulator.Task); ok {
-		t.Wait()
-		l.old = append(l.old, oldTask{ref: t.Self, entity: vm.ref, at: time.Now()})
+		l.wait(t)
+		te.Info.Key, te.Info.Task = t.Self.Value, t.Self
+		l.own(ctx, t, vm.ref, chain, byUser())
 		if t.Info.Error != nil {
 			return "", fmt.Errorf("remove %s: %s", name, t.Info.Error.LocalizedMessage)
 		}
 	}
+	l.adopt(ctx, chain, vm.ref)
 	delete(l.vms[cluster], name)
 	delete(l.off[cluster], name)
 	cl := refs.Cluster
@@ -699,6 +837,17 @@ func (l *Life) hostRef(refs *ClusterRefs, name string) (types.ManagedObjectRefer
 	return types.ManagedObjectReference{}, false
 }
 
+// ha says whether the cluster has vSphere HA on, which a host leaves and
+// joins as it goes into and out of maintenance mode.
+func (l *Life) ha(refs *ClusterRefs) bool {
+	ccr, ok := l.reg.Get(refs.Ref).(*simulator.ClusterComputeResource)
+	if !ok {
+		return false
+	}
+	cfg, ok := ccr.ConfigurationEx.(*types.ClusterConfigInfoEx)
+	return ok && cfg.DasConfig.Enabled != nil && *cfg.DasConfig.Enabled
+}
+
 func (l *Life) setMaintenance(ctx *simulator.Context, hs *simulator.HostSystem, in bool) {
 	ctx.WithLock(hs, func() {
 		hs.Runtime.InMaintenanceMode = in
@@ -726,9 +875,9 @@ func (l *Life) EnterMaintenance(cluster, host string) ([]life.Move, error) {
 	if len(hosts) == 0 {
 		return nil, fmt.Errorf("no other host of %s is in service", refs.Cluster.Name)
 	}
-	var chain int32
 	hs := l.host(ref)
-	l.post(ctx, &chain, &types.EnteringMaintenanceModeEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
+	chain := l.begin(ctx, l.where(refs, ref), ref, hs.Name, "EnterMaintenanceMode_Task", "HostSystem.enterMaintenanceMode", byUser())
+	l.post(ctx, chain, &types.EnteringMaintenanceModeEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
 	here, _, _ := l.hostState(ctx, ref)
 	byRef := map[types.ManagedObjectReference]*lifeVM{}
 	for _, vm := range l.vms[cluster] {
@@ -744,14 +893,16 @@ func (l *Life) EnterMaintenance(cluster, host string) ([]life.Move, error) {
 	var out []life.Move
 	for _, vm := range vms {
 		to := lightest(hosts, nil)
-		if m, ok := l.move(refs, vm, to.ref, true); ok {
+		if m, ok := l.move(refs, vm, to.ref, chain); ok {
 			out = append(out, m)
 			to.vms = append(to.vms, vm)
 		}
 	}
+	if l.ha(refs) {
+		l.post(ctx, chain, &types.HostDasDisabledEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
+	}
 	l.setMaintenance(ctx, hs, true)
-	l.post(ctx, &chain, &types.EnteredMaintenanceModeEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
-	l.record(ctx, ref, hs.Name, "EnterMaintenanceMode_Task", "HostSystem.enterMaintenanceMode", byUser(), chain)
+	l.post(ctx, chain, &types.EnteredMaintenanceModeEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
 	return out, nil
 }
 
@@ -768,10 +919,12 @@ func (l *Life) ExitMaintenance(cluster, host string, pick uint64) []life.Move {
 	}
 	ctx := l.as(lifeUser)
 	hs := l.host(ref)
-	var chain int32
+	chain := l.begin(ctx, l.where(refs, ref), ref, hs.Name, "ExitMaintenanceMode_Task", "HostSystem.exitMaintenanceMode", byUser())
 	l.setMaintenance(ctx, hs, false)
-	l.post(ctx, &chain, &types.ExitMaintenanceModeEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
-	l.record(ctx, ref, hs.Name, "ExitMaintenanceMode_Task", "HostSystem.exitMaintenanceMode", byUser(), chain)
+	l.post(ctx, chain, &types.ExitMaintenanceModeEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
+	if l.ha(refs) {
+		l.post(ctx, chain, &types.HostDasEnabledEvent{HostEvent: types.HostEvent{Event: l.where(refs, ref)}})
+	}
 
 	hosts := l.loads(ctx, refs, types.ManagedObjectReference{})
 	var me *hostLoad
@@ -809,7 +962,7 @@ func (l *Life) ExitMaintenance(cluster, host string, pick uint64) []life.Move {
 			break
 		}
 		vm := from.take(at)
-		if m, ok := l.move(refs, vm, ref, true); ok {
+		if m, ok := l.move(refs, vm, ref, 0); ok {
 			out = append(out, m)
 		}
 		me.vms = append(me.vms, vm)
