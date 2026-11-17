@@ -66,6 +66,9 @@ func main() {
 	dataDir := flag.String("data", "", "directory for the identity registry and the self-signed certificate (env VCSIM_DATA; default data)")
 	seed := flag.String("seed", "phase1", "identity seed for the built-in scenario (ignored with -scenario)")
 	queryLog := flag.String("query-log", "", "enable full query capture to this JSONL path (may contain inventory identifiers)")
+	queryLogBytes := flag.Int("query-log-max-bytes", 0, "bytes one log file may hold before it is gzipped and a new one started (0: default 4194304)")
+	queryLogFiles := flag.Int("query-log-max-files", 0, "how many log files to keep at most, oldest deleted first (0: default 4)")
+	queryLogTotal := flag.Int("query-log-max-total", 0, "total bytes the whole query log may take across its files (0: default 25165824, or the space the volume has)")
 	unansweredStdout := flag.Bool("unanswered-stdout", false, "write unanswered requests as JSON lines to stdout")
 	debugCapture := flag.Bool("debug-capture", true, "initially write the requests a tool makes about licensing and sign-on (/ls, /lookupservice, /sso-adminserver, /sts, POST /api and the session-ticket operations of /sdk) to stdout, with secrets scrubbed; the console's choice overrides this default")
 	regenerate := flag.Bool("regenerate", false, "discard the identity registry (required after a seed change; ids change only if the seed did)")
@@ -208,7 +211,8 @@ func main() {
 	}
 	defer ctl.Close()
 
-	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: *debugCapture}, os.Stdout)
+	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: *debugCapture}, os.Stdout, volumeBytes(*dataDir),
+		querylog.Limits{MaxFileBytes: int64(*queryLogBytes), MaxFiles: *queryLogFiles, MaxTotal: int64(*queryLogTotal)})
 	if err != nil && !storage.Full(err) {
 		log.Fatal(err)
 	}
@@ -271,6 +275,17 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	<-sig
+}
+
+// volumeBytes is the capacity of the state volume in bytes, so the log's cap
+// can be limited to the space the volume actually has. A claim whose capacity
+// cannot be read gives 0, which means "use the default cap".
+func volumeBytes(dir string) int64 {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil || st.Blocks == 0 {
+		return 0
+	}
+	return int64(st.Blocks) * int64(st.Bsize)
 }
 
 // sourceHash identifies the scenario the process started from, so a saved

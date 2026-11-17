@@ -82,7 +82,7 @@ func TestScrubLongRunsAndNonXML(t *testing.T) {
 
 func debugCapture(t *testing.T, settings Settings) (*Capture, *bytes.Buffer) {
 	var out bytes.Buffer
-	c, err := NewCapture(t.TempDir(), "", settings, &out)
+	c, err := NewCapture(t.TempDir(), "", settings, &out, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestDebugCaptureCanBeSwitchedOff(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("logged while off: %s", out.String())
 	}
-	c2, err := NewCapture(c.settingsPath[:len(c.settingsPath)-len("/capture-settings.json")], "", Settings{Debug: true}, out)
+	c2, err := NewCapture(c.settingsPath[:len(c.settingsPath)-len("/capture-settings.json")], "", Settings{Debug: true}, out, 0, Limits{})
 	if err != nil || c2.State().Settings.Debug {
 		t.Fatal("saved off setting must override the default", err)
 	}
@@ -187,7 +187,7 @@ func TestDebugCaptureOnByDefaultWhenSettingsFileLacksIt(t *testing.T) {
 	if err := writeFile(dir+"/capture-settings.json", `{"full":false,"unanswered":true,"stdout":false}`); err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewCapture(dir, "", Settings{Debug: true}, &bytes.Buffer{})
+	c, err := NewCapture(dir, "", Settings{Debug: true}, &bytes.Buffer{}, 0, Limits{})
 	if err != nil || !c.State().Settings.Debug {
 		t.Fatal("debug must stay on", err)
 	}

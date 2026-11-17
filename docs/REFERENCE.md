@@ -30,7 +30,10 @@ go build ./cmd/vcsimulator
 | `-scenario FILE` | the scenario ([reference](SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
 | `-data DIR` | holds `registry.json` (identities), `tls/` (the self-signed certificate, created once) and `sign-on-key.json` (the key sign-on tokens are signed with, created when first needed and kept for as long as the seed is the same); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
 | `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
-| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. A start-up default: see the saved capture settings below |
+| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. The log is bounded: it rotates by size into gzip archives and the oldest files are deleted, so its total stays inside the cap. A start-up default: see the saved capture settings below |
+| `-query-log-max-bytes N` | bytes one log file may hold before it is gzipped and a new one starts (default 4194304) |
+| `-query-log-max-files N` | how many log files to keep at most, oldest deleted first (default 4) |
+| `-query-log-max-total N` | total bytes the whole log may take across its files (default 25165824, or the data volume's capacity less 8 MiB kept for the state files when that is smaller) |
 | `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; a start-up default, and the console has no switch for it |
 | `-debug-capture=false` | initially stop writing what tools ask about licensing and sign-on to stdout (the requests listed under "Debug capture" below); on by default. A start-up default: see the saved capture settings below |
 | `-lookup-trust-cert FILE` | a PEM file with the certificate tools see at the simulator's address when a proxy in front of it ends TLS (env `VCSIM_LOOKUP_TRUST_CERT`). The lookup service names it as the certificate to trust for the sign-on addresses it hands out, in place of the simulator's own, which such a tool never sees. The file is read again when it changes. Without it the simulator's own certificate is named |
@@ -56,6 +59,16 @@ the console. SOAP credentials, session operations and headers are omitted or
 redacted, but request bodies can contain inventory identifiers. Treat the
 records accordingly. Unanswered records are bounded in memory and kept until
 deleted; turning full capture off deletes what it captured.
+
+The full log lives in the data volume as `query-log.jsonl` plus its gzip
+archives `query-log.N.jsonl.gz`. It cannot grow past its cap: when a file
+reaches `-query-log-max-bytes` it is compressed and a new one starts, and when
+the files together pass `-query-log-max-total` the oldest are deleted first.
+Where the volume's capacity is known, the cap never passes that capacity less
+8 MiB, so the state files always keep their room. The chart sets the three
+limits with `simulator.capture.queryLogMaxFileBytes`, `queryLogMaxFiles` and
+`queryLogMaxTotal` (0 keeps the default). Downloads and "every request, one at a
+time" read across the rotated and compressed files.
 
 The start-up flags `-query-log`, `-unanswered-stdout` and `-debug-capture` only
 set the first defaults. The first time any capture switch on **Requests** is
@@ -454,10 +467,23 @@ Certificate options, in order of precedence:
 
 The PVC (`persistence.enabled`, default on) is mounted at `/data` in every
 mode: it holds the identity registry and, when no TLS Secret is set, the
-certificate. A Secret is overlaid read-only on `/data/tls`. The PVC is
-annotated to survive `helm uninstall` and Argo CD prune or Application
-deletion. With persistence off every new pod issues new identities (and a new
-certificate when self-signed).
+certificate, and the query log when full capture is on. A Secret is overlaid
+read-only on `/data/tls`. The PVC is annotated to survive `helm uninstall` and
+Argo CD prune or Application deletion. With persistence off every new pod
+issues new identities (and a new certificate when self-signed).
+
+`persistence.size` (default 1Gi) must comfortably hold the query log's total
+cap (`simulator.capture.queryLogMaxTotal`, 24 MiB by default) plus the state
+files. On an upgrade the chart patches the claim's size, and Kubernetes grows a
+bound claim only when its storage class sets `allowVolumeExpansion: true`; a
+class without it rejects the whole release update. So for an existing install
+the options are: set `persistence.size` to the size the claim already has (for
+example `100Mi`) and let the log limit itself to the space that is there, which
+keeps room for the state files; or, where the storage class allows it, expand the
+claim (`kubectl patch pvc <name> -p '{"spec":{"resources":{"requests":
+{"storage":"1Gi"}}}}'`), or delete the claim so the next sync recreates it
+with the new size (identities and the pinned certificate are recreated too,
+so do that only when a fresh set is acceptable).
 
 A replaced certificate (a rotated Secret, a cert-manager renewal) is served
 to the next connection without a restart: the simulator re-reads the mounted

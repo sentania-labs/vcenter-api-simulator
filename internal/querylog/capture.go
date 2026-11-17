@@ -31,9 +31,14 @@ type State struct {
 	// FullSince is when full capture was last switched on, if it is on.
 	FullSince *time.Time `json:"fullSince,omitempty"`
 	// Path is the full log's file; the console does not show it.
-	Path      string `json:"-"`
-	FileBytes int64  `json:"fileBytes"`
-	Error     string `json:"error,omitempty"`
+	Path string `json:"-"`
+	// TotalBytes is what the whole log takes (the active file and every
+	// archive), and MaxBytes the cap it is kept inside.
+	TotalBytes int64 `json:"totalBytes"`
+	MaxBytes   int64 `json:"maxBytes"`
+	// Files counts the log's files on disk.
+	Files int    `json:"files"`
+	Error string `json:"error,omitempty"`
 }
 
 const capacity = 1000
@@ -46,14 +51,22 @@ type Capture struct {
 	full, unanswered   []record
 	fullSince          time.Time
 	lastError          string
+	rot                *rotator
 }
 
 // NewCapture loads persisted settings or uses the supplied startup defaults.
-func NewCapture(dir, path string, defaults Settings, stdout io.Writer) (*Capture, error) {
+// totalBytes is the capacity of the volume the log lives on (0 when unknown);
+// it limits the log's total cap so the state files always keep their room.
+// A zero in lim means the default for that one cap.
+func NewCapture(dir, path string, defaults Settings, stdout io.Writer, totalBytes int64, limits Limits) (*Capture, error) {
 	if path == "" {
 		path = filepath.Join(dir, "query-log.jsonl")
 	}
-	c := &Capture{settings: defaults, settingsPath: filepath.Join(dir, "capture-settings.json"), path: path, stdout: stdout}
+	c := &Capture{settings: defaults, settingsPath: filepath.Join(dir, "capture-settings.json"), path: path, stdout: stdout,
+		rot: newRotator(path, LimitsFrom(limits.MaxFileBytes, limits.MaxFiles, int(limits.MaxTotal), totalBytes))}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(c.settingsPath)
 	if err == nil {
 		if err = json.Unmarshal(data, &c.settings); err != nil {
@@ -62,16 +75,9 @@ func NewCapture(dir, path string, defaults Settings, stdout io.Writer) (*Capture
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		return nil, err
-	}
 	// Fail at startup rather than silently dropping a requested persistent log.
 	if c.settings.Full {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return nil, err
-		}
-		if err = f.Close(); err != nil {
+		if err := c.rot.open(); err != nil {
 			return nil, err
 		}
 		c.fullSince = time.Now()
@@ -81,15 +87,18 @@ func NewCapture(dir, path string, defaults Settings, stdout io.Writer) (*Capture
 func (c *Capture) State() State {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	var size int64
-	if info, err := os.Stat(c.path); err == nil {
-		size = info.Size()
+	var total int64
+	files := 0
+	if c.rot != nil {
+		c.rot.scan()
+		total, files = c.rot.total, len(c.rot.state)
 	}
 	kinds := map[string]bool{}
 	for _, r := range c.unanswered {
 		kinds[r.Method+" "+r.Path+" "+r.Operation] = true
 	}
-	st := State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), UnansweredKinds: len(kinds), Path: c.path, FileBytes: size, Error: c.lastError}
+	st := State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), UnansweredKinds: len(kinds), Path: c.path,
+		TotalBytes: total, MaxBytes: c.rot.lim.MaxTotal, Files: files, Error: c.lastError}
 	if c.settings.Full {
 		since := c.fullSince
 		st.FullSince = &since
@@ -100,11 +109,7 @@ func (c *Capture) Set(s Settings) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if s.Full {
-		f, err := os.OpenFile(c.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return err
-		}
-		if err = f.Close(); err != nil {
+		if err := c.rot.open(); err != nil {
 			return err
 		}
 	}
@@ -180,19 +185,24 @@ func (c *Capture) save(r record) {
 		}
 	}
 	if c.settings.Full {
-		c.full = appendBounded(c.full, stored)
-		f, err := os.OpenFile(c.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		b, err := json.Marshal(r)
+		if err == nil && int64(len(b)) > c.rot.lim.MaxTotal {
+			// the operator gave a cap a full record cannot fit into
+			err = errCapTooSmall
+		}
 		if err == nil {
-			err = json.NewEncoder(f).Encode(r)
-			if closeErr := f.Close(); err == nil {
-				err = closeErr
-			}
+			err = c.rot.put(append(b, '\n'))
 		}
 		if err != nil {
-			c.lastError = "The full request log could not be written. Check its storage."
+			if errors.Is(err, errCapTooSmall) {
+				c.lastError = "The log's size limit is smaller than one request. The full log was not written."
+			} else {
+				c.lastError = "The full request log could not be written. Check its storage."
+			}
 		} else {
 			c.lastError = ""
 		}
+		c.full = appendBounded(c.full, stored)
 	}
 	// stdout is an install-time choice and does not depend on the console's switch
 	if c.settings.Unanswered && r.Unanswered {
@@ -222,6 +232,7 @@ func (c *Capture) Records(unanswered bool) []record {
 }
 
 // WriteJSONL downloads the retained full log or the bounded unanswered list.
+// The full log is read across its rotated and gzipped files, oldest line first.
 func (c *Capture) WriteJSONL(w io.Writer, unanswered bool) error {
 	if unanswered {
 		records := c.Records(true)
@@ -234,16 +245,8 @@ func (c *Capture) WriteJSONL(w io.Writer, unanswered bool) error {
 		return nil
 	}
 	c.mu.Lock()
-	f, err := os.Open(c.path)
+	err := c.rot.readChronological(w)
 	c.mu.Unlock()
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	_, err = io.Copy(w, f)
 	return err
 }
 
@@ -253,6 +256,14 @@ func (c *Capture) Clear() error {
 	if err := os.Truncate(c.path, 0); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	for _, f := range c.rot.state {
+		if f.name != c.path {
+			if err := removeFile(f.name); err != nil {
+				return err
+			}
+		}
+	}
+	c.rot.scan()
 	c.full = nil
 	c.unanswered = nil
 	return nil

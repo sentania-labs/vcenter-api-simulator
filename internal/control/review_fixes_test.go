@@ -298,7 +298,7 @@ func TestAddedSlownessAddsToAScenarioFamilyDelayInEitherOrder(t *testing.T) {
 func TestLicenseServiceLogSwitch(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer
-	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true, Debug: true}, &out)
+	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true, Debug: true}, &out, 0, querylog.Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestLicenseServiceLogSwitch(t *testing.T) {
 	if out.Len() != 0 || c.Requests().Capture.Debug {
 		t.Fatalf("still logging after it was switched off: %q", out.String())
 	}
-	again, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true, Debug: true}, &out)
+	again, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true, Debug: true}, &out, 0, querylog.Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
