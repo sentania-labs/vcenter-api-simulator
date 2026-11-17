@@ -168,6 +168,72 @@ func Handler(c *control.Controller, allowedHosts []string) http.Handler {
 		return ok(c.ConditionOff(id))
 	})
 
+	// activity: the environment changes by itself
+	get("/api/activity", func(r *http.Request) (any, error) { return c.Activity(r.URL.Query().Get("cluster")) })
+	get("/api/activity/log", func(r *http.Request) (any, error) {
+		q := r.URL.Query()
+		page, _ := strconv.Atoi(q.Get("page"))
+		return c.ActivityLog(q.Get("range"), q.Get("show"), page), nil
+	})
+	send("POST", "/api/activity/start", func(r *http.Request) (any, error) {
+		var req struct {
+			Confirmed bool `json:"confirmed"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.ActivityStart(req.Confirmed)
+	})
+	send("POST", "/api/activity/stop", func(r *http.Request) (any, error) {
+		var req struct {
+			Confirmed bool `json:"confirmed"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.ActivityStop(req.Confirmed)
+	})
+	send("POST", "/api/activity/dial", func(r *http.Request) (any, error) {
+		var req control.ActDial
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.ActivityDial(req)
+	})
+	send("POST", "/api/activity/limits", func(r *http.Request) (any, error) {
+		var req struct {
+			Min control.N `json:"min"`
+			Max control.N `json:"max"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		if !req.Min.OK || !req.Max.OK {
+			return nil, &control.Invalid{Msg: "Type a whole number in both boxes."}
+		}
+		return c.ActivityLimits(req.Min.V, req.Max.V)
+	})
+	send("POST", "/api/activity/do-now", func(r *http.Request) (any, error) {
+		var req struct {
+			Cluster   string `json:"cluster"`
+			Behaviour string `json:"behaviour"`
+			Confirmed bool   `json:"confirmed"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.ActivityDoNow(req.Cluster, req.Behaviour, req.Confirmed)
+	})
+	send("POST", "/api/activity/resume", func(r *http.Request) (any, error) {
+		var req struct {
+			Behaviour string `json:"behaviour"`
+		}
+		if err := decode(r, &req); err != nil {
+			return nil, err
+		}
+		return c.ActivityResume(req.Behaviour)
+	})
+
 	// requests
 	get("/api/requests", func(r *http.Request) (any, error) { return c.Requests(), nil })
 	get("/api/requests/log", func(r *http.Request) (any, error) { return c.RequestLog(), nil })

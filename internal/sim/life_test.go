@@ -324,14 +324,14 @@ func TestLifeFillShowsInTheDatastoreAndPerformance(t *testing.T) {
 	if got := topology.VsanUsed(refs.Cluster); got != capacity-ds.Summary.FreeSpace {
 		t.Errorf("the vSAN capacity read says %d used, the datastore %d", got, capacity-ds.Summary.FreeSpace)
 	}
-	// never past nine tenths, never below a tenth
+	// never past nine tenths, and a cleanup frees no more than was filled
 	l.Fill(refs.Cluster.Key, 5)
 	if used := capacity - ds.Summary.FreeSpace; used != int64(0.9*float64(capacity)) {
 		t.Errorf("filled to %d of %d", used, capacity)
 	}
 	l.Fill(refs.Cluster.Key, -5)
-	if used := capacity - ds.Summary.FreeSpace; used < int64(0.1*float64(capacity))-1 || used > int64(0.1*float64(capacity))+1 {
-		t.Errorf("emptied to %d of %d", used, capacity)
+	if ds.Summary.FreeSpace != free {
+		t.Errorf("a cleanup left %d free; before anything was filled it was %d", ds.Summary.FreeSpace, free)
 	}
 }
 

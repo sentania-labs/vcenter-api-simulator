@@ -791,8 +791,9 @@ func (l *Life) space(ctx *simulator.Context, refs *ClusterRefs) (used, capacity 
 	return used, capacity
 }
 
-// A datastore is never filled past nine tenths, nor emptied below a tenth.
-const fullest, emptiest = 0.9, 0.1
+// A datastore is never filled past nine tenths. A cleanup frees only what
+// activity filled: what the VMs' own disks use stays used.
+const fullest = 0.9
 
 // Fill implements life.World: the cluster's vSAN datastore gains or loses
 // a share of its capacity.
@@ -807,13 +808,11 @@ func (l *Life) Fill(cluster string, share float64) []life.Store {
 	if capacity <= 0 {
 		return nil
 	}
-	// filling stops at nine tenths and emptying at a tenth; a datastore that is
-	// already beyond either is left where it is
 	target := used + int64(share*float64(capacity))
 	if share > 0 {
 		target = min(target, max(used, int64(fullest*float64(capacity))))
 	} else {
-		target = max(target, min(used, int64(emptiest*float64(capacity))))
+		target = max(target, used-max(0, cl.UsedDelta()))
 	}
 	cl.AddUsed(target - used)
 	now, _ := l.space(ctx, refs)

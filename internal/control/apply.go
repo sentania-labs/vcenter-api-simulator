@@ -67,6 +67,7 @@ func (c *Controller) applyScenario(next *scenario.Scenario, freshRegistry bool) 
 		return false, err
 	}
 	c.reg = newReg
+	c.carryLife(old, nr, newReg != nil && (freshRegistry || next.Seed != old.sc.Seed))
 	c.cur.Store(nr)
 	c.syncConditions(nr)
 	c.armExpiry()
@@ -125,6 +126,10 @@ func (c *Controller) SetPaused(p bool) {
 		c.pausedAt = c.now()
 		c.addHistory("Simulator paused.")
 	} else {
+		if c.life != nil {
+			// nothing is caught up for the time the simulator was paused
+			c.life.Skip(c.now())
+		}
 		c.addHistory("Simulator resumed.")
 	}
 	c.save()

@@ -38,6 +38,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/catalog"
 	"github.com/sentania/vcenter-api-simulator/internal/credentials"
+	"github.com/sentania/vcenter-api-simulator/internal/life"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
@@ -157,6 +158,15 @@ type Controller struct {
 	signins   map[string]time.Time
 	signinsAt time.Time // when signins was last written
 
+	// activity: the engine that makes the environment change by itself, and
+	// what is needed to save it. Guarded by mu.
+	life      *life.Engine
+	lifeSetUp bool      // activity has been started at least once
+	lifeSeq   int64     // the engine's last log id that was seen
+	lifeDirty bool      // there is something to save
+	lifeSaved time.Time // when life.json was last written
+	lifeStop  chan struct{}
+
 	drainMu  sync.Mutex // guards the two below
 	draining map[*sim.Simulator]bool
 	closed   bool
@@ -257,6 +267,7 @@ func New(opts Options) (*Controller, error) {
 	}
 	c.cur.Store(r)
 	c.syncConditions(r)
+	c.initLife(r)
 	cl, h, v, _ := r.topo.Counts()
 	started := fmt.Sprintf("Simulator started with %s, %s and %s.", plural(cl, "cluster"), plural(h, "host"), plural(v, "VM"))
 	if st != nil && fromFile {
@@ -359,6 +370,7 @@ func dropVanishedHostVersions(sc *scenario.Scenario) {
 
 // Close stops the running vCenter and every scheduled change.
 func (c *Controller) Close() {
+	c.closeLife()
 	c.mu.Lock()
 	for _, s := range c.sched {
 		if s.timer != nil {

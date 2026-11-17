@@ -119,6 +119,8 @@ type HomeView struct {
 	Unanswered int  `json:"unanswered"`
 	Faults     int  `json:"faults"`
 	Capturing  bool `json:"capturing"`
+	// Activity is what changes by itself: the tab badge and Home's line.
+	Activity HomeActivity `json:"activity"`
 	// AccountNeeded: first-run set-up has not chosen the tools' password.
 	AccountNeeded bool `json:"accountNeeded"`
 	// Build says which simulator is running; Stats how busy it has been.
@@ -344,6 +346,7 @@ func (c *Controller) Home() *HomeView {
 	}
 
 	v.Unanswered, v.Capturing = counts["unknown"], capture.Full
+	v.Activity = c.homeActivity(r)
 	v.HistoryCount = len(c.timeline)
 	for i := len(c.timeline) - 1; i >= 0 && len(v.Recent) < 3; i-- {
 		v.Recent = append(v.Recent, c.timeline[i])
