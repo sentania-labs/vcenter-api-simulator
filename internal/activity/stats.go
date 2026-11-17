@@ -71,9 +71,6 @@ func OutcomeOf(reason string) string {
 // response slower than the last bound falls in a final open bucket.
 var bounds = [...]float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000}
 
-// Bounds returns the timing buckets' upper edges in milliseconds.
-func Bounds() []float64 { return bounds[:] }
-
 // Timing counts responses by how long they took.
 type Timing struct {
 	Buckets [len(bounds) + 1]uint64
@@ -146,9 +143,6 @@ type Tally struct {
 	timing    Timing
 }
 
-// Timings returns the timing counts, for tests and callers wanting buckets.
-func (t Tally) Timings() Timing { return t.timing }
-
 func newTally() Tally { return Tally{ByService: map[string]Counts{}} }
 
 func (t *Tally) add(c Call) {
@@ -189,5 +183,29 @@ func (l *Log) Lifetime() Tally {
 	return t
 }
 
-// Window returns the tally of calls at or after t.
-func (l *Log) Window(t time.Time) Tally { return TallyOf(l.Since(t)) }
+// Window returns the tally of calls at or after t, and when the tally really
+// begins: t, unless the ring is full and its oldest held call is newer than t,
+// in which case calls from before then have been dropped and that call's time
+// is returned.
+func (l *Log) Window(t time.Time) (Tally, time.Time) {
+	held := l.All()
+	from := t
+	if len(held) == len(l.ring) {
+		oldest := held[0].Time
+		for _, c := range held {
+			if c.Time.Before(oldest) {
+				oldest = c.Time
+			}
+		}
+		if oldest.After(t) {
+			from = oldest
+		}
+	}
+	var in []Call
+	for _, c := range held {
+		if !c.Time.Before(t) {
+			in = append(in, c)
+		}
+	}
+	return TallyOf(in), from
+}

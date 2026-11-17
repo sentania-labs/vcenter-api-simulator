@@ -89,7 +89,10 @@ func TestLifetimeSurvivesTheRingAndTheWindowDoesNot(t *testing.T) {
 	if got := life.ByService[ServiceVsan]; got.NoAnswer != 1 || got.Failed != 1 || got.Total() != 2 {
 		t.Errorf("vsan %+v", got)
 	}
-	win := l.Window(now.Add(-time.Hour))
+	win, from := l.Window(now.Add(-time.Hour))
+	if !from.Equal(now.Add(-time.Hour)) {
+		t.Errorf("window begins %v, want the whole hour", from)
+	}
 	if win.Total() != 3 || win.Answered != 0 || win.NoAnswer != 1 || win.TurnedAway != 1 || win.Failed != 1 {
 		t.Errorf("window %+v", win.Counts)
 	}
@@ -98,5 +101,37 @@ func TestLifetimeSurvivesTheRingAndTheWindowDoesNot(t *testing.T) {
 	}
 	if l.Lifetime().Total() != l.Totals().Requests {
 		t.Error("lifetime and the log's own total disagree")
+	}
+}
+
+func TestWindowSaysWhenTheRingCutItShort(t *testing.T) {
+	now := time.Unix(10_000, 0)
+	hour := now.Add(-time.Hour)
+	fill := func(l *Log, n int, at time.Time) {
+		for i := 0; i < n; i++ {
+			c := call(SurfaceSDK, "RetrieveServiceContent", ReasonAnswered, 2)
+			c.Time = at.Add(time.Duration(i) * time.Second)
+			l.Add(c)
+		}
+	}
+	// room to spare: nothing was dropped, so the window is the whole hour
+	roomy := New(10, now)
+	fill(roomy, 3, now.Add(-10*time.Minute))
+	if win, from := roomy.Window(hour); win.Total() != 3 || !from.Equal(hour) {
+		t.Errorf("not full: %d calls from %v, want 3 from %v", win.Total(), from, hour)
+	}
+	// full, but the oldest held call is over an hour old: still the whole hour
+	old := New(4, now)
+	fill(old, 6, now.Add(-2*time.Hour))
+	if win, from := old.Window(hour); win.Total() != 0 || !from.Equal(hour) {
+		t.Errorf("full of old calls: %d from %v, want 0 from %v", win.Total(), from, hour)
+	}
+	// full of recent calls: the ring has dropped some from the hour
+	busy := New(4, now)
+	fill(busy, 9, now.Add(-20*time.Minute))
+	win, from := busy.Window(hour)
+	want := now.Add(-20*time.Minute + 5*time.Second)
+	if win.Total() != 4 || !from.Equal(want) {
+		t.Errorf("full of recent calls: %d from %v, want 4 from %v", win.Total(), from, want)
 	}
 }

@@ -49,7 +49,7 @@ function statsCard(ctx) {
   }
   const tiles = [['Answered', b.answered], ['Turned away', b.turnedAway], ['Not answered', b.noAnswer], ['Failed on purpose', b.failed]];
   const rows = b.services.map((x) => ({ n: x.name, r: num(x.requests), a: num(x.answered), t: num(x.turnedAway), u: num(x.noAnswer), f: num(x.failed) }));
-  return card('How busy it has been', html`<p style="margin-bottom:10px"><b>${plural(b.requests, 'request')}</b> ${all ? 'since it started' : 'in the last hour'}. Typical answer: under <b>${msText(b.medianMs)}</b>. The slowest 1 in 20 took up to <b>${msText(b.slowMs)}</b>.</p>
+  return card('How busy it has been', html`<p style="margin-bottom:10px"><b>${plural(b.requests, 'request')}</b> ${all ? 'since it started' : b.coveredSec ? `in the last ${uptimeText(b.coveredSec)}, as far back as the simulator keeps them` : 'in the last hour'}. Typical answer: under <b>${msText(b.medianMs)}</b>. The slowest 1 in 20 took up to <b>${msText(b.slowMs)}</b>.</p>
     <div class="m-stats">${tiles.map(([l, n]) => html`<div class="m-stat"><div class="n">${num(n)}</div><div class="l">${l}</div></div>`)}</div>
     <div style="margin-top:12px">${table([{ h: 'Asked of', k: 'n' }, { h: 'Requests', k: 'r' }, { h: 'Answered', k: 'a' }, { h: 'Turned away', k: 't' }, { h: 'Not answered', k: 'u' }, { h: 'Failed on purpose', k: 'f' }], rows)}</div>
     <p class="m-small" style="margin-top:8px">Turned away: not signed in, a wrong password, or the simulator was paused. Not answered: something the simulator cannot answer yet. ${link('See which', '/requests')}</p>`, pick);

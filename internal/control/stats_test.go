@@ -3,6 +3,8 @@ package control
 import (
 	"testing"
 	"time"
+
+	"github.com/sentania/vcenter-api-simulator/internal/activity"
 )
 
 // Home carries the build the process was started as and the vCenter it
@@ -68,5 +70,40 @@ func TestStatsLastHourFallsOffButTotalStays(t *testing.T) {
 	}
 	if !st.StartedAt.Equal(clock.now().Add(-90 * time.Minute)) {
 		t.Errorf("started at %v", st.StartedAt)
+	}
+}
+
+// A busy simulator's request log holds fewer calls than an hour of them. The
+// last-hour figures then say how far back they reach instead of claiming the
+// hour, and the since-started figures still count everything.
+func TestStatsLastHourSaysWhenItCoversLess(t *testing.T) {
+	clock := &clock{t: time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)}
+	c := newCtlAt(t, small(t), "", "t", clock.now)
+	if st := c.Home().Stats; st.LastHour.CoveredSec != 0 {
+		t.Errorf("a fresh simulator covers %d s, want it to say nothing", st.LastHour.CoveredSec)
+	}
+	const held = activity.DefaultSize
+	for i := 0; i < held+10; i++ {
+		clock.add(10 * time.Millisecond)
+		c.Log.Add(activity.Call{Time: clock.now(), Surface: activity.SurfaceSDK, Method: "RetrieveServiceContent", Reason: activity.ReasonAnswered, DurationMs: 1})
+	}
+	clock.add(time.Second)
+	st := c.Home().Stats
+	if st.Total.Requests != held+10 {
+		t.Errorf("since started counts %d, want %d", st.Total.Requests, held+10)
+	}
+	if st.LastHour.Requests != held {
+		t.Errorf("last hour counts %d, want the %d the log holds", st.LastHour.Requests, held)
+	}
+	wantSec := int64((time.Duration(held-1)*10*time.Millisecond + time.Second).Seconds())
+	if st.LastHour.CoveredSec != wantSec {
+		t.Errorf("covered %d s, want %d", st.LastHour.CoveredSec, wantSec)
+	}
+	if st.Total.CoveredSec != 0 {
+		t.Errorf("since started claims to cover only %d s", st.Total.CoveredSec)
+	}
+	clock.add(2 * time.Hour)
+	if st := c.Home().Stats; st.LastHour.Requests != 0 || st.LastHour.CoveredSec != 0 {
+		t.Errorf("an hour later: %d requests covering %d s, want an empty, whole hour", st.LastHour.Requests, st.LastHour.CoveredSec)
 	}
 }

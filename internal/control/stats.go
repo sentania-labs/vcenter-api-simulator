@@ -36,6 +36,10 @@ type StatBlock struct {
 	MedianMs float64       `json:"medianMs"`
 	SlowMs   float64       `json:"slowMs"`
 	Services []ServiceStat `json:"services"`
+	// CoveredSec is set only when the block covers less time than it is
+	// named for: the request log holds a limited number of calls, so a busy
+	// simulator's last hour reaches back only this far.
+	CoveredSec int64 `json:"coveredSec,omitempty"`
 }
 
 // StatsView is the numbers on Home.
@@ -64,6 +68,12 @@ func statBlock(t activity.Tally) StatBlock {
 // Stats counts what has been asked of the simulator. c.mu need not be held.
 func (c *Controller) Stats() StatsView {
 	now := c.now()
+	hour := now.Add(-time.Hour)
+	win, from := c.Log.Window(hour)
+	last := statBlock(win)
+	if from.After(hour) {
+		last.CoveredSec = int64(now.Sub(from).Seconds())
+	}
 	return StatsView{StartedAt: c.started, UptimeSec: int64(now.Sub(c.started).Seconds()),
-		Total: statBlock(c.Log.Lifetime()), LastHour: statBlock(c.Log.Window(now.Add(-time.Hour)))}
+		Total: statBlock(c.Log.Lifetime()), LastHour: last}
 }
