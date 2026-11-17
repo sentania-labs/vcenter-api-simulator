@@ -1436,7 +1436,6 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 	tool.perf(ref, "cluster-pmem")   // likewise
 	tool.do(http.MethodPost, "/ls/sdk", fmt.Sprintf(soapEnv, `<QueryAssignedLicenses xmlns="urn:vim25"><_this type="LicenseAssignmentManager">LicenseAssignmentManager</_this></QueryAssignedLicenses>`))
 	tool.post("/sdk", `<QueryPerfCounterByLevel xmlns="urn:vim25"><_this type="PerformanceManager">PerfMgr</_this><level>1</level></QueryPerfCounterByLevel>`)
-	tool.do(http.MethodGet, "/rest/vcenter/namespace-management/clusters", "")
 	tool.do(http.MethodGet, "/sdk/vim.wsdl", "")
 	tool.do(http.MethodGet, "/sdk/vimServiceVersions.xml", "")
 	tool.content() // it carries on
@@ -1445,7 +1444,6 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 	want := map[string]string{
 		"Which license this vCenter has":                                  "unknown",
 		"The list of measurements vCenter can report":                     "ok",
-		"Whether Kubernetes is turned on for any cluster":                 "unknown",
 		"The file that describes how to talk to vCenter":                  "unknown",
 		"Sign-in with a wrong password, from 127.0.0.1":                   "denied",
 		"Signing in and out":                                              "ok",
@@ -1463,25 +1461,25 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 			t.Errorf("%q is %q, want %q (all: %v)", title, got[title], st, got)
 		}
 	}
-	if v.Counts["unknown"] != 3 || v.Counts["denied"] != 1 || v.Counts["fault"] != 0 {
+	if v.Counts["unknown"] != 2 || v.Counts["denied"] != 1 || v.Counts["fault"] != 0 {
 		t.Errorf("counts %v", v.Counts)
 	}
 	if v.Asks[0].St != "unknown" {
 		t.Error("problems are not listed first")
 	}
-	if v.Verdict.Tone != "bad" || v.Verdict.Big != "3 kinds of request are not being answered." || !strings.Contains(v.Verdict.Line, `The tool at 127.0.0.1 ("collector/2.0") is connected. It carried on collecting without them.`) {
+	if v.Verdict.Tone != "bad" || v.Verdict.Big != "2 kinds of request are not being answered." || !strings.Contains(v.Verdict.Line, `The tool at 127.0.0.1 ("collector/2.0") is connected. It carried on collecting without them.`) {
 		t.Errorf("verdict %+v", v.Verdict)
 	}
 	wantContains(t, askOf(t, c, "Which license").Short, "The tool carried on. VCF Operations' own adapter would stop")
 	wantContains(t, askOf(t, c, "cache disks").Short, `The answer was "there are none"`)
 	wantContains(t, askOf(t, c, "also refuses").Short, `as on a real vCenter`)
 
-	// capture holds only the three the simulator has no answer for
-	if cv := v.Capture; cv.Kept != 3 || cv.Kinds != 3 || !cv.Unanswered {
+	// capture holds only the two the simulator has no answer for
+	if cv := v.Capture; cv.Kept != 2 || cv.Kinds != 2 || !cv.Unanswered {
 		t.Errorf("capture %+v", cv)
 	}
 	home := c.Home()
-	if home.Unanswered != 3 {
+	if home.Unanswered != 2 {
 		t.Errorf("Home counts %d unanswered", home.Unanswered)
 	}
 	var titles []string
@@ -1489,10 +1487,10 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 		titles = append(titles, a.T+" / "+a.D)
 	}
 	all := strings.Join(titles, "\n")
-	wantContains(t, all, "3 kinds of request are not being answered")
+	wantContains(t, all, "2 kinds of request are not being answered")
 	wantContains(t, all, "One is the license, which would stop a different tool")
 	wantContains(t, all, "Someone else tried a wrong password 1 time")
-	if len(home.Tools) != 1 || home.Tools[0].Unknown != 3 || !home.Tools[0].Carried {
+	if len(home.Tools) != 1 || home.Tools[0].Unknown != 2 || !home.Tools[0].Carried {
 		t.Errorf("tools %+v", home.Tools)
 	}
 
@@ -1502,8 +1500,8 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantContains(t, text, "The 3 already captured are kept")
-	if c.Requests().Capture.Kept != 3 {
+	wantContains(t, text, "The 2 already captured are kept")
+	if c.Requests().Capture.Kept != 2 {
 		t.Error("turning capture off threw the captured requests away")
 	}
 	if _, err := c.ClearCapture(); err != nil {
@@ -1606,6 +1604,10 @@ func TestAddressAndItsCheck(t *testing.T) {
 	if got := c.Address(); got != "https://sim.test:8443" {
 		t.Errorf("address %q", got)
 	}
+	c.opts.Endpoint = "0123456789ab"
+	if got := c.Home().Address; got != "" {
+		t.Errorf("container ID exposed as address: %q", got)
+	}
 	c.opts.PublicURL = "https://vcsim.lab.example/"
 	if got := c.Home().Address; got != "https://vcsim.lab.example" {
 		t.Errorf("address %q", got)
@@ -1662,5 +1664,49 @@ func TestResolvedScenarioIsTheSavedOne(t *testing.T) {
 	}
 	if file, _ := small(t).VCenterVersion(); file.Version == got {
 		t.Fatalf("test proves nothing: the scenario file already says %q", got)
+	}
+}
+
+func TestSupportClaimsForAnsweredServices(t *testing.T) {
+	c := newCtl(t, small(t), "", "support")
+	tool := newTool(t, c, "support-test")
+	rows, _ := c.Supported()
+	if !tool.login("administrator@vsphere.local", "first-password") {
+		t.Fatal("login")
+	}
+	status, body := tool.post("/sdk", `<QueryPerfCounterByLevel xmlns="urn:vim25"><_this type="PerformanceManager">PerfMgr</_this><level>1</level></QueryPerfCounterByLevel>`)
+	if status != 200 || strings.Contains(body, "Fault") {
+		t.Fatalf("performance counters: %d %s", status, body)
+	}
+	foundPerf := false
+	for _, row := range rows {
+		if row.Part == "vSphere performance counters and values" {
+			foundPerf = true
+			if row.State == "no" {
+				t.Error("performance counters marked unanswered")
+			}
+		}
+	}
+	if !foundPerf {
+		t.Error("performance counter claim missing")
+	}
+	checks := []struct{ title, path string }{{"Kubernetes (Supervisor) information", "/wcp"}, {"The files that describe how to talk to vCenter", "/vsanHealth/vsanServiceVersions.xml"}}
+	for _, check := range checks {
+		found := false
+		for _, row := range rows {
+			if row.Part == check.title {
+				found = true
+				if row.State == "no" {
+					t.Errorf("%s marked unanswered", check.title)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing %s", check.title)
+		}
+		status, _ := tool.do(http.MethodGet, check.path, "")
+		if status != 200 && !(check.path == "/wcp" && status == http.StatusMethodNotAllowed) {
+			t.Errorf("%s: %d", check.path, status)
+		}
 	}
 }

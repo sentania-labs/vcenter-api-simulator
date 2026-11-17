@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,12 +22,17 @@ func (c *Controller) toolViews() []ToolView {
 	return c.tools.list(c.now(), c.paused.Load(), c.pausedAt)
 }
 
+var containerID = regexp.MustCompile(`(?i)^[0-9a-f]{12,64}$`)
+
 // Address is the address tools should use, as one string.
 func (c *Controller) Address() string {
 	if c.opts.PublicURL != "" {
 		return strings.TrimRight(c.opts.PublicURL, "/")
 	}
 	host := c.opts.Endpoint
+	if containerID.MatchString(host) {
+		return ""
+	}
 	if host == "" {
 		host = "localhost"
 	}

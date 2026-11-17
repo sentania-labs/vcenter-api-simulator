@@ -3,8 +3,8 @@ name: vcenter-api-simulator
 description: One simulated vCenter endpoint (/sdk and vSAN /vsanHealth) for VCF Operations management-pack compatibility and scale testing. One release is one vCenter; one instance can host many clusters.
 type: application
 version: 0.1.0
-# The image tag installed when image.tag is empty. It is the unreleased main
-# build. Deployment repositories set image.tag to a release.
+# The release workflow stamps appVersion from the pushed tag when packaging.
+# A source checkout uses the unreleased main image.
 appVersion: main
 home: https://github.com/sentania-labs/vcenter-api-simulator
 sources:

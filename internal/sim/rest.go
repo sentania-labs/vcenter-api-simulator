@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,17 @@ import (
 
 // legacySessionPath is the CIS REST spelling used by the Operations collector.
 const legacySessionPath = "/rest/com/vmware/cis/session"
+
+// emptyRESTReads are the registered reads which report an empty collection.
+var emptyRESTReads = map[string]bool{
+	"/api/cis/tagging/category": true, "/api/cis/tagging/tag": true,
+	"/api/vcenter/namespace-management/clusters": true, "/api/vcenter/namespace-management/clusters/": true,
+	"/api/vcenter/namespaces/instances": true, "/api/vcenter/namespaces/instances/": true,
+	"/api/vcenter/namespaces/instances/v2": true,
+}
+
+// HasEmptyRESTRead reports whether the empty collection route is registered.
+func HasEmptyRESTRead(path string) bool { return emptyRESTReads[path] }
 
 // saltPath is the appliance salt minion configuration, answered with made-up values.
 const saltPath = "/api/appliance/salt/minion/configuration"
@@ -82,6 +94,32 @@ func (s *restSessions) valid(token string) bool {
 }
 
 func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
+	// The older API returns the same reads inside a value envelope.
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/rest/") {
+		path := strings.TrimPrefix(r.URL.Path, "/rest/")
+		if strings.HasPrefix(path, "com/vmware/cis/tagging/") {
+			path = strings.TrimPrefix(path, "com/vmware/")
+		}
+		clone := r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/api/" + path
+		clone.URL = &u
+		rec := httptest.NewRecorder()
+		if s.serve(rec, clone) {
+			for k, values := range rec.Header() {
+				w.Header()[k] = values
+			}
+			w.WriteHeader(rec.Code)
+			if rec.Code >= 200 && rec.Code < 300 {
+				_, _ = w.Write([]byte(`{"value":`))
+				_, _ = w.Write(rec.Body.Bytes())
+				_, _ = w.Write([]byte(`}`))
+			} else {
+				_, _ = w.Write(rec.Body.Bytes())
+			}
+			return true
+		}
+	}
 	if r.URL.Path == "/wcp" {
 		return serveWCP(w, r)
 	}
@@ -174,14 +212,15 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	path := r.URL.Path
+	if HasEmptyRESTRead(path) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+		return true
+	}
 	switch path {
 	case "/api/vcenter/namespace-management/supervisors/summaries":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"items":[]}`))
-		return true
-	case "/api/cis/tagging/category", "/api/cis/tagging/tag", "/api/vcenter/namespace-management/clusters", "/api/vcenter/namespace-management/clusters/", "/api/vcenter/namespaces/instances", "/api/vcenter/namespaces/instances/", "/api/vcenter/namespaces/instances/v2":
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte("[]"))
 		return true
 	case saltPath:
 		w.Header().Set("Content-Type", "application/json")

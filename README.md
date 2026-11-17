@@ -106,7 +106,7 @@ console screen is in [docs/console](docs/console/README.md).
 | A tool asks for | The simulator |
 |---|---|
 | Signing in and out (SOAP `/sdk`, REST `/api/session`) | Answers, for the accounts you set up |
-| Datacenters, clusters, hosts, VMs, datastores, networks (SOAP and REST) | Answers. Some details of VMs on REST are missing |
+| Datacenters, clusters, hosts, VMs, datastores, networks (SOAP and REST) | Answers, including legacy REST reads. Some details of VMs on REST are missing |
 | vSAN performance (`/vsanHealth`), all 69 kinds, ESA and OSA | Answers with made-up values inside the range a real vCenter showed |
 | vSAN settings, disks, health summary, resync summary | Answers. Some detailed health checks are missing. The resync summary says nothing is syncing |
 | vSphere performance counters and values for VMs, hosts, clusters, datastores | Answers with changing values that add up from VM to host to cluster |

@@ -48,6 +48,8 @@ jobs:
             echo "== $f"
             helm lint --strict charts/vcenter-api-simulator -f "$f"
           done
+      - name: test chart defaults and overrides
+        run: charts/vcenter-api-simulator/test.sh
       - name: helm template and kubeconform, every variant
         run: |
           mkdir -p "$RUNNER_TEMP/rendered"
@@ -225,4 +227,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: package chart for this release
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          helm package charts/vcenter-api-simulator --version "$version" --app-version "$version" --destination "$RUNNER_TEMP"
       - uses: sentania-labs/.github/.github/actions/tag-to-release@v1
+      - name: attach chart to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/vcenter-api-simulator-${GITHUB_REF_NAME#v}.tgz" --clobber

@@ -9,6 +9,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/sim"
 )
 
 // Requests: what tools asked for in the last hour, grouped into kinds of
@@ -602,6 +603,10 @@ type SupportRow struct {
 // simulated vCenter reports.
 func (c *Controller) Supported() (rows []SupportRow, vcenter string) {
 	kinds := len(c.cat.Families)
+	supervisor := SupportRow{"Kubernetes (Supervisor) information", "no", "Supervisor lists are not answered."}
+	if sim.HasEmptyRESTRead("/api/vcenter/namespace-management/clusters") {
+		supervisor.State, supervisor.Notes = "part", "Tools can check whether Kubernetes is enabled and read empty lists."
+	}
 	return []SupportRow{
 		{"Signing in, staying signed in, signing out", "full", "Checked against a real vCenter."},
 		{"Lists of datacenters, clusters, hosts, VMs, datastores and networks", "full", "Checked against a real vCenter."},
@@ -610,13 +615,13 @@ func (c *Controller) Supported() (rows []SupportRow, vcenter string) {
 		{"iSCSI and NFS datastores that hosts connect to (the ones on the Storage screen)", "full", "Tools see them, with their size and free space. Their activity counters read zero."},
 		{"vSAN health summary", "part", "The main results are there. Some detailed checks are missing."},
 		{"The newer web interface (REST) for lists", "part", "Reading lists works. Some details of VMs are missing."},
-		{"The files that describe how to talk to vCenter", "part", "One of the two files is served."},
+		{"The files that describe how to talk to vCenter", "full", "The vCenter and vSAN version files are served."},
 		{"Distributed switches", "part", "Present, but reported as the basic type rather than the VMware type."},
-		{"Sign-on tokens, and where vCenter's other services are", "part", "A tool can find the sign-on service and get a signed token for an account. Built from what a real vCenter answers; not yet tried with VCF Operations itself."},
+		{"Sign-on tokens, and where vCenter's other services are", "part", "A tool can find the sign-on service and get a signed token for an account. Built from what a real vCenter answers."},
 		{"Licensing", "part", "Tools are told vCenter and its hosts are in evaluation, and which VCF Operations manages the license if one does (see Security). A licensed vCenter is not simulated."},
-		{"The list of measurements vCenter can report (performance counters)", "no", "Tools that ask for the list get no answer. vSAN performance data itself, above, is answered."},
-		{"Kubernetes (Supervisor) information", "no", "Tools that ask the older web interface whether Kubernetes is turned on get no answer."},
-		{"Fibre Channel storage, and vSAN itself acting as a file server or an iSCSI server", "no", "Tools are told there are none. This does not affect the iSCSI and NFS datastores above."},
+		{"vSphere performance counters and values", "full", "Tools can read the counter list and changing values."},
+		supervisor,
+		{"Fibre Channel storage, and vSAN itself acting as a file server or an iSCSI server", "part", "Tools are told there are none. This does not affect the iSCSI and NFS datastores above."},
 	}, scenario.VersionLabel(c.applied().topo.VCenterVersion)
 }
 

@@ -239,3 +239,61 @@ func TestSaltMinionConfiguration(t *testing.T) {
 		t.Fatalf("shape: %+v", got)
 	}
 }
+
+// Legacy reads have the same data as the current API, wrapped in value.
+func TestLegacyReadEnvelopes(t *testing.T) {
+	sc := tenClusters(t)
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	client := e.srv.Client()
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "password")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	for _, path := range []string{"datacenter", "cluster", "host", "datastore", "network", "vm", "folder", "resource-pool"} {
+		t.Run(path, func(t *testing.T) {
+			read := func(prefix string) any {
+				req, _ := http.NewRequest(http.MethodGet, e.srv.URL+prefix+path, nil)
+				req.Header.Set("vmware-api-session-id", token)
+				res, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer res.Body.Close()
+				if res.StatusCode != 200 {
+					t.Fatalf("%s: %d", prefix, res.StatusCode)
+				}
+				var v any
+				if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
+					t.Fatal(err)
+				}
+				return v
+			}
+			current := read("/api/vcenter/")
+			old := read("/rest/vcenter/").(map[string]any)["value"]
+			if !reflect.DeepEqual(current, old) {
+				t.Fatalf("legacy differs from current")
+			}
+		})
+	}
+	for _, path := range []string{"tag", "category"} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/rest/com/vmware/cis/tagging/"+path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v map[string]any
+		err = json.NewDecoder(res.Body).Decode(&v)
+		res.Body.Close()
+		if err != nil || res.StatusCode != 200 || !reflect.DeepEqual(v["value"], []any{}) {
+			t.Fatalf("%s: %d %v %v", path, res.StatusCode, v, err)
+		}
+	}
+}

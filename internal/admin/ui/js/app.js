@@ -116,10 +116,11 @@ const dark = () => document.documentElement.getAttribute('data-theme') === 'dark
 
 function header() {
   const h = ctx.home, paused = h && !h.running, n = h ? h.attention.length : 0;
+  const address = h && (h.address || window.location.origin);
   return html`<header class="lat-header m-hdr">
     <a class="m-brand" href="#/home"><span class="desk">vCenter </span>Simulator</a>
     ${h ? html`<span class="m-status ${paused ? 'paused' : ''}"><i></i>${paused ? 'Paused' : 'Running'}</span>
-    <span class="m-addr">Address for your tool: <code>${h.address}</code></span>` : html`<span class="m-addr">${ctx.homeError ? ctx.homeError.message : 'Loading…'}</span>`}
+    <span class="m-addr">${h.address ? 'Address for your tool' : 'Suggested address'}: <code>${address}</code></span>` : html`<span class="m-addr">${ctx.homeError ? ctx.homeError.message : 'Loading…'}</span>`}
     <span class="m-sp"></span>
     <span class="desk m-row">${h && !paused ? btn('Pause…', 'pause') : ''}${btn(dark() ? 'Light theme' : 'Dark theme', 'theme', 'lat-btn--ghost')}${btn('Sign out', 'signout', 'lat-btn--ghost')}</span>
     <button type="button" class="lat-btn m-menu-btn" data-act="menu" ${n ? raw(`aria-label="Menu, ${n} ${n === 1 ? 'thing needs' : 'things need'} attention"`) : ''}>Menu${n ? html` <span class="lat-badge lat-badge--bad">${n} to check</span>` : ''}</button>
