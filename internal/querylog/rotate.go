@@ -3,7 +3,6 @@ package querylog
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -95,10 +94,6 @@ type rotator struct {
 	state []rot
 	total int64
 	gen   int64
-	// dropped counts the files the caps removed.
-	dropped int
-	// paused says the cap could not hold another file.
-	paused bool
 }
 
 func newRotator(path string, lim Limits) *rotator {
@@ -189,7 +184,6 @@ func (r *rotator) enforce() error {
 			r.total = 0
 		}
 		r.state = r.state[:len(r.state)-1]
-		r.dropped++
 	}
 	// 3. the total stays inside the cap, oldest first. The active file is
 	// last to go, so the newest lines are what survives.
@@ -203,19 +197,6 @@ func (r *rotator) enforce() error {
 			r.total = 0
 		}
 		r.state = r.state[:len(r.state)-1]
-		r.dropped++
-	}
-	// 4. the active file alone is over the cap. A second file now starts the
-	// log again from empty, so nothing is lost that the cap can hold.
-	if len(r.state) > 0 && r.state[0].size > r.lim.MaxTotal {
-		if err := trim(r.state[0].name, r.lim.MaxTotal); err != nil {
-			return err
-		}
-		r.scan()
-		r.dropped++
-	}
-	if r.total > r.lim.MaxTotal {
-		r.paused = true
 	}
 	return nil
 }
@@ -275,45 +256,6 @@ func removeFile(name string) error {
 		return err
 	}
 	return nil
-}
-
-// trim keeps only the last max bytes of a file, starting at a line boundary.
-func trim(name string, max int64) error {
-	b, err := os.ReadFile(name)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	if int64(len(b)) <= max {
-		return nil
-	}
-	tail := b[int64(len(b))-max:]
-	if i := bytes.IndexByte(tail, '\n'); i >= 0 && i+1 < len(tail) {
-		tail = tail[i+1:]
-	}
-	return os.WriteFile(name, tail, 0600)
-}
-
-// readAll decodes every record the log holds, newest file first, each file's
-// lines as they were written. used is what the log takes on disk.
-func (r *rotator) readAll() (out []record, used int64) {
-	r.scan()
-	for _, f := range r.state {
-		lines, err := readAny(f.name)
-		if err != nil {
-			continue
-		}
-		for _, line := range lines {
-			var rec record
-			if json.Unmarshal(line, &rec) != nil {
-				continue
-			}
-			out = append(out, rec)
-		}
-	}
-	return out, r.total
 }
 
 // readChronological returns the log's lines as they were written, oldest

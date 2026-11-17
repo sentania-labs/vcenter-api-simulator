@@ -38,10 +38,8 @@ type State struct {
 	TotalBytes int64 `json:"totalBytes"`
 	MaxBytes   int64 `json:"maxBytes"`
 	// Files counts the log's files on disk.
-	Files int `json:"files"`
-	// Paused says the log stopped because the volume had no room left.
-	Paused bool   `json:"paused,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Files int    `json:"files"`
+	Error string `json:"error,omitempty"`
 }
 
 const capacity = 1000
@@ -101,7 +99,7 @@ func (c *Capture) State() State {
 		kinds[r.Method+" "+r.Path+" "+r.Operation] = true
 	}
 	st := State{Settings: c.settings, FullHeld: len(c.full), UnansweredHeld: len(c.unanswered), UnansweredKinds: len(kinds), Path: c.path,
-		TotalBytes: total, MaxBytes: c.rot.lim.MaxTotal, Files: files, Paused: c.rot.paused, Error: c.lastError}
+		TotalBytes: total, MaxBytes: c.rot.lim.MaxTotal, Files: files, Error: c.lastError}
 	if c.settings.Full {
 		since := c.fullSince
 		st.FullSince = &since
@@ -188,26 +186,19 @@ func (c *Capture) save(r record) {
 		}
 	}
 	if c.settings.Full {
-		if c.rot.paused {
-			// the volume has no room left for the log: say so once
+		b, err := json.Marshal(r)
+		if err == nil && int64(len(b)) > c.rot.lim.MaxTotal {
+			// the operator gave a cap a full record cannot fit into
 			if c.lastError == "" {
-				c.lastError = "The full request log is at its limit, so it stopped writing. The simulator still answers normally. Press \"Delete what was captured\" to resume."
+				c.lastError = "The log's size limit is smaller than one request. The full log was not written."
 			}
+		} else if err == nil {
+			err = c.rot.put(append(b, '\n'))
+		}
+		if err != nil {
+			c.lastError = "The full request log could not be written. Check its storage."
 		} else {
-			b, err := json.Marshal(r)
-			if err == nil && int64(len(b)) > c.rot.lim.MaxTotal {
-				// the operator gave a cap a full record cannot fit into
-				if c.lastError == "" {
-					c.lastError = "The log's size limit is smaller than one request. The full log was not written."
-				}
-			} else if err == nil {
-				err = c.rot.put(append(b, '\n'))
-			}
-			if err != nil {
-				c.lastError = "The full request log could not be written. Check its storage."
-			} else {
-				c.lastError = ""
-			}
+			c.lastError = ""
 		}
 		c.full = appendBounded(c.full, stored)
 	}
@@ -279,7 +270,6 @@ func (c *Capture) Clear() error {
 		}
 	}
 	c.rot.scan()
-	c.rot.paused = false
 	c.full = nil
 	c.unanswered = nil
 	return nil

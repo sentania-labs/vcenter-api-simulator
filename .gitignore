@@ -7,3 +7,6 @@ __pycache__/
 .venv/
 # tool output
 /logs/
+# scratch curl cookie jars
+/c14.txt
+/cj3.txt

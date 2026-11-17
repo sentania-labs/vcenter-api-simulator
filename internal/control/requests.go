@@ -394,12 +394,10 @@ type CaptureView struct {
 	FullSince *time.Time `json:"fullSince,omitempty"`
 	// LogBytes is what the full log takes on disk (its active file and every
 	// archive) and LogMaxBytes the cap it is kept inside. LogFiles counts
-	// those files; LogPaused says the log stopped because the volume had no
-	// room left.
+	// those files.
 	LogBytes    int64  `json:"logBytes,omitempty"`
 	LogMaxBytes int64  `json:"logMaxBytes,omitempty"`
 	LogFiles    int    `json:"logFiles,omitempty"`
-	LogPaused   bool   `json:"logPaused,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
 
@@ -409,8 +407,7 @@ func (c *Controller) captureView() CaptureView {
 	}
 	st := c.Capture.State()
 	return CaptureView{Available: true, Unanswered: st.Settings.Unanswered, Full: st.Settings.Full, Debug: st.Settings.Debug, Kept: st.UnansweredHeld, Kinds: st.UnansweredKinds,
-		FullKept: st.FullHeld, FullSince: st.FullSince, LogBytes: st.TotalBytes, LogMaxBytes: st.MaxBytes, LogFiles: st.Files,
-		LogPaused: st.Paused, Error: st.Error}
+		FullKept: st.FullHeld, FullSince: st.FullSince, LogBytes: st.TotalBytes, LogMaxBytes: st.MaxBytes, LogFiles: st.Files, Error: st.Error}
 }
 
 // RequestsView is the Requests screen.

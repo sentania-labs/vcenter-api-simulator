@@ -65,10 +65,7 @@ archives `query-log.N.jsonl.gz`. It cannot grow past its cap: when a file
 reaches `-query-log-max-bytes` it is compressed and a new one starts, and when
 the files together pass `-query-log-max-total` the oldest are deleted first.
 Where the volume's own capacity is known and smaller, that limits the cap, so
-the state files always keep their room. When the cap is reached and the volume
-has no room left, the log stops writing and says so once, on the **Requests**
-screen and in the container log; requests are answered as before, and "Delete
-what was captured" resumes the log. Downloads and "every request, one at a
+the state files always keep their room. Downloads and "every request, one at a
 time" read across the rotated and compressed files.
 
 The start-up flags `-query-log`, `-unanswered-stdout` and `-debug-capture` only

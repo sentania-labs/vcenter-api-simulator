@@ -335,9 +335,4 @@ test('the Requests screen shows the log\'s space against its limit', () => {
     multiTool: false, capture: cap, reportUrl: 'https://example.test/issues/new',
   }));
   assert.match(t, /4,096 KiB of 24,576 KiB used by 4 files/);
-  const full = text(requests.screen(['requests'], {}).render(ctxOf(homeView), {
-    verdict: { tone: 'ok', big: 'x', line: 'x' }, counts: { all: 1, unknown: 0, fault: 0, denied: 0, ok: 1 }, asks: [],
-    multiTool: false, capture: { ...cap, logPaused: true }, reportUrl: 'r',
-  }));
-  assert.match(full, /the limit is reached, so writing stopped; delete what was captured to resume/);
 });
