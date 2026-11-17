@@ -231,6 +231,9 @@ each dial a sentence says what its position means in numbers.
 | New VMs | about 1 a day for every 100 VMs, mostly in working hours. A cluster with fewer VMs than hosts counts as having one for each host | a new VM, powered on, with a number its cluster has not used since Activity was first started |
 | VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed. Its number and identities are not used again |
 | Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode. A host that comes out gets some VMs back |
+| Rolling patching | each cluster every 30 days, from 6 PM, one host at a time | the host's VMs move off, it is in maintenance mode, its product info shows a new build, it reboots and returns half an hour later |
+| Nightly backups | every VM every night, from 10 PM to 4 AM, after any patching | a snapshot task and a managed snapshot on every VM, removed ten minutes later |
+| Host crash | off in the ready-made day; one a day across the vCenter when switched on | the host is `notResponding` with alarms raised, its VMs restart on other hosts within two minutes, and it returns 15 minutes later |
 | Datastores filling | 0.4% of each vSAN datastore's capacity a day, a little every half hour | datastore free space, vSAN used capacity and the datastore's performance numbers |
 | Datastore cleanup | 0.3% of capacity freed at 2 AM | the same numbers falling |
 | CPU load | as the VMs were built (half to double) | CPU usage of VMs, hosts and clusters. Above the baseline, ready time (contention) rises too |
@@ -248,7 +251,7 @@ each dial a sentence says what its position means in numbers.
 - **Limits.** The number of VMs stays between two numbers, 5% below and above the
   number there was before Activity changed anything unless you change them. They
   move with clusters and hosts you add or remove. At a limit, adding or removing
-  waits and says so once a day. At most a quarter of a cluster's hosts are in
+  waits and says so once a day. At most a quarter of a cluster's hosts are down or in
   maintenance mode at once. A vSAN datastore is not filled past 90%, and a cleanup
   frees only what Activity filled.
 - **"Do it now"** on a cluster's dial does that thing once, straight away, after
@@ -258,7 +261,8 @@ each dial a sentence says what its position means in numbers.
 - **While the simulator is paused** nothing moves. Start, Stop, "Do it now" and a
   change to the hosts in maintenance mode are refused until you resume.
 - **Stop** leaves the environment still and healthy: hosts come out of maintenance
-  mode and VMs that are off are powered on. VMs that were added or removed stay
+  mode, crashed and patching hosts return, temporary backup snapshots are removed,
+  and VMs that are off are powered on. VMs that were added or removed stay
   that way, and datastores stay as full as they are.
 - **"What has happened"** lists every cause with what it set off as one line, newest
   first, with the detail one click away. It says which lines came from a button you
@@ -329,10 +333,9 @@ read from lab vCenter 9.1.1. HA uses the current `EventEx` event IDs. Performanc
 reads exclude down or maintenance hosts and reflect the VMs' new placement. Existing
 saved setups leave the three new dials off on upgrade.
 
-All three have global and cluster dials, exact numbers, and a cluster's **Do it now**
-button. Stop returns failed and patching hosts to service and removes temporary
-backup snapshots. Products, failed hosts, snapshots and job progress survive a
-rebuild or restart.
+Patching, backups and host crashes have global and cluster dials, exact numbers and a
+cluster's **Do it now** button like the rest. Their products, failed hosts, snapshots
+and job progress survive a rebuild or restart.
 
 ## Licensing and sign-on
 

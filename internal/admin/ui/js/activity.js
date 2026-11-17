@@ -109,14 +109,14 @@ const main = (q) => ({
       const d = ctx.data, r = d.rows.find((x) => x.key === el.dataset.b), u = r.units;
       ctx.F.n = r.exact ? String(r.exact.n) : '';
       ctx.F.unit = r.exact ? r.exact.unit : u[0];
- ctx.F.recovery = String(r.recoveryMinutes || 15);
+      ctx.F.recovery = String(r.recoveryMinutes || 15);
       const where = d.scope ? d.clusters.find((c) => c.key === d.scope).label : 'the whole vCenter';
       const lead = { perDay: 'About', percent: '', minutes: 'One every', hours: 'One every', days: 'One every' }[u[0]];
       const yes = await ctx.confirm({ title: `${r.name}: an exact number`, ok: 'Use this number', body: html`<p>${r.what}</p>
         <div class="m-field"><label for="f-exact">For ${where}</label><div class="m-inline">${lead} <input class="lat-input n" id="f-exact" data-x="n" inputmode="decimal" value="${ctx.F.n}" style="width:96px">
           ${u.length > 1 ? html`<select class="lat-select" data-x="unit" aria-label="Minutes, hours or days">${u.map((k) => html`<option value="${k}" ${k === ctx.F.unit ? raw('selected') : ''}>${UNITS[k]}</option>`)}</select>` : html`<span>${u[0] === 'percent' ? (r.key === 'maintenance' ? '% of the hosts' : '% of capacity a day') : (u[0] === 'days' ? 'days' : 'vMotions a day')}</span>`}</div>
           <span class="lat-hint">An exact number stays as you typed it, whatever the size of the environment. Moving the dial afterwards goes back to a level.</span></div>
- ${r.key === 'crash' ? html`<div class="m-field"><label for="f-recovery">Host returns after</label><input id="f-recovery" class="lat-input n" data-x="recovery" inputmode="numeric" value="${ctx.F.recovery}"> minutes (1 to 1,440)</div>` : ''}` });
+          ${r.key === 'crash' ? html`<div class="m-field"><label for="f-recovery">Host returns after</label><input id="f-recovery" class="lat-input n" data-x="recovery" inputmode="numeric" value="${ctx.F.recovery}"> minutes (1 to 1,440)</div>` : ''}` });
       if (!yes) return;
       const n = Number(String(ctx.F.n).trim());
       if (!String(ctx.F.n).trim() || Number.isNaN(n)) { ctx.say('bad', '**Not changed.** Type a number.'); ctx.rerender(); return; }

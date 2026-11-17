@@ -308,7 +308,7 @@ resumes unless the scenario file changed since, in which case the file wins.
 | Storage | `nfs:` and `iscsi:` under the datacenter | unchanged datastores keep theirs |
 | Versions | `vcenterVersion`, `esxVersion`, a cluster's `esxVersion`, `hostVersions`, `forceNewerHosts` | none |
 | Slowness and faults | `conditions:` | none; the running vCenter is not rebuilt |
-| Activity's dials, and where it has put things (which host each VM is on, which VMs are off, which hosts are in maintenance mode, how full the datastores are) | not in the scenario: `<data>/life.json` | none; the running vCenter is not rebuilt |
+| Activity's dials, and where it has put things (which host each VM is on, which VMs are off, which hosts are down or in maintenance mode, how full the datastores are, snapshots and patching or backup progress) | not in the scenario: `<data>/life.json` | none; the running vCenter is not rebuilt |
 | How licensing looks to tools (Security) | `licensing:` | none; the running vCenter is not rebuilt |
 
 `conditions:` is the console's one list of what is switched on. Each entry
