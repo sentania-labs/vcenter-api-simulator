@@ -320,6 +320,8 @@ test('Home says which build is running, how long, and how busy it has been', () 
   const cut = text(home.screen(['home']).render(ctxOf({ ...homeView, stats: { ...homeView.stats, lastHour: { ...homeView.stats.lastHour, coveredSec: 12 * 60 + 5 } } })));
   assert.match(cut, /300 requests in the last 12 minutes, as far back as the simulator keeps them\. Typical answer/);
   assert.ok(!cut.includes('in the last hour'));
+  const slow = text(home.screen(['home']).render(ctxOf({ ...homeView, stats: { ...homeView.stats, lastHour: { ...homeView.stats.lastHour, medianMs: 30000, medianOver: true, slowMs: 30000, slowOver: true } } })));
+  assert.match(slow, /Typical answer: over 30 s \. The slowest 1 in 20 took over 30 s/);
   assert.equal(uptimeText(30), 'under a minute');
   assert.equal(uptimeText(26 * 3600), '1 day 2 hours');
 });

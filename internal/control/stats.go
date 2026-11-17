@@ -33,9 +33,13 @@ type StatBlock struct {
 	activity.Counts
 	// MedianMs and SlowMs are the typical and slow-end response times in
 	// milliseconds, rounded up to the edge of a timing bucket.
-	MedianMs float64       `json:"medianMs"`
-	SlowMs   float64       `json:"slowMs"`
-	Services []ServiceStat `json:"services"`
+	MedianMs float64 `json:"medianMs"`
+	SlowMs   float64 `json:"slowMs"`
+	// MedianOver and SlowOver say that time was longer than the largest
+	// bucket (30 s): the figure is then a lower bound, shown as "over".
+	MedianOver bool          `json:"medianOver,omitempty"`
+	SlowOver   bool          `json:"slowOver,omitempty"`
+	Services   []ServiceStat `json:"services"`
 	// CoveredSec is set only when the block covers less time than it is
 	// named for: the request log holds a limited number of calls, so a busy
 	// simulator's last hour reaches back only this far.
@@ -56,7 +60,7 @@ var serviceNames = map[string]string{
 }
 
 func statBlock(t activity.Tally) StatBlock {
-	b := StatBlock{Requests: t.Total(), Counts: t.Counts, MedianMs: t.MedianMs, SlowMs: t.SlowMs, Services: []ServiceStat{}}
+	b := StatBlock{Requests: t.Total(), Counts: t.Counts, MedianMs: t.MedianMs, SlowMs: t.SlowMs, MedianOver: t.MedianOver, SlowOver: t.SlowOver, Services: []ServiceStat{}}
 	for _, k := range activity.Services {
 		if cs, ok := t.ByService[k]; ok && cs.Total() > 0 {
 			b.Services = append(b.Services, ServiceStat{Key: k, Name: serviceNames[k], Counts: cs, Requests: cs.Total()})

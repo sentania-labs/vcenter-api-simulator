@@ -107,3 +107,11 @@ func TestStatsLastHourSaysWhenItCoversLess(t *testing.T) {
 		t.Errorf("an hour later: %d requests covering %d s, want an empty, whole hour", st.LastHour.Requests, st.LastHour.CoveredSec)
 	}
 }
+
+// The view carries "over" through to the API answer.
+func TestStatBlockCarriesOver(t *testing.T) {
+	b := statBlock(activity.TallyOf([]activity.Call{{Reason: activity.ReasonFault, DurationMs: 125000}}))
+	if !b.MedianOver || !b.SlowOver {
+		t.Errorf("%+v", b)
+	}
+}

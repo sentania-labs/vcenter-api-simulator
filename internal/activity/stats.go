@@ -87,11 +87,13 @@ func (t *Timing) add(ms float64) {
 }
 
 // Percentile returns the upper edge of the bucket the p-th fraction (0..1)
-// of responses fell at or under, in ms; 0 with no responses. The open last
-// bucket reports the last bound. It is a bucket, not an exact figure.
-func (t Timing) Percentile(p float64) float64 {
+// of responses fell at or under, in ms; 0 with no responses. It is a bucket,
+// not an exact figure. over is true when that fraction fell in the open last
+// bucket: the response took longer than the returned (last) edge, by an
+// unknown amount.
+func (t Timing) Percentile(p float64) (ms float64, over bool) {
 	if t.N == 0 {
-		return 0
+		return 0, false
 	}
 	want := uint64(float64(t.N)*p + 0.999999)
 	if want < 1 {
@@ -101,10 +103,10 @@ func (t Timing) Percentile(p float64) float64 {
 	for i, n := range t.Buckets {
 		seen += n
 		if seen >= want {
-			return bounds[min(i, len(bounds)-1)]
+			return bounds[min(i, len(bounds)-1)], i >= len(bounds)
 		}
 	}
-	return bounds[len(bounds)-1]
+	return bounds[len(bounds)-1], true
 }
 
 // Counts is a tally of outcomes.
@@ -137,10 +139,14 @@ type Tally struct {
 	// MedianMs and SlowMs are the typical (half were quicker) and slow-end
 	// (nineteen in twenty were quicker) response times, as the upper edge of
 	// the timing bucket they fall in.
-	MedianMs  float64           `json:"medianMs"`
-	SlowMs    float64           `json:"slowMs"`
-	ByService map[string]Counts `json:"byService"`
-	timing    Timing
+	MedianMs float64 `json:"medianMs"`
+	SlowMs   float64 `json:"slowMs"`
+	// MedianOver and SlowOver are true when that time was longer than the
+	// largest timing bucket, so the figure is a lower bound, not an upper one.
+	MedianOver bool              `json:"medianOver,omitempty"`
+	SlowOver   bool              `json:"slowOver,omitempty"`
+	ByService  map[string]Counts `json:"byService"`
+	timing     Timing
 }
 
 func newTally() Tally { return Tally{ByService: map[string]Counts{}} }
@@ -155,7 +161,8 @@ func (t *Tally) add(c Call) {
 }
 
 func (t *Tally) finish() {
-	t.MedianMs, t.SlowMs = t.timing.Percentile(0.5), t.timing.Percentile(0.95)
+	t.MedianMs, t.MedianOver = t.timing.Percentile(0.5)
+	t.SlowMs, t.SlowOver = t.timing.Percentile(0.95)
 }
 
 // TallyOf counts calls.

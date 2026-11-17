@@ -44,7 +44,7 @@ func TestOutcomeOf(t *testing.T) {
 
 func TestTimingBuckets(t *testing.T) {
 	var tm Timing
-	if tm.Percentile(0.5) != 0 {
+	if ms, over := tm.Percentile(0.5); ms != 0 || over {
 		t.Fatal("no responses should report 0")
 	}
 	// 90 quick responses, 10 slow ones
@@ -54,10 +54,10 @@ func TestTimingBuckets(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		tm.add(700) // bucket ≤1000
 	}
-	if got := tm.Percentile(0.5); got != 5 {
+	if got, over := tm.Percentile(0.5); got != 5 || over {
 		t.Errorf("median %v, want 5", got)
 	}
-	if got := tm.Percentile(0.95); got != 1000 {
+	if got, over := tm.Percentile(0.95); got != 1000 || over {
 		t.Errorf("slow end %v, want 1000", got)
 	}
 	// edges belong to the lower bucket; anything past the last edge is in the open bucket
@@ -67,7 +67,7 @@ func TestTimingBuckets(t *testing.T) {
 	if edge.Buckets[0] != 1 || edge.Buckets[len(bounds)] != 1 {
 		t.Errorf("edge buckets %v", edge.Buckets)
 	}
-	if got := edge.Percentile(1); got != bounds[len(bounds)-1] {
+	if got, over := edge.Percentile(1); got != bounds[len(bounds)-1] || !over {
 		t.Errorf("open bucket reports %v", got)
 	}
 }
@@ -133,5 +133,26 @@ func TestWindowSaysWhenTheRingCutItShort(t *testing.T) {
 	want := now.Add(-20*time.Minute + 5*time.Second)
 	if win.Total() != 4 || !from.Equal(want) {
 		t.Errorf("full of recent calls: %d from %v, want 4 from %v", win.Total(), from, want)
+	}
+}
+
+// A response slower than the largest bucket (a timeout fault holds for 125 s)
+// is reported as "over" that edge, never as if the edge were its upper bound.
+func TestSlowerThanTheLargestBucketIsReportedAsOver(t *testing.T) {
+	var calls []Call
+	for i := 0; i < 8; i++ {
+		calls = append(calls, call(SurfaceVsan, "VsanPerfQueryPerf", ReasonFault, 125000))
+	}
+	calls = append(calls, call(SurfaceSDK, "RetrieveServiceContent", ReasonAnswered, 3), call(SurfaceSDK, "RetrieveServiceContent", ReasonAnswered, 4))
+	got := TallyOf(calls)
+	if !got.MedianOver || !got.SlowOver || got.MedianMs != 30000 || got.SlowMs != 30000 {
+		t.Errorf("median %v over=%v, slow %v over=%v", got.MedianMs, got.MedianOver, got.SlowMs, got.SlowOver)
+	}
+	quick := TallyOf(calls[8:])
+	if quick.MedianOver || quick.SlowOver {
+		t.Errorf("quick responses reported as over: %+v", quick)
+	}
+	if edge := TallyOf([]Call{call(SurfaceSDK, "X", ReasonAnswered, 30000)}); edge.SlowOver {
+		t.Error("exactly 30 s is inside the largest bucket, not over it")
 	}
 }
