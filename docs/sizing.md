@@ -72,7 +72,7 @@ happened", and the tasks of the last ten minutes.
 
 | What ran | Result |
 | --- | --- |
-| A week of activity at every dial's baseline, played as fast as it goes (`VCSIM_LARGE=7`, see [Testing](TESTING.md)) | 3.5ms for each simulated minute; a day is 1,423 vMotions, 100 VMs powered off and on, 46 added, 45 removed and 11 hosts into maintenance mode, which vCenter records as 6,929 events and 1,816 tasks. Heap in use after each day: 188Mi to 190Mi, not growing. Peak RSS 332Mi. |
+| A week of activity at every dial's baseline, played as fast as it goes (`VCSIM_LARGE=7`, see [Testing](TESTING.md)) | 3.5ms for each simulated minute; a day is 1,423 vMotions, 100 VMs powered off and on, 46 added, 45 removed and 11 hosts into maintenance mode, which vCenter records as 6,929 events and 1,816 tasks. Heap in use after each day: 190Mi to 192Mi, level from the fourth day (the test fails if it grows by more than 24Mi). Peak RSS 312Mi. |
 | The simulator itself with full query capture, Activity started, then every counted dial and the share of hosts in maintenance mode at their busiest, while two clients each collected every VM, host, cluster and datastore twice | Built and listening in 9s at 255Mi RSS. 269Mi while hosts were being emptied. **Peak RSS 745Mi** during the two-client collection (each round of 5,453 objects took 20s to 23s), 339Mi afterwards. 49.7 CPU seconds in all. The scope's memory limit was never reached (`memory.events`: max 0, oom 0). |
 
 Activity in real time is cheap: at the baseline the large inventory sees about

@@ -372,8 +372,8 @@ test('Activity: one dial for each thing, what has happened, and one button to st
   assert.match(paused, /Activity is waiting\./);
 
   const one = activity.screen(['activity'], { cluster: 'dc-01/cluster-02' });
-  const cl = text(one.render(ctxOf(homeView), { ...activityView, scope: 'dc-01/cluster-02', rows: [actRow('moves', 'Load balancing (DRS)', { follows: true, doNow: true }), actRow('adds', 'New VMs', { own: true, level: 4 })] }));
-  for (const want of ['Follows the vCenter', 'Set for this cluster', 'Follow the vCenter again', 'Do it now…', 'cluster-02 follows the vCenter']) assert.ok(cl.includes(want), `a cluster's dials should say "${want}"`);
+  const cl = text(one.render(ctxOf(homeView), { ...activityView, scope: 'dc-01/cluster-02', rows: [actRow('moves', 'Load balancing (DRS)', { follows: true, doNow: true }), actRow('adds', 'New VMs', { own: true, level: 4 }), actRow('removes', 'VMs removed', { follows: true, exact: { n: 45, unit: 'minutes' } })] }));
+  for (const want of ['Follows the vCenter', 'Set for this cluster', 'Follow the vCenter again', 'Do it now…', 'cluster-02 follows the vCenter', "The vCenter's number"]) assert.ok(cl.includes(want), `a cluster's dials should say "${want}"`);
 });
 
 test('Activity: the full list says what the lines add up to and who started them', () => {

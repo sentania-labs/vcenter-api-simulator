@@ -806,11 +806,14 @@ func (s *Simulator) createVM(ctx *simulator.Context, refs *ClusterRefs, vm *topo
 	}
 	ref := res.(types.ManagedObjectReference)
 	obj := ctx.Map.Get(ref).(*simulator.VirtualMachine)
-	obj.Config.Uuid = vm.UUID
-	obj.Config.InstanceUuid = vm.InstanceUUID
-	obj.Summary.Config.Uuid = vm.UUID
-	obj.Summary.Config.InstanceUuid = vm.InstanceUUID
-	shapeVM(obj, cl, vm, s.Env.Now)
+	// under the VM's lock: Activity makes VMs while tools are reading
+	ctx.WithLock(obj, func() {
+		obj.Config.Uuid = vm.UUID
+		obj.Config.InstanceUuid = vm.InstanceUUID
+		obj.Summary.Config.Uuid = vm.UUID
+		obj.Summary.Config.InstanceUuid = vm.InstanceUUID
+		shapeVM(obj, cl, vm, s.Env.Now)
+	})
 	refs.VMs = append(refs.VMs, ref)
 	return nil
 }

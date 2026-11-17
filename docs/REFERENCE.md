@@ -412,7 +412,7 @@ means in numbers.
 |---|---|---|
 | Load balancing (DRS) | about 25 vMotions a day for every 100 VMs, in bursts of a few VMs, more in working hours | each VM on another host; one DRS vMotion task and its events for each |
 | VMs powered off and on | about 2 a day for every 100 VMs, mostly in working hours; a VM stays off for a while and comes back; never more than one VM in ten is off | power state, guest state, the VM's performance numbers at zero while it is off |
-| New VMs | about 1 a day for every 100 VMs, mostly in working hours | a new VM with the next number its cluster has never used, powered on |
+| New VMs | about 1 a day for every 100 VMs, mostly in working hours | a new VM with a number its cluster has not used since Activity was first started, powered on |
 | VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed; its number and identities are not used again |
 | Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode; a host that comes out gets some VMs back |
 | Datastores filling | 0.4% of each vSAN datastore's capacity a day, a little every half hour | datastore free space, vSAN used capacity and the datastore's performance numbers |
@@ -428,10 +428,13 @@ means in numbers.
   many minutes, hours or days (a new VM every 30 minutes, one removed every
   45), so many vMotions a day, or a percentage (hosts in maintenance mode, up
   to a quarter; datastore growth, up to 10% a day). An exact number stays as
-  typed whatever the size of the environment and is spread evenly over day
-  and night. Moving the dial goes back to a level.
+  typed whatever the size of the environment. One VM every so often is
+  spread evenly over day and night; an exact number of vMotions a day still
+  comes in DRS's bursts, more of them in working hours. Moving the dial goes
+  back to a level.
 - **Limits.** The number of VMs stays between two numbers (5% below and
-  above what was there when Activity started, unless you change them); at a
+  above the number there was before Activity changed anything, unless you
+  change them; they move with clusters and hosts you add or remove); at a
   limit, adding or removing waits and says so once a day. At most a quarter
   of a cluster's hosts are in maintenance mode at once. A vSAN datastore is
   not filled past 90%, and a cleanup frees only what Activity filled.
@@ -440,6 +443,8 @@ means in numbers.
 - **A change that moves hosts asks first**: starting, stopping, and raising
   or lowering the share of hosts in maintenance mode each say how many hosts
   and VMs will move before anything happens.
+- **While the simulator is paused** nothing moves: Start, Stop, "Do it now"
+  and a change to the hosts in maintenance mode are refused until you resume.
 - **Stop** leaves the environment still and healthy: hosts come out of
   maintenance mode and VMs that are off are powered on. VMs that were added
   or removed stay that way, and datastores stay as full as they are.
@@ -456,7 +461,10 @@ means in numbers.
   [the scenario file](SCENARIO.md)). Nothing happens while the simulator is
   off or paused, and nothing is caught up afterwards. A change that rebuilds
   the vCenter (clusters, hosts, storage, versions) keeps all of it; "Replace
-  everything with a new environment" starts again.
+  everything with a new environment" starts again. When the scenario file
+  changes, the file wins for what it says; the VMs Activity added and
+  removed are kept for the clusters the file still has, and the limits are
+  set again if the new size is outside them.
 - **If something fails three times in a row**, that one dial stops itself,
   the tab shows a problem, and "Switch it on again" resumes it. The rest
   carries on.
@@ -483,10 +491,17 @@ recent-task list after ten minutes, as on a real vCenter.
 datastore only, not local, NFS or iSCSI datastores. A real vCenter also
 records a `VmMacAssignedEvent` for a new VM, distributed-switch port events
 around power and removal, and a vSphere HA state event when a host comes out
-of maintenance mode; the simulator does not. An event's chain id is set a
-moment after the event is posted, so a tool that is waiting on an event
-collector at that instant can, rarely, see an event with its own key as its
-chain id. Nothing Activity does raises an alarm. Rolling patching, nightly
+of maintenance mode; the simulator does not.
+
+vcsim gives every event its own key as chain id when it is posted, and
+Activity sets the operation's chain id straight afterwards. Two things follow.
+An event collector that was created with a filter on one chain id does not
+receive that chain's later events as they happen (a query made afterwards
+finds them). And a tool that is streaming events at the instant one is posted
+can see it with its own key as chain id; for a new VM that instant is the
+whole creation, about a millisecond, during which its creation events also
+carry the UUIDs vcsim first gave it. A tool that reads events in pages
+afterwards, as the VCF Operations adapter does, sees the finished chain. Nothing Activity does raises an alarm. Rolling patching, nightly
 backups and snapshots, and a host that crashes are not built yet.
 
 ### Checks

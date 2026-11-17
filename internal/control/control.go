@@ -227,8 +227,13 @@ func New(opts Options) (*Controller, error) {
 			sc, version, fromFile = restored, st.Version, false
 		} else {
 			// the scenario file changed since the console last changed
-			// anything: the file wins
+			// anything: the file wins, for everything it says
 			version = st.Version + 1
+			if st.Scenario != nil {
+				if saved, err := decodeScenarioJSON(st.Scenario, opts.Scenario); err == nil {
+					keepActivityVMs(sc, saved)
+				}
+			}
 		}
 	}
 	c.lift(sc)

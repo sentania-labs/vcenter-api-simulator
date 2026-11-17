@@ -73,6 +73,8 @@ func (c *Controller) applyScenario(next *scenario.Scenario, freshRegistry bool) 
 	c.armExpiry()
 	c.drain(old.sim)
 	c.save()
+	// at once: what is saved must never be what was done to the old vCenter
+	c.saveLife(true)
 	return true, nil
 }
 

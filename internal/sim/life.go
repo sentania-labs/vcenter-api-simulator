@@ -736,6 +736,10 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	}
 	number := cl.VMHigh + 1
 	vm := topology.NewVM(l.s.registry, cl, number)
+	// the builder would put this number on built; it is made on the host
+	// with the fewest VMs instead, and built is put back afterwards so that
+	// a snapshot records where the VM really is
+	built := vm.Host
 	for i, ref := range refs.Hosts {
 		if ref == to.ref {
 			vm.Host = i
@@ -756,6 +760,7 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	te, chain := l.head(ctx, types.Event{Datacenter: l.where(refs, to.ref).Datacenter}, types.TaskInfo{Name: "CreateVM_Task", DescriptionId: "Folder.createVm", Entity: &folder.Self, EntityName: folder.Name, Reason: byUser(), QueueTime: queued})
 	l.s.tasks = newTaskWaiter(ctx)
 	err := l.s.createVM(ctx, refs, vm)
+	vm.Host = built
 	ctx.Map.RemoveHandler(l.s.tasks)
 	l.s.tasks = nil
 	if ds != nil {
@@ -846,6 +851,9 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 	t, ok := l.reg.Get(taskOfDestroy(body)).(*simulator.Task)
 	if ok {
 		l.wait(t)
+		// the tasks that delete the files run by themselves: they are waited
+		// for while the datastore still points at the files
+		l.forgetParts(ctx, t.Self)
 	}
 	if ds != nil {
 		ctx.WithLock(ds, func() { ds.Summary.Url = address })
@@ -853,7 +861,6 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 	if ok {
 		te.Info.Key, te.Info.Task = t.Self.Value, t.Self
 		l.own(ctx, t, vm.ref, chain, "Destroy_Task", byUser())
-		l.forgetParts(ctx, t.Self)
 		if t.Info.Error != nil {
 			return "", fmt.Errorf("remove %s: %s", name, t.Info.Error.LocalizedMessage)
 		}

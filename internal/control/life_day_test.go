@@ -153,11 +153,16 @@ func TestActivityADayAtTheLargeSize(t *testing.T) {
 		t.Errorf("%d hosts, %d vMotions, %d hosts into maintenance mode: want 215 hosts, about 1,250 vMotions by load balancing plus the evacuations, and 11 hosts (5%% of 215)", v.Hosts, counts["move"], counts["min"])
 	}
 	days, _ := strconv.Atoi(os.Getenv("VCSIM_LARGE"))
+	first := m.HeapInuse >> 20
 	for d := 2; d <= days; d++ {
 		play(c, clk, 24*time.Hour)
 		runtime.GC()
 		runtime.ReadMemStats(&m)
 		v, _ = c.Activity("")
 		t.Logf("after day %d: %d VMs, %d lines remembered, heap in use %d MiB", d, v.VMs, len(c.life.Log), m.HeapInuse>>20)
+	}
+	// what is held does not grow with the days played
+	if last := m.HeapInuse >> 20; last > first+24 {
+		t.Errorf("the heap in use grew from %d MiB after the first day to %d MiB after day %d", first, last, days)
 	}
 }

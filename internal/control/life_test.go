@@ -275,3 +275,154 @@ func TestActivityKeepsAbbreviationsWhenASentenceIsJoined(t *testing.T) {
 		}
 	}
 }
+
+// hostsOfAdded is where the VMs Activity added to the lively scenario are,
+// by name: the host the running vCenter has each on when that is not the
+// host its number gives it, and that host otherwise.
+func hostsOfAdded(c *Controller) map[string]string {
+	out := map[string]string{}
+	snap := c.applied().sim.Life().Snapshot()
+	for _, refs := range c.applied().sim.Clusters {
+		cl := refs.Cluster
+		for _, vm := range cl.LiveVMs() {
+			if vm.Index < 40 {
+				continue
+			}
+			if out[vm.Name] = snap.Hosts[vm.Key]; out[vm.Name] == "" {
+				out[vm.Name] = cl.Hosts[vm.Host%len(cl.Hosts)].Name
+			}
+		}
+	}
+	return out
+}
+
+// A VM Activity added is made on the emptiest host, not on the host its
+// number would give it; a restart must find it where it was.
+func TestActivityAddedVMsStayOnTheirHostsAcrossARestart(t *testing.T) {
+	dir := t.TempDir()
+	clk := &clock{t: monday9}
+	c := newCtlAt(t, lively(t), dir, "h", clk.now)
+	startActivity(t, c)
+	key := c.applied().topo.Clusters()[0].Key
+	for i := 0; i < 3; i++ {
+		// a different VM leaves each time, so the emptiest host is a different one
+		if _, err := c.ActivityDoNow(key, life.Removes, true); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.ActivityDoNow(key, life.Adds, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := hostsOfAdded(c)
+	if len(want) != 3 {
+		t.Fatalf("%d added VMs are on a host, want 3: %v", len(want), want)
+	}
+	c.Close()
+	again := newCtlAt(t, lively(t), dir, "h", clk.now)
+	if got := hostsOfAdded(again); !reflect.DeepEqual(got, want) {
+		t.Errorf("after a restart the added VMs are on %v; they were on %v", got, want)
+	}
+}
+
+func TestActivityMovesNothingWhileTheSimulatorIsPaused(t *testing.T) {
+	clk := &clock{t: monday9}
+	c := newCtlAt(t, lively(t), "", "h", clk.now)
+	c.SetPaused(true)
+	if _, err := c.ActivityStart(true); err == nil {
+		t.Error("activity started, and moved hosts, while the simulator was paused")
+	}
+	c.SetPaused(false)
+	startActivity(t, c)
+	before := placements(c)
+	c.SetPaused(true)
+	four := 4.0
+	if _, err := c.ActivityDial(ActDial{Behaviour: life.Maintenance, Level: &four, Confirmed: true}); err == nil {
+		t.Error("more hosts went into maintenance mode while the simulator was paused")
+	}
+	if _, err := c.ActivityStop(true); err == nil {
+		t.Error("activity stopped, and moved hosts back, while the simulator was paused")
+	}
+	if _, err := c.ActivityDoNow(c.applied().topo.Clusters()[0].Key, life.Moves, true); err == nil {
+		t.Error("VMs moved while the simulator was paused")
+	}
+	play(c, clk, time.Hour)
+	if after := placements(c); !reflect.DeepEqual(after, before) {
+		t.Error("something moved while the simulator was paused")
+	}
+}
+
+// The scenario file wins when it changes, for what it says. It says nothing
+// of the VMs Activity added and removed, so those are kept: a removed VM
+// does not come back and an added one is not lost.
+func TestActivityVMsSurviveAChangedScenarioFile(t *testing.T) {
+	dir := t.TempDir()
+	clk := &clock{t: monday9}
+	c := newCtlAt(t, lively(t), dir, "first", clk.now)
+	startActivity(t, c)
+	key := c.applied().topo.Clusters()[0].Key
+	for _, b := range []string{life.Removes, life.Adds} {
+		if _, err := c.ActivityDoNow(key, b, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names := func(c *Controller) map[string]string {
+		out := map[string]string{}
+		for _, cl := range c.applied().sim.Clusters {
+			for _, vm := range cl.Cluster.LiveVMs() {
+				out[vm.Name] = vm.UUID
+			}
+		}
+		return out
+	}
+	want := names(c)
+	if _, ok := want["cluster-01-vm-041"]; !ok || len(want) != 80 {
+		t.Fatalf("after one VM removed and one added: %d VMs, vm-041 there: %v", len(want), ok)
+	}
+	c.Close()
+
+	// the same file with one more cluster
+	bigger := lively(t)
+	bigger.Datacenters[0].Clusters = 3
+	if err := bigger.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	again := newCtlAt(t, bigger, dir, "second", clk.now)
+	got := names(again)
+	for n, id := range want {
+		if got[n] != id {
+			t.Errorf("%s: identity %q before the file changed, %q after", n, id, got[n])
+		}
+	}
+	if len(got) != 120 {
+		t.Errorf("%d VMs after the file added a cluster of 40, want 120: a removed VM came back or an added one was lost", len(got))
+	}
+	// the limits follow the size the file now gives
+	if v, _ := again.Activity(""); v.VMs < v.MinVMs || v.VMs > v.MaxVMs {
+		t.Errorf("%d VMs is outside the limits %d to %d", v.VMs, v.MinVMs, v.MaxVMs)
+	}
+}
+
+// Removing hosts takes the highest-numbered VMs with them. The next VM
+// Activity adds must not take one of their numbers.
+func TestActivityNeverReusesANumberAfterHostsAreRemoved(t *testing.T) {
+	clk := &clock{t: monday9}
+	c := newCtlAt(t, lively(t), "", "h", clk.now)
+	startActivity(t, c)
+	key := c.applied().topo.Clusters()[0].Key
+	c.mu.Lock()
+	next := clone(c.applied().sc)
+	override(next, key).RemovedHosts = []int{8}
+	_, err := c.applyScenario(next, false)
+	c.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := c.applied().topo.Clusters()[0]
+	if len(cl.LiveVMs()) != 35 || cl.VMHigh != 40 {
+		t.Fatalf("after a host was removed: %d VMs, highest number ever used %d; want 35 and 40", len(cl.LiveVMs()), cl.VMHigh)
+	}
+	done, err := c.ActivityDoNow(key, life.Adds, true)
+	if err != nil || !strings.Contains(done.Done, "cluster-01-vm-041") {
+		t.Errorf("the next VM: %+v, %v; want cluster-01-vm-041", done, err)
+	}
+}

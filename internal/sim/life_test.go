@@ -395,7 +395,22 @@ func TestLifeAddedVMKeepsItsIdentityAcrossARebuild(t *testing.T) {
 	if err := sc.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	live, where := l.Snapshot(), placement(t, s)
+	if live.Hosts[vm.vm.Key] == "" && where[name] != refs.Cluster.Hosts[vm.vm.Host%len(refs.Cluster.Hosts)].Name {
+		t.Errorf("%s is on %s, not where a rebuild puts it, and the snapshot does not say so", name, where[name])
+	}
 	again := lifeSim(t, sc, reg)
+	// what was done is put back, and every VM is on the host it was on: the
+	// added one too, which was made on the emptiest host and not on the one
+	// its number gives
+	again.Life().Restore(live)
+	if back := placement(t, again); !reflect.DeepEqual(back, where) {
+		for n, h := range where {
+			if back[n] != h {
+				t.Errorf("after a rebuild %s is on %s; it was on %s", n, back[n], h)
+			}
+		}
+	}
 	want := map[string]types.ManagedObjectReference{}
 	for n, v := range l.vms[key] {
 		want[n] = v.ref

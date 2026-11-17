@@ -247,8 +247,12 @@ type ClusterOverride struct {
 	// out, and AddedVMs the numbers it has beyond the ones its hosts
 	// generate: what Activity removed and added while the simulator ran.
 	// A number is never given to another VM.
-	RemovedVMs  []int `yaml:"removedVMs,omitempty" json:"removedVMs,omitempty"`
-	AddedVMs    []int `yaml:"addedVMs,omitempty" json:"addedVMs,omitempty"`
+	RemovedVMs []int `yaml:"removedVMs,omitempty" json:"removedVMs,omitempty"`
+	AddedVMs   []int `yaml:"addedVMs,omitempty" json:"addedVMs,omitempty"`
+	// VMHigh is the highest VM number the cluster has ever used, kept when
+	// the lists and the hosts no longer say so (hosts were removed), so
+	// that the next VM Activity adds never takes a number used before.
+	VMHigh      int `yaml:"vmHigh,omitempty" json:"vmHigh,omitempty"`
 	ClusterSpec `yaml:",inline" json:",omitempty"`
 }
 
@@ -567,6 +571,9 @@ func (s *Scenario) Validate() error {
 		}
 	}
 	for _, c := range s.Clusters {
+		if c.VMHigh < 0 {
+			return fmt.Errorf("scenario: clusters[%s]: vmHigh must not be negative", c.Key)
+		}
 		for name, list := range map[string][]int{"removedVMs": c.RemovedVMs, "addedVMs": c.AddedVMs} {
 			seen := map[int]bool{}
 			for _, n := range list {
@@ -856,10 +863,11 @@ func (s *Scenario) VMNumbers(key string, generated int) (numbers []int, high int
 	for _, c := range s.Clusters {
 		if c.Key == key {
 			removed, added = c.RemovedVMs, c.AddedVMs
+			high = c.VMHigh
 		}
 	}
 	gone := make(map[int]bool, len(removed))
-	high = generated
+	high = max(high, generated)
 	for _, n := range removed {
 		gone[n] = true
 		high = max(high, n)

@@ -39,6 +39,8 @@ type lifeState struct {
 	Live   sim.Live     `json:"live"`
 	// SetUp is false until activity has been started once.
 	SetUp bool `json:"setUp"`
+	// Seed is the environment all of this was done to.
+	Seed string `json:"seed,omitempty"`
 }
 
 func (c *Controller) lifePath() string { return filepath.Join(c.opts.DataDir, "life.json") }
@@ -63,17 +65,32 @@ func (c *Controller) initLife(r *running) {
 	if c.life.Settings.Global == nil {
 		c.life.Settings = life.Defaults(vms)
 	}
+	switch s := &c.life.Settings; {
+	case saved.Seed != "" && saved.Seed != r.sc.Seed:
+		// another environment than the one this was done to: the dials are
+		// kept, and nothing that was done is put on it
+		saved.Live = sim.Live{}
+		c.life.State = life.State{Seq: c.life.State.Seq}
+		s.MinVMs, s.MaxVMs = life.Bounds(vms)
+	case vms < s.MinVMs || vms > s.MaxVMs:
+		// the scenario file changed the size of the environment
+		s.MinVMs, s.MaxVMs = life.Bounds(vms)
+		if c.lifeSetUp {
+			c.life.Note(c.now(), fmt.Sprintf("The environment now has %s, outside the limits that were set, so the limits are %s to %s.", plural(vms, "VM"), num(s.MinVMs), num(s.MaxVMs)))
+		}
+	}
 	c.wireLife(r, saved.Live)
 	// nothing is caught up for the time the simulator was off
 	c.life.Skip(c.now())
 	c.lifeSeq = c.life.State.Seq
-	c.lifeStop = make(chan struct{})
+	stop := make(chan struct{})
+	c.lifeStop = stop
 	go func() {
 		t := time.NewTicker(lifeEvery)
 		defer t.Stop()
 		for {
 			select {
-			case <-c.lifeStop:
+			case <-stop:
 				return
 			case <-t.C:
 				c.lifeStep()
@@ -111,6 +128,20 @@ func (c *Controller) carryLife(old, next *running, fresh bool) {
 		c.life.Settings.MinVMs, c.life.Settings.MaxVMs = life.Bounds(vms)
 		c.life.State = life.State{At: c.life.State.At, Seq: c.life.State.Seq}
 	}
+	// a VM number a cluster has used stays used, even when the hosts that
+	// gave it are gone, so Activity never adds a VM under an old number
+	if !fresh && c.lifeSetUp {
+		was := map[string]int{}
+		for _, cl := range old.topo.Clusters() {
+			was[cl.Key] = cl.VMHigh
+		}
+		for _, cl := range next.topo.Clusters() {
+			if h := was[cl.Key]; h > cl.VMHigh {
+				cl.VMHigh = h
+				override(next.sc, cl.Key).VMHigh = h
+			}
+		}
+	}
 	// the owner's own change to clusters or hosts moves the limits by as many VMs as came or went
 	if !fresh {
 		_, _, before, _ := old.topo.Counts()
@@ -122,22 +153,37 @@ func (c *Controller) carryLife(old, next *running, fresh bool) {
 	c.lifeDirty = true
 }
 
+// keepActivityVMs carries the VMs Activity added and removed from the saved
+// scenario into one read from a changed scenario file, for the clusters the
+// file still has and says nothing about. The file wins for everything it
+// says; what Activity did is not in it.
+func keepActivityVMs(sc, saved *scenario.Scenario) {
+	if sc.Seed != saved.Seed {
+		return
+	}
+	has := map[string]bool{}
+	for _, k := range sc.ClusterKeys() {
+		has[k] = true
+	}
+	for _, was := range saved.Clusters {
+		if !has[was.Key] || (len(was.AddedVMs) == 0 && len(was.RemovedVMs) == 0 && was.VMHigh == 0) {
+			continue
+		}
+		if o := override(sc, was.Key); len(o.AddedVMs) == 0 && len(o.RemovedVMs) == 0 && o.VMHigh == 0 {
+			o.AddedVMs = append([]int(nil), was.AddedVMs...)
+			o.RemovedVMs = append([]int(nil), was.RemovedVMs...)
+			o.VMHigh = was.VMHigh
+		}
+	}
+}
+
 // recordVM writes a VM that activity added or removed into the scenario,
 // so that the next build makes the same VMs. The vCenter is not rebuilt:
 // it already has the change. c.mu is held.
 func (c *Controller) recordVM(cluster string, number int, added bool) {
 	r := c.applied()
 	sc := clone(r.sc)
-	var o *scenario.ClusterOverride
-	for i := range sc.Clusters {
-		if sc.Clusters[i].Key == cluster {
-			o = &sc.Clusters[i]
-		}
-	}
-	if o == nil {
-		sc.Clusters = append(sc.Clusters, scenario.ClusterOverride{Key: cluster})
-		o = &sc.Clusters[len(sc.Clusters)-1]
-	}
+	o := override(sc, cluster)
 	if added {
 		o.AddedVMs = append(o.AddedVMs, number)
 		sort.Ints(o.AddedVMs)
@@ -180,7 +226,7 @@ func (c *Controller) saveLife(force bool) {
 	if c.life == nil || !c.lifeDirty || (!force && time.Since(c.lifeSaved) < 10*time.Second) {
 		return
 	}
-	b, err := json.Marshal(lifeState{Engine: c.life, Live: c.applied().sim.Life().Snapshot(), SetUp: c.lifeSetUp})
+	b, err := json.Marshal(lifeState{Engine: c.life, Live: c.applied().sim.Life().Snapshot(), SetUp: c.lifeSetUp, Seed: c.applied().sc.Seed})
 	if err == nil {
 		if err = os.MkdirAll(c.opts.DataDir, 0o700); err == nil {
 			tmp := c.lifePath() + ".tmp"
@@ -198,13 +244,13 @@ func (c *Controller) saveLife(force bool) {
 
 // closeLife stops the clock and saves.
 func (c *Controller) closeLife() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.lifeStop != nil {
 		close(c.lifeStop)
 		c.lifeStop = nil
 	}
-	c.mu.Lock()
 	c.saveLife(true)
-	c.mu.Unlock()
 }
 
 // ---------------------------------------------------------------------------
@@ -824,6 +870,9 @@ func (c *Controller) ActivityStart(confirmed bool) (*ActDone, error) {
 	if e.Settings.Running {
 		return &ActDone{Done: "Activity is already running.", Tone: "ok"}, nil
 	}
+	if c.paused.Load() {
+		return nil, &Invalid{"The simulator is paused, so nothing can move. Resume it first."}
+	}
 	r := c.applied()
 	all, _, cs := c.lifeScopes(r)
 	if !confirmed {
@@ -857,6 +906,9 @@ func (c *Controller) ActivityStop(confirmed bool) (*ActDone, error) {
 	e := c.life
 	if !e.Settings.Running {
 		return &ActDone{Done: "Activity is already stopped.", Tone: "ok"}, nil
+	}
+	if c.paused.Load() {
+		return nil, &Invalid{"The simulator is paused, so nothing can move. Resume it first."}
 	}
 	r := c.applied()
 	if !confirmed {
@@ -906,6 +958,9 @@ func (c *Controller) ActivityDial(req ActDial) (*ActDone, error) {
 	b := req.Behaviour
 	if life.Names[b] == "" {
 		return nil, &Invalid{"That is not something activity does."}
+	}
+	if b == life.Maintenance && e.Settings.Running && c.paused.Load() {
+		return nil, &Invalid{"The simulator is paused, so no host can move. Resume it first."}
 	}
 	sc := all
 	if req.Cluster != "" {
