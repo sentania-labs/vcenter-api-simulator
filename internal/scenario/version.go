@@ -98,7 +98,11 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 	if spec.empty() && fallback == "" {
 		// a host of a custom vCenter: its own build and a host's product
 		// name, never the vCenter's build
-		h, err := derivedVersion("esx", vc.Version)
+		number, err := releaseNumber(vc.Version)
+		if err != nil {
+			return Version{}, fmt.Errorf("host version for custom vCenter %q: %w", vc.Version, err)
+		}
+		h, err := derivedVersion("esx", number)
 		if err != nil {
 			return Version{}, fmt.Errorf("host version for custom vCenter %q: %w", vc.Version, err)
 		}
@@ -106,6 +110,19 @@ func (s *Scenario) HostVersion(cluster, host string) (Version, error) {
 		return h, nil
 	}
 	return resolveVersion(spec, esxVersions, fallback)
+}
+
+// releaseNumber is a version as the three-part major.minor.patch release it
+// belongs to: a missing part is 0 and parts beyond the third are dropped.
+func releaseNumber(v string) (string, error) {
+	n, err := versionNumbers(v)
+	if err != nil {
+		return "", err
+	}
+	for len(n) < 3 {
+		n = append(n, 0)
+	}
+	return fmt.Sprintf("%d.%d.%d", n[0], n[1], n[2]), nil
 }
 func versionNumbers(v string) ([]int, error) {
 	parts := strings.Split(v, ".")
@@ -220,14 +237,10 @@ func VersionChoice(product, choice string) (Version, error) {
 	if _, ok := presets[choice]; ok {
 		return Version{Preset: choice}, nil
 	}
-	n, err := versionNumbers(choice)
-	if err != nil || len(n) > 3 {
+	number, err := releaseNumber(choice)
+	if err != nil || strings.Count(choice, ".") > 2 {
 		return Version{}, fmt.Errorf("%q is not a version number like 9.2.0", choice)
 	}
-	for len(n) < 3 {
-		n = append(n, 0)
-	}
-	number := fmt.Sprintf("%d.%d.%d", n[0], n[1], n[2])
 	for id, p := range presets {
 		if p.Version == number {
 			return Version{Preset: id}, nil

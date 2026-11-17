@@ -354,9 +354,13 @@ the next time they ask.
 `vcenterVersion` and `esxVersion` accept presets `8.0u3`, `9.0`, and
 `9.1.1`. ESX defaults to the selected vCenter release; a cluster can set
 `esxVersion` and `hostVersions` can override a host by its topology key.
-A custom version supplies `version`, `build`, `apiVersion`, and `fullName`.
-When ESX matches a custom vCenter, it uses the same version, build, and API
-version; its ESXi product name is synthesized from the supplied values.
+A custom version supplies `version`, `build`, `apiVersion`, and `fullName`,
+and may supply `patchLevel` (served as `about.patchLevel`; the Operations
+vCenter card reads `version.patchLevel.build`, so 9.1.1 serves `0100`). A
+preset cannot be combined with custom fields.
+When ESX follows a custom vCenter it takes the vCenter's version (read as
+major.minor.patch, padded or cut to three parts) and API version, but gets its
+own derived build, patch level and ESXi product name, never the vCenter's.
 Hosts newer than vCenter are rejected unless `forceNewerHosts: true` is set;
 the console says how many hosts a choice would leave newer than vCenter and
 asks for a tick before it goes ahead. A version typed into the console that is
