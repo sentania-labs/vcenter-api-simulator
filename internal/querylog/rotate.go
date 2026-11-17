@@ -16,13 +16,16 @@ import (
 // state volume, together with the identity registry, the saved users, the
 // capture settings and the certificate.
 const (
-	defaultMaxFileBytes = 4 << 20 // 4 MiB uncompressed per file
-	defaultMaxFiles     = 4       // active file plus this many archives at most
+	defaultMaxFileBytes = 4 << 20    // 4 MiB uncompressed per file
+	defaultMaxFiles     = 4          // the active file plus up to 3 archives
 	defaultMaxTotal     = 24 << 20
 	// stateHeadroom is what the state files keep for themselves; the log's
 	// total cap never grows past volume size minus this.
 	stateHeadroom = 8 << 20
 )
+
+// errCapTooSmall marks a record that cannot fit into the operator's cap.
+var errCapTooSmall = errors.New("query log cap smaller than one record")
 
 // Limits bounds the full query log on disk. A zero value means the default.
 // The total cap never exceeds the space the volume actually has, so a small

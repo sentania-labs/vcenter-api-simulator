@@ -472,15 +472,16 @@ read-only on `/data/tls`. The PVC is annotated to survive `helm uninstall` and
 Argo CD prune or Application deletion. With persistence off every new pod
 issues new identities (and a new certificate when self-signed).
 
-`persistence.size` (default 128Mi) must comfortably hold the query log's total
+`persistence.size` (default 1Gi) must comfortably hold the query log's total
 cap (`simulator.capture.queryLogMaxTotal`, 24 MiB by default) plus the state
-files. An already-bound claim keeps its old size: Helm does not resize a claim
-that exists, and only a storage class with `allowVolumeExpansion: true` can
-grow one. So for an existing install the options are: leave the claim at
-100Mi — the log then limits itself to the space that is actually there, which
-keeps room for the state files — or, if the storage class allows it, expand the
+files. On an upgrade the chart patches the claim's size, and Kubernetes grows a
+bound claim only when its storage class sets `allowVolumeExpansion: true`; a
+class without it rejects the whole release update. So for an existing install
+the options are: set `persistence.size` to the size the claim already has (for
+example `100Mi`) and let the log limit itself to the space that is there, which
+keeps room for the state files; or, where the storage class allows it, expand the
 claim (`kubectl patch pvc <name> -p '{"spec":{"resources":{"requests":
-{"storage":"128Mi"}}}}'`), or delete the claim so the next sync recreates it
+{"storage":"1Gi"}}}}'`), or delete the claim so the next sync recreates it
 with the new size (identities and the pinned certificate are recreated too,
 so do that only when a fresh set is acceptable).
 

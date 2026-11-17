@@ -197,6 +197,28 @@ func TestWriteJSONLReadsAcrossRotatedFiles(t *testing.T) {
 	}
 }
 
+// A cap a whole record cannot fit into is reported through State.Error, and it
+// stays reported: the next request's reset must not clear it away.
+func TestCapTooSmallReportsError(t *testing.T) {
+	dir := t.TempDir()
+	c, err := NewCapture(dir, filepath.Join(dir, "query-log.jsonl"), Settings{Full: true}, nil, 0,
+		Limits{MaxFileBytes: 512, MaxFiles: 2, MaxTotal: 500})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := c.Wrap(http.NotFoundHandler())
+	body := `<Envelope><Body><Fetch><_this type="HostSystem">host-1</_this><prop>` +
+		strings.Repeat("y", 900) + `</prop></Fetch></Body></Envelope>`
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/sdk", strings.NewReader(body)))
+	if st := c.State(); !strings.Contains(st.Error, "smaller than one request") {
+		t.Fatalf("cap-too-small not reported: %q", st.Error)
+	}
+	// the log file holds nothing but the cap is still respected
+	if b, err := os.ReadFile(filepath.Join(dir, "query-log.jsonl")); err == nil && int64(len(b)) > 500 {
+		t.Fatalf("log %d bytes over the 500 cap", len(b))
+	}
+}
+
 // Concurrent requests all land, and the log stays readable.
 func TestConcurrentWritesStayInsideCap(t *testing.T) {
 	dir := t.TempDir()

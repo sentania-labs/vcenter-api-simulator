@@ -163,7 +163,7 @@ Other ways to run it, all in the [reference](docs/REFERENCE.md#running-it):
 - **Helm:** `helm install vcsim-01 charts/vcenter-api-simulator --set hostname=vcsim-01.example.test`
   installs one simulated vCenter per release. The console stays inside the
   pod until you ask for it; the chart's notes print the `kubectl port-forward`
-  command that opens it. The state volume is `persistence.size` (128Mi by
+  command that opens it. The state volume is `persistence.size` (1Gi by
   default), enough for the query log's cap plus the state files; the Helm
   section of [the reference](docs/REFERENCE.md) says what an existing install
   with an older claim does.

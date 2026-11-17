@@ -188,14 +188,17 @@ func (c *Capture) save(r record) {
 		b, err := json.Marshal(r)
 		if err == nil && int64(len(b)) > c.rot.lim.MaxTotal {
 			// the operator gave a cap a full record cannot fit into
-			if c.lastError == "" {
-				c.lastError = "The log's size limit is smaller than one request. The full log was not written."
-			}
-		} else if err == nil {
+			err = errCapTooSmall
+		}
+		if err == nil {
 			err = c.rot.put(append(b, '\n'))
 		}
 		if err != nil {
-			c.lastError = "The full request log could not be written. Check its storage."
+			if errors.Is(err, errCapTooSmall) {
+				c.lastError = "The log's size limit is smaller than one request. The full log was not written."
+			} else {
+				c.lastError = "The full request log could not be written. Check its storage."
+			}
 		} else {
 			c.lastError = ""
 		}
