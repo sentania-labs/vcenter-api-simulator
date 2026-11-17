@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/session"
-	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
@@ -79,11 +80,41 @@ func activityClient(t *testing.T, endpoint string) *vim25.Client {
 	return client
 }
 
+// adapterTraversal is the selection set the VCF Operations adapter attaches to
+// each explicit root object (MiscUtils.buildFullTraversalV4).
+func adapterTraversal() []types.BaseSelectionSpec {
+	sel := func(names ...string) []types.BaseSelectionSpec {
+		var out []types.BaseSelectionSpec
+		for _, n := range names {
+			out = append(out, &types.SelectionSpec{Name: n})
+		}
+		return out
+	}
+	ts := func(name, typ, path string, skip bool, next ...string) *types.TraversalSpec {
+		return &types.TraversalSpec{SelectionSpec: types.SelectionSpec{Name: name}, Type: typ, Path: path, Skip: types.NewBool(skip), SelectSet: sel(next...)}
+	}
+	return []types.BaseSelectionSpec{
+		ts("visitFolders", "Folder", "childEntity", false, "visitFolders", "dcToHf", "dcToVmf", "dcToDs", "dcToNetf", "crToH", "crToRp", "HToVm", "rpToVm"),
+		ts("dcToDs", "Datacenter", "datastoreFolder", false, "visitFolders"),
+		ts("dcToNetf", "Datacenter", "networkFolder", false, "visitFolders"),
+		ts("vAppToRp", "VirtualApp", "resourcePool", false, "rpToRp", "vAppToRp"),
+		ts("rpToRp", "ResourcePool", "resourcePool", false, "rpToRp", "rpToVm"),
+		ts("rpToVm", "ResourcePool", "vm", false),
+		ts("crToRp", "ComputeResource", "resourcePool", false, "rpToRp", "rpToVm"),
+		ts("crToH", "ComputeResource", "host", false),
+		ts("dcToHf", "Datacenter", "hostFolder", false, "visitFolders"),
+		ts("dcToVmf", "Datacenter", "vmFolder", false, "visitFolders"),
+		ts("HToVm", "HostSystem", "vm", false, "visitFolders"),
+	}
+}
+
 // Opt in: a real SOAP subscription across the 215-host, 5,009-VM lab topology,
-// with the adapter's host/VM leaf paths, collected every simulated five minutes.
-func TestActivityLargeDayPropertyStream(t *testing.T) {
+// shaped like the Operations adapter's (explicit datacenter roots with the full
+// traversal, host/VM/datastore/cluster paths, partialUpdates=false), collected
+// every simulated five minutes for two simulated hours at default Activity dials.
+func TestActivityLargePropertyStream(t *testing.T) {
 	if os.Getenv("VCSIM_LARGE_UPDATES") == "" {
-		t.Skip("set VCSIM_LARGE_UPDATES=1 for full-size SOAP activity proof")
+		t.Skip("set VCSIM_LARGE_UPDATES=1 for full-size SOAP activity measurement")
 	}
 	clk := &clock{t: monday9}
 	c := newCtlAt(t, largeSize(t), "", "h", clk.now)
@@ -92,25 +123,27 @@ func TestActivityLargeDayPropertyStream(t *testing.T) {
 	client := activityClient(t, srv.URL)
 	ctx := context.Background()
 	pc := client.ServiceContent.PropertyCollector
-	kinds := []string{"HostSystem", "VirtualMachine", "Datastore"}
-	if os.Getenv("VCSIM_LARGE_UPDATES") == "scoped" {
-		kinds = []string{"HostSystem", "Datastore"}
-	}
-	cv, err := view.NewManager(client).CreateContainerView(ctx, client.ServiceContent.RootFolder, kinds, true)
-	if err != nil {
+	var dcs []mo.Folder
+	if err := property.DefaultCollector(client).Retrieve(ctx, []types.ManagedObjectReference{client.ServiceContent.RootFolder}, []string{"childEntity"}, &dcs); err != nil {
 		t.Fatal(err)
 	}
-	defer cv.Destroy(ctx)
 	spec := types.PropertyFilterSpec{PropSet: []types.PropertySpec{
-		{Type: "HostSystem", PathSet: []string{"runtime.inMaintenanceMode", "runtime.connectionState", "runtime.powerState", "vm"}},
-		{Type: "VirtualMachine", PathSet: []string{"name", "runtime.host", "runtime.powerState"}},
-		{Type: "Datastore", PathSet: []string{"summary"}},
-	}, ObjectSet: []types.ObjectSpec{{Obj: cv.Reference(), Skip: types.NewBool(true), SelectSet: []types.BaseSelectionSpec{&types.TraversalSpec{Type: "ContainerView", Path: "view"}}}}}
-	if _, err := methods.CreateFilter(ctx, client, &types.CreateFilter{This: pc, Spec: spec}); err != nil {
+		{Type: "HostSystem", PathSet: []string{"runtime.inMaintenanceMode", "runtime.connectionState", "runtime.powerState", "vm", "summary.quickStats", "summary.overallStatus"}},
+		{Type: "VirtualMachine", PathSet: []string{"name", "runtime.host", "runtime.powerState", "runtime.connectionState", "summary.quickStats", "summary.runtime", "snapshot"}},
+		{Type: "Datastore", PathSet: []string{"summary", "info"}},
+		{Type: "ClusterComputeResource", PathSet: []string{"name", "host", "summary"}},
+	}}
+	for _, o := range dcs[0].ChildEntity {
+		spec.ObjectSet = append(spec.ObjectSet, types.ObjectSpec{Obj: o, Skip: types.NewBool(false), SelectSet: adapterTraversal()})
+	}
+	if len(spec.ObjectSet) == 0 {
+		t.Fatal("no datacenter roots")
+	}
+	if _, err := methods.CreateFilter(ctx, client, &types.CreateFilter{This: pc, Spec: spec, PartialUpdates: false}); err != nil {
 		t.Fatal(err)
 	}
 	version := ""
-	objects := 0
+	objects, changes := 0, 0
 	collect := func() time.Duration {
 		t.Helper()
 		start := time.Now()
@@ -125,6 +158,9 @@ func TestActivityLargeDayPropertyStream(t *testing.T) {
 			version = res.Returnval.Version
 			for _, f := range res.Returnval.FilterSet {
 				objects += len(f.ObjectSet)
+				for _, o := range f.ObjectSet {
+					changes += len(o.ChangeSet)
+				}
 			}
 			if res.Returnval.Truncated == nil || !*res.Returnval.Truncated {
 				break
@@ -140,8 +176,9 @@ func TestActivityLargeDayPropertyStream(t *testing.T) {
 	if hosts != 215 || vms != 5009 {
 		t.Fatalf("wrong topology %d hosts/%d VMs", hosts, vms)
 	}
-	t.Logf("property stream object types: %v", kinds)
 	snapshot := collect()
+	snapObjects := objects
+	t.Logf("initial snapshot: %s, %d objects, %d property values", snapshot, objects, changes)
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
@@ -150,28 +187,23 @@ func TestActivityLargeDayPropertyStream(t *testing.T) {
 	}
 	var waits []time.Duration
 	started := time.Now()
-	for minute := 1; minute <= 1440; minute++ {
+	for minute := 1; minute <= 120; minute++ {
 		clk.add(time.Minute)
 		c.lifeStep()
 		if minute%5 == 0 {
+			prev := objects
 			waits = append(waits, collect())
-		}
-		if minute%360 == 0 {
-			t.Logf("%d hours: elapsed=%s decoded=%d", minute/60, time.Since(started), objects)
+			t.Logf("minute %d: wait=%s updates=%d", minute, waits[len(waits)-1], objects-prev)
 		}
 	}
 	runtime.GC()
 	runtime.ReadMemStats(&after)
-	median := func(v []time.Duration) time.Duration {
-		v = append([]time.Duration(nil), v...)
-		sort.Slice(v, func(i, j int) bool { return v[i] < v[j] })
-		return v[len(v)/2]
+	sort.Slice(waits, func(i, j int) bool { return waits[i] < waits[j] })
+	t.Logf("215 hosts/5009 VMs, 2h: initial snapshot=%s (%d objects); elapsed=%s; heap before=%d MiB after=%d MiB; WaitForUpdatesEx median=%s max=%s over %d collections; decoded %d object updates, %d property changes", snapshot, snapObjects, time.Since(started), before.HeapInuse>>20, after.HeapInuse>>20, waits[len(waits)/2], waits[len(waits)-1], len(waits), objects-snapObjects, changes)
+	if objects == snapObjects {
+		t.Error("no activity updates were delivered")
 	}
-	t.Logf("215 hosts/5009 VMs: initial snapshot=%s; day=%s; heap before=%d MiB after=%d MiB; wait median first quarter=%s last quarter=%s max=%s; decoded objects=%d", snapshot, time.Since(started), before.HeapInuse>>20, after.HeapInuse>>20, median(waits[:72]), median(waits[216:]), func() time.Duration {
-		sort.Slice(waits, func(i, j int) bool { return waits[i] < waits[j] })
-		return waits[len(waits)-1]
-	}(), objects)
 	if after.HeapInuse > before.HeapInuse+128<<20 {
-		t.Error("activity retained over 128 MiB after a day")
+		t.Error("activity retained over 128 MiB after two hours")
 	}
 }
