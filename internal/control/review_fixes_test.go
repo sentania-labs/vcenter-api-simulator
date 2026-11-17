@@ -128,42 +128,31 @@ func TestAnImmediateTaskCannotBeScheduled(t *testing.T) {
 	}
 }
 
-// An install from before first-run set-up may have saved the retired default
-// password. It does not survive: set-up asks for a new one.
-func TestRetiredDefaultPasswordDoesNotSurviveAnUpgrade(t *testing.T) {
+// A password that was set stays set across a restart, including the value
+// that used to be the published default.
+func TestSavedPasswordSurvivesReopeningTheStore(t *testing.T) {
 	dir := t.TempDir()
 	hash, err := bcrypt.GenerateFromPassword([]byte("VMware123!VMware123!"), bcrypt.MinCost)
 	if err != nil {
 		t.Fatal(err)
 	}
 	other, _ := bcrypt.GenerateFromPassword([]byte("kept-password"), bcrypt.MinCost)
-	saved := fmt.Sprintf(`{"source":"old","anyLogin":false,"users":{"administrator@vsphere.local":{"hash":%q,"role":"administrator"}}}`, hash)
+	saved := fmt.Sprintf(`{"source":"old","anyLogin":false,"users":{"administrator@vsphere.local":{"hash":%q,"role":"administrator"},"ops@vsphere.local":{"hash":%q,"role":"read-only"}}}`, hash, other)
 	if err := os.WriteFile(filepath.Join(dir, "vcenter-users.json"), []byte(saved), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c := newCtl(t, scenario.Phase1("upgrade"), dir, "new")
-	if !c.AccountNeeded() {
-		t.Fatal("the retired default was kept, so set-up will never ask for a password")
+	if c.AccountNeeded() {
+		t.Fatal("a saved account was dropped, so set-up asks for a password again")
 	}
-	if newTool(t, c, "tool/1").login(DefaultUsername, "VMware123!VMware123!") {
-		t.Fatal("the retired default password still signs in")
+	tool := newTool(t, c, "tool/1")
+	if !tool.login(DefaultUsername, "VMware123!VMware123!") {
+		t.Fatal("the saved account no longer signs in")
 	}
-	c.Close()
-
-	// another saved user is kept, and only the retired account goes
-	saved = fmt.Sprintf(`{"source":"old","anyLogin":false,"users":{"administrator@vsphere.local":{"hash":%q,"role":"administrator"},"ops@vsphere.local":{"hash":%q,"role":"read-only"}}}`, hash, other)
-	dir2 := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir2, "vcenter-users.json"), []byte(saved), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c2 := newCtl(t, scenario.Phase1("upgrade"), dir2, "new")
-	users, _ := c2.LoginUsers()
-	if len(users) != 1 || users[0] != "ops@vsphere.local" {
-		t.Errorf("users after upgrade: %v", users)
-	}
-	if !newTool(t, c2, "tool/1").login("ops@vsphere.local", "kept-password") {
+	if !newTool(t, c, "tool/2").login("ops@vsphere.local", "kept-password") {
 		t.Error("the other saved user no longer signs in")
 	}
+	c.Close()
 }
 
 // "Leave every host as it is" changes nothing a host reports, including on

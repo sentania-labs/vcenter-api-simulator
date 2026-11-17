@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,17 +30,6 @@ type entry struct {
 
 // MinPassword is the shortest password the console accepts for a user.
 const MinPassword = 8
-
-// Before the console's first-run set-up existed, a simulator with no
-// supplied account accepted one published password for
-// administrator@vsphere.local, and saved it (hashed) the first time the
-// console changed any user. That password is retired: a saved account that
-// still has it is dropped when the file is read, so that set-up asks for a
-// new one. The string is kept only to recognise it.
-const (
-	retiredUser     = "administrator@vsphere.local"
-	retiredPassword = "VMware123!VMware123!"
-)
 
 type Snapshot struct {
 	AnyLogin bool `json:"anyLogin"`
@@ -81,10 +69,6 @@ func New(dir, source string, baseline map[string]string, any bool, readonly []st
 		if state.Source == source || (len(baseline) == 0 && !any) {
 			if state.Users == nil {
 				return nil, errors.New("credentials: invalid saved users")
-			}
-			if e, ok := state.Users[retiredUser]; ok && e.Hash != "" && bcrypt.CompareHashAndPassword([]byte(e.Hash), []byte(retiredPassword)) == nil {
-				delete(state.Users, retiredUser)
-				log.Printf("credentials: %s still had the retired default password, so it was removed; choose a new password in the console, or supply one with -username and -password", retiredUser)
 			}
 			s.current = Snapshot{AnyLogin: state.AnyLogin, users: state.Users}
 		}

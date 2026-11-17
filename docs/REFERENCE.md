@@ -112,9 +112,9 @@ that supplies an account (the scenario's `auth.users`, `-username` and
 **Upgrading from 0.3.x.** Earlier versions accepted a published default
 password for `administrator@vsphere.local` when no account was supplied. That
 password is retired. After the upgrade a simulator with no supplied account
-refuses every sign-in until the console's set-up step chooses a password (a
-saved account that still had the old default is removed at start, and the log
-says so). Tools that used the default need the new password, or supply an
+refuses every sign-in until the console's set-up step chooses a password. A
+saved account keeps whatever password was set, including the old default
+value. Tools that used the default need the new password, or supply an
 account at install: `VCSIM_USERNAME` and `VCSIM_PASSWORD`, the chart's
 `credentials`, or the scenario's `auth.users`. With the console turned off
 (`VCSIM_ADMIN=`) supplying an account is the only way to sign in.
