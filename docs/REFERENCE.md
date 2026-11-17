@@ -117,6 +117,8 @@ go build ./cmd/vcsimulator
 | `-any-login` | explicitly allow any non-empty vCenter username and password |
 | `-username`, `-password`, `-role` | one vCenter account supplied at start (env `VCSIM_USERNAME`, `VCSIM_PASSWORD`, `VCSIM_ROLE`); with no account supplied here or in the scenario, the console's first-run set-up chooses the password |
 | `-public-url URL` | the address tools should use, shown in the console (env `VCSIM_PUBLIC_URL`); default `https://<name>:<port>` from the first `-tls-names` entry or the machine's name. Set it when a proxy or ingress gives the simulator another name |
+| `-appliance-dns-servers IPS` | comma-separated DNS server IPs reported by appliance networking reads; default: the process resolver in `/etc/resolv.conf` |
+| `-appliance-ipv4 CIDR` | IPv4 address/prefix reported by appliance networking reads; default: the first non-loopback local IPv4 interface |
 | `-report-url URL` | where the console sends people to report a request the simulator cannot answer (env `VCSIM_REPORT_URL`); default this project's new-issue page |
 | `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
 | `-admin ADDR` | the password-protected control console (plain HTTP); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
@@ -591,6 +593,21 @@ And set `simulator.lookupTrustSecret` to the name of the Secret that holds the
 Ingress's certificate (its `tls.crt` is mounted, nothing else): the lookup
 service then tells Operations to trust that certificate at the sign-on
 addresses, which is the one Operations will see there.
+
+Appliance networking reads use the hostname in `simulator.publicUrl` (or the
+chart's `hostname`). `simulator.applianceNetworking.dnsServers` overrides the
+reported DNS server list; `simulator.applianceNetworking.ipv4` overrides the
+reported address/prefix, for example `10.20.0.10/24`. Empty settings report the
+pod's resolver and first non-loopback IPv4 interface. The interface's `mac` is
+the local interface's hardware address and `default_gateway` is the pod's
+default route when it falls in that subnet; for an address the pod does not
+hold, they are derived from the address (VMware OUI plus its low three bytes,
+and the first host of the subnet). These read-only APIs do not change the pod's
+networking.
+
+VCF Operations' DNS alert uses its own forward and reverse DNS lookups of the
+vCenter endpoint. Correct appliance answers do not repair an ingress address's
+PTR record; that is a deployment DNS matter.
 
 [`charts/vcenter-api-simulator/ci`](../charts/vcenter-api-simulator/ci) holds
 example values for the Ingress, an existing TLS Secret, cert-manager, and no

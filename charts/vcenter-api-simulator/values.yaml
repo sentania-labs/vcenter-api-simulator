@@ -33,6 +33,11 @@ simulator:
   # https://<hostname> with the Service's port (left out when it is 443);
   # set it when something in front gives the simulator another address.
   publicUrl: ""
+  # Appliance API values. Empty uses the pod resolver and local IPv4 interface.
+  # Hostname follows publicUrl / hostname; these settings do not fix external PTR records.
+  applianceNetworking:
+    dnsServers: []
+    ipv4: "" # address/prefix, e.g. 10.0.0.2/24
   # Where the console sends people to report a request the simulator cannot
   # answer. Empty means the simulator project's new-issue page.
   reportUrl: ""

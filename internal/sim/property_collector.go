@@ -3,10 +3,12 @@ package sim
 import (
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/methods"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 )
@@ -14,7 +16,74 @@ import (
 // vcsim removes absent optional properties from the first page, but not
 // continuation pages. DynamicProperty.val is required by VMware's clients.
 // Keep the same omission rule on every page, including session collectors.
-type propertyCollector struct{ simulator.PropertyCollector }
+type propertyCollector struct {
+	simulator.PropertyCollector
+	active  *simulator.PropertyCollector
+	waitMu  sync.Mutex
+	stateMu sync.RWMutex
+}
+
+// govmomi tracks objects already sent inside each filter, and retains pending
+// pages before checking the version. A fresh empty version restarts both. Use
+// its public filter constructor to reset that private state, then restore the
+// original identities so clients can still retrieve and destroy their filters.
+func (p *propertyCollector) restartSnapshot(ctx *simulator.Context) {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	filters := append([]types.ManagedObjectReference(nil), p.delegate().Filter...)
+	ctx.Map.RemoveHandler(p.delegate())
+	p.active = &simulator.PropertyCollector{PropertyCollector: mo.PropertyCollector{Self: p.Self}}
+	for _, ref := range filters {
+		old, ok := ctx.Session.Get(ref).(*simulator.PropertyFilter)
+		if !ok {
+			continue
+		}
+		response := p.active.CreateFilter(ctx, &types.CreateFilter{This: p.Self, Spec: old.Spec, PartialUpdates: old.PartialUpdates}).(*methods.CreateFilterBody)
+		freshRef := response.Res.Returnval
+		fresh := ctx.Session.Get(freshRef).(*simulator.PropertyFilter)
+		ctx.Map.RemoveHandler(fresh)
+		ctx.Session.Remove(ctx, freshRef)
+		fresh.Self = ref
+		ctx.Session.Put(fresh)
+		ctx.Map.AddHandler(fresh)
+		p.active.Filter[len(p.active.Filter)-1] = ref
+	}
+}
+
+func (p *propertyCollector) delegate() *simulator.PropertyCollector {
+	if p.active != nil {
+		return p.active
+	}
+	return &p.PropertyCollector
+}
+
+// Property reads must see the live delegate's filter list, including filters
+// destroyed directly through their stable references.
+func (p *propertyCollector) Get() mo.Reference {
+	p.stateMu.RLock()
+	defer p.stateMu.RUnlock()
+	return p.delegate()
+}
+
+// Cancellation can arrive while a wait is in progress. Keep the delegate
+// alive through the call instead of overwriting a mutex used by its handlers.
+func (p *propertyCollector) CancelWaitForUpdates(req *types.CancelWaitForUpdates) soap.HasFault {
+	p.stateMu.RLock()
+	defer p.stateMu.RUnlock()
+	return p.delegate().CancelWaitForUpdates(req)
+}
+
+func (p *propertyCollector) CreateFilter(ctx *simulator.Context, req *types.CreateFilter) soap.HasFault {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	return p.delegate().CreateFilter(ctx, req)
+}
+
+func (p *propertyCollector) DestroyPropertyCollector(ctx *simulator.Context, req *types.DestroyPropertyCollector) soap.HasFault {
+	p.stateMu.RLock()
+	defer p.stateMu.RUnlock()
+	return p.delegate().DestroyPropertyCollector(ctx, req)
+}
 
 func (p *propertyCollector) ContinueRetrievePropertiesEx(ctx *simulator.Context, req *types.ContinueRetrievePropertiesEx) soap.HasFault {
 	response := p.PropertyCollector.ContinueRetrievePropertiesEx(ctx, req)
@@ -113,14 +182,31 @@ func absentProperty(value any) bool {
 }
 
 func (p *propertyCollector) WaitForUpdates(ctx *simulator.Context, req *types.WaitForUpdates) soap.HasFault {
-	response := p.PropertyCollector.WaitForUpdates(ctx, req)
-	if body, ok := response.(*methods.WaitForUpdatesBody); ok && body.Res != nil {
-		shapeUpdates(ctx, &body.Res.Returnval)
+	response := p.WaitForUpdatesEx(ctx, &types.WaitForUpdatesEx{This: req.This, Version: req.Version})
+	body := response.(*methods.WaitForUpdatesExBody)
+	result := &methods.WaitForUpdatesBody{Fault_: body.Fault_}
+	if body.Res != nil && body.Res.Returnval != nil {
+		result.Res = &types.WaitForUpdatesResponse{Returnval: *body.Res.Returnval}
 	}
-	return response
+	return result
 }
+
 func (p *propertyCollector) WaitForUpdatesEx(ctx *simulator.Context, req *types.WaitForUpdatesEx) soap.HasFault {
-	response := p.PropertyCollector.WaitForUpdatesEx(ctx, req)
+	if req.Version == "" {
+		// A resync must not queue behind an orphaned incremental long poll.
+		// Serialize delegate replacement, cancel its old wait, and retain the
+		// selected delegate without holding this lock across a blocking call.
+		p.waitMu.Lock()
+		p.CancelWaitForUpdates(&types.CancelWaitForUpdates{This: req.This})
+		p.restartSnapshot(ctx)
+	}
+	p.stateMu.RLock()
+	delegate := p.delegate()
+	p.stateMu.RUnlock()
+	if req.Version == "" {
+		p.waitMu.Unlock()
+	}
+	response := delegate.WaitForUpdatesEx(ctx, req)
 	if body, ok := response.(*methods.WaitForUpdatesExBody); ok && body.Res != nil {
 		shapeUpdates(ctx, body.Res.Returnval)
 	}

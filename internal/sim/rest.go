@@ -41,6 +41,9 @@ type restSessions struct {
 	timeout     *atomic.Int64
 	registry    *simulator.Registry
 	catalog     *catalog.Catalog
+
+	publicAddress string
+	network       ApplianceNetwork
 }
 
 func (s *restSessions) authorized(user, password string) bool {
