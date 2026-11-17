@@ -43,9 +43,11 @@ the simulator slow or make it fail on purpose, to see how a tool copes.
   The simulator now answers every request in that chain the way a real
   vCenter 9.1.1 does, up to saying it is in evaluation
   ([what it answers, and what is unverified](#licensing-and-sign-on)). It has
-  been checked against a replay of those requests, not yet against a real
-  VCF Operations: whether Operations accepts a vCenter in evaluation, or only
-  a licensed one, is the open question.
+  been checked with the 9.1.1 adapter's own Java clients against a local
+  simulator: lookup, license login and asset parsing, SSO admin construction,
+  and the administrator licensing-group check all pass. The final proof is
+  starting the adapters on the 9.1.1 development Operations instance; that
+  has not been run for this change.
 - **A licensed vCenter is not built.** A vCenter that is licensed presents a
   signed entitlement that only the vendor can issue. The simulator does not
   make one, copy one or accept one.
@@ -75,7 +77,7 @@ license in it comes from a real system.
 | Operations asks | The simulator answers |
 |---|---|
 | The lookup service for vCenter and its sign-on service | One registration each, with addresses built on the address the tool used and the certificate to trust for them |
-| The sign-on admin service for its content, its domain and its signing certificate | `vsphere.local`, and the certificate of the simulator's own signing key |
+| The sign-on admin service for its content, its domain, its SSL certificate manager and its signing certificate | `vsphere.local`, a typed manager reference, and the certificate of the simulator's own signing key |
 | The token service for a token, with a username and password | A signed token for one of the simulator's accounts. It lists the groups that make an account a licensing administrator, unless you take them out |
 | The license service for vCenter's own license and for every asset | vCenter and each host in evaluation with 90 days left, or with the evaluation run out. No licenses |
 | Whether the extension `com.vmware.vrops.license.managed` is there | Not there, or there with the Operations id and address you typed, or as an Operations registered it. Registering, changing and removing it all work |
@@ -106,8 +108,8 @@ were not observed, so the simulator's answer is its own:
   for a wrong reference (its type was seen), and whether the session cookie
   repeats from one answer to the next. The `localurl` attribute names port
   8085, which the simulator does not serve.
-- Sign-on admin: the value of `apiRevision`. Only the three reads above are
-  answered.
+- Sign-on admin: the value of `apiRevision` and the simulator-owned SSL
+  certificate-manager reference value. Only the four reads above are answered.
 - Token service: the request it accepts is the standard form a real vCenter
   accepted, not one captured from Operations. The answer to a wrong password
   is the standard WS-Security fault; a real vCenter's was never seen. The
