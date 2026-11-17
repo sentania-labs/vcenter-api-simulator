@@ -334,7 +334,7 @@ func (h *handler) licenseAssets(host string, now time.Time) []licAsset {
 				ID: assetIDPrefix + ref.Value + "-" + topo.NodeID,
 				Info: licAssetInfo{
 					InstanceID: ref.Value, ScopeID: topo.NodeID, Name: th.Name, Version: th.Version.APIVersion,
-					Product: hostProduct,
+					Product: hostProduct, EvalInfo: &hostLicense,
 					CostUnitUsage: []licCostUnit{
 						{Unit: licUnit{ID: "cpuPackage"}, Value: packages},
 						{Unit: licUnit{ID: "cpuCore"}, Value: cores},

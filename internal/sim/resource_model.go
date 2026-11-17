@@ -10,8 +10,8 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-// DataProviderQuery is the internal host-to-datacenter query used by the
-// Operations inventory client. Values are positional, including absent ones.
+// DataProviderQuery serves the inventory relationships read by Operations
+// licensing. Values are positional, including absent ones.
 type DataProviderQuery struct {
 	This      types.ManagedObjectReference `xml:"_this"`
 	QuerySpec resourceQuery                `xml:"querySpec"`
@@ -60,11 +60,17 @@ func (p *resourceModel) DataProviderQuery(ctx *simulator.Context, req *DataProvi
 	invalid := func() soap.HasFault {
 		return &resourceBody{Fault_: simulator.Fault("Unsupported resource query", &types.InvalidArgument{InvalidProperty: "querySpec"})}
 	}
-	if q.ResourceModel != "HostSystem" || len(q.Properties) == 0 || q.Offset < 0 || (q.Limit != nil && *q.Limit < 0) {
+	models := map[string]map[string]bool{
+		"HostSystem":             {"@modelKey": true, "dc": true, "hostClusterName": true},
+		"Datacenter":             {"@modelKey": true, "name": true},
+		"ClusterComputeResource": {"@modelKey": true, "dcName": true},
+	}
+	properties, supported := models[q.ResourceModel]
+	if !supported || len(q.Properties) == 0 || q.Offset < 0 || (q.Limit != nil && *q.Limit < 0) {
 		return invalid()
 	}
 	for _, prop := range q.Properties {
-		if prop != "@modelKey" && prop != "dc" {
+		if !properties[prop] {
 			return invalid()
 		}
 	}
@@ -79,14 +85,14 @@ func (p *resourceModel) DataProviderQuery(ctx *simulator.Context, req *DataProvi
 		}
 		for _, v := range c.ComparableList {
 			ref, ok := v.(types.ManagedObjectReference)
-			if !ok || ref.Type != "HostSystem" {
+			if !ok || ref.Type != q.ResourceModel {
 				return invalid()
 			}
 			selected[ref] = true
 		}
 	}
 	var refs []types.ManagedObjectReference
-	for _, obj := range ctx.Map.All("HostSystem") {
+	for _, obj := range ctx.Map.All(q.ResourceModel) {
 		ref := obj.Reference()
 		if q.Filter == nil || selected[ref] {
 			refs = append(refs, ref)
@@ -108,10 +114,25 @@ func (p *resourceModel) DataProviderQuery(ctx *simulator.Context, req *DataProvi
 		item := resourceItem{}
 		for _, prop := range q.Properties {
 			v := resourceValue{}
-			if prop == "@modelKey" {
+			switch prop {
+			case "@modelKey":
 				v.Value = ref
-			} else if dc != nil {
-				v.Value = *dc
+			case "dc":
+				if dc != nil {
+					v.Value = *dc
+				}
+			case "name":
+				v.Value = resourceName(ctx, ref)
+			case "dcName":
+				if dc != nil {
+					v.Value = resourceName(ctx, *dc)
+				}
+			case "hostClusterName":
+				if obj, ok := ctx.Map.Get(ref).(mo.Entity); ok {
+					if parent := obj.Entity().Parent; parent != nil && parent.Type == "ClusterComputeResource" {
+						v.Value = resourceName(ctx, *parent)
+					}
+				}
 			}
 			item.Values = append(item.Values, v)
 		}
@@ -137,4 +158,15 @@ func parentDatacenter(ctx *simulator.Context, ref types.ManagedObjectReference) 
 		ref = *entity.Entity().Parent
 	}
 	return nil
+}
+
+func resourceName(ctx *simulator.Context, ref types.ManagedObjectReference) string {
+	obj := ctx.Map.Get(ref)
+	entity, ok := obj.(mo.Entity)
+	if !ok {
+		return ""
+	}
+	var name string
+	ctx.Map.WithLock(ctx, obj, func() { name = entity.Entity().Name })
+	return name
 }

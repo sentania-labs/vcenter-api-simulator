@@ -216,6 +216,11 @@ func TestLicenseServiceSearchFormsAndPaging(t *testing.T) {
 		if info.text("product", "editionKey") != "esxEval" || info.text("inEvaluation") != "true" || info.text("license", "id") != evaluationID || info.text("license", "info", "name") != "Evaluation" {
 			t.Errorf("host asset %v", info)
 		}
+		// Operations 9.1.1 mapAssetToVcfVcAssetUsage reads evalInfo even
+		// when the asset already has an assigned evaluation license.
+		if info.text("evalInfo", "id") != evaluationID || info.text("evalInfo", "info", "expiration") == "" || info.text("evalInfo", "info", "name") != "Evaluation" {
+			t.Fatal("host evaluation metadata missing")
+		}
 		keys, _, _ := properties(info.child("license").child("info"))
 		if strings.Join(keys, ",") != "expirationHours,expirationMinutes,expirationDate" {
 			t.Errorf("host license properties %v", keys)
