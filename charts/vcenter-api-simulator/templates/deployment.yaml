@@ -126,16 +126,17 @@ spec:
           {{- if .Values.probes.startup.enabled }}
           startupProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
+              path: {{ default .Values.probes.startup.path .Values.probes.path }}
               port: https
               scheme: HTTPS
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
             failureThreshold: {{ .Values.probes.startup.failureThreshold }}
           {{- end }}
           {{- if .Values.probes.readiness.enabled }}
           readinessProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
+              path: {{ default .Values.probes.readiness.path .Values.probes.path }}
               port: https
               scheme: HTTPS
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
@@ -144,7 +145,7 @@ spec:
           {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
+              path: {{ default .Values.probes.liveness.path .Values.probes.path }}
               port: https
               scheme: HTTPS
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}

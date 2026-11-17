@@ -255,6 +255,10 @@ type step struct {
 func (s *Simulator) build() error {
 	ctx := s.model.Service.Context
 	s.tasks = newTaskWaiter(ctx)
+	defer func() {
+		ctx.Map.RemoveHandler(s.tasks)
+		s.tasks = nil
+	}()
 	var steps []step
 	// Registries predating reservations created every local datastore during
 	// its host step, even when its device serial was allocated much later.

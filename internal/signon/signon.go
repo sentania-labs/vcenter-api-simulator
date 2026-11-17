@@ -18,11 +18,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/sentania/vcenter-api-simulator/internal/storage"
 )
 
 // SystemDomain is the sign-on domain of the simulated vCenter. It is the
@@ -109,7 +112,10 @@ func (i *Issuer) load() (*Material, error) {
 		return nil, err
 	}
 	if err := i.save(path, m); err != nil {
-		return nil, err
+		if !storage.Full(err) {
+			return nil, err
+		}
+		log.Printf("signon: data volume full; serving with an unsaved signing key; free space or enlarge the volume: %v", err)
 	}
 	return m, nil
 }
