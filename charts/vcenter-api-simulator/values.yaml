@@ -1,11 +1,15 @@
 # Default values for vcenter-api-simulator.
-# One Helm release is one simulated vCenter endpoint. The chart creates no
-# RBAC, mounts no ServiceAccount token and asks for no privilege: the pod only
-# serves HTTPS and writes its own state (identity registry, certificate).
+# One Helm release is one simulated vCenter. The chart creates no RBAC, mounts
+# no ServiceAccount token and asks for no privilege: the pod only serves HTTPS
+# and writes its own state (identities, certificate, console settings).
+# Install steps, certificates, ingress and upgrades are in README.md beside
+# this file.
 
 image:
   repository: ghcr.io/sentania-labs/vcenter-api-simulator
-  # Defaults to the chart's appVersion. Pin this in a deployment repository.
+  # Empty means the chart's appVersion, which is `main`: the unreleased build.
+  # Set a release such as v0.4.5, or `latest`, and pin it in a deployment
+  # repository.
   tag: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []
@@ -14,15 +18,16 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Public name of this simulated vCenter: the Ingress host, a certificate
-# subject alternative name, and the hostname operators enter in a collector.
+# subject alternative name, and the hostname you enter in your tool.
 # Empty means in-cluster access by Service name only.
 hostname: ""
 
 simulator:
-  # Identity seed. The same seed reproduces every MoRef, UUID and metric
-  # value, so changing it changes the inventory a collector already knows.
+  # Identity seed. The same seed gives the same vCenter identity, MoRefs, UUIDs
+  # and performance values, so give each release its own. Changing it changes
+  # the inventory a tool has already collected.
   seed: phase1
-  # Container port the simulator listens on (the Service maps its own port
+  # Port the simulator listens on inside the pod (the Service maps its own port
   # to it, so 443 outside needs no privilege inside).
   port: 8443
   # Extra DNS names or IPs for the certificate the simulator creates on first
@@ -48,9 +53,11 @@ simulator:
   # the simulator's own, which such a tool never sees. Only tls.crt is
   # mounted. Empty means the simulator's own certificate.
   lookupTrustSecret: ""
-  # Additional command-line arguments passed to vcsimulator.
+  # Additional start-up flags, one per entry, for example "-session-timeout=1h".
+  # The flags are listed in docs/REFERENCE.md.
   extraArgs: []
-  # Defaults for live capture settings. The console can override these.
+  # Starting values for request capture. The first time you use a capture
+  # switch in the console, the console's saved settings win from then on.
   capture:
     # Write the full, redacted query log to /data/query-log.jsonl. It can
     # contain inventory identifiers. The log is bounded: it rotates by size
@@ -143,7 +150,7 @@ persistence:
   # and that succeeds only where the storage class sets allowVolumeExpansion;
   # an install that wants to keep its existing claim size sets persistence.size
   # to that size. Either way the log limits itself to the space that is
-  # actually there. See docs/REFERENCE.md.
+  # actually there. See "Upgrading" in README.md.
   enabled: true
   existingClaim: ""
   storageClass: ""
@@ -154,8 +161,8 @@ persistence:
 
 service:
   type: ClusterIP
-  # Port collectors connect to. The 1.4.7 line of the reference pack ignores
-  # any port in its configuration and uses 443.
+  # Port tools connect to. Keep 443 for a tool that ignores the port in its
+  # settings.
   port: 443
   # Only for type NodePort.
   nodePort: null
@@ -174,15 +181,18 @@ ingress:
   #   nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
   # For Traefik, use a ServersTransport with insecureSkipVerify or the CA.
   annotations: {}
-  # Only /sdk and /vsanHealth are served today; nothing else is exposed.
+  # Only these paths are exposed. /sdk and /vsanHealth are enough for a
+  # management pack. VCF Operations' own vCenter adapter also needs
+  # /lookupservice, /sso-adminserver, /sts, /ls, /api, /rest and /stats (see
+  # README.md).
   paths:
     - /sdk
     - /vsanHealth
   pathType: Prefix
   tls:
     # Terminate TLS at the ingress with this Secret (cert-manager annotations
-    # on the Ingress work too). The collector then pins the ingress
-    # certificate, not the simulator's.
+    # on the Ingress work too). Tools then see the ingress's certificate, not
+    # the simulator's. For VCF Operations set simulator.lookupTrustSecret too.
     enabled: false
     secretName: ""
 

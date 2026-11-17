@@ -1,6 +1,5 @@
-# Scale profile "stress" (docs/TESTING.md scale matrix), named scale-100 for
-# the roadmap's 100+ cluster tier: 106 ESA clusters of eight hosts (uniform,
-# where the matrix allows 8-16), 848 hosts in one simulated vCenter.
+# 106 ESA clusters of eight hosts, all the same size: 848 hosts and 3,392 VMs
+# in one simulated vCenter. See docs/sizing.md for what that needs.
 seed: scale-100
 datacenters:
   - name: dc-01

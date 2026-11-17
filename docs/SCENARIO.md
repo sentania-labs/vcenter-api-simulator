@@ -1,14 +1,27 @@
 # Scenario file reference
 
-The scenario file is the operator's contract with the simulator: one YAML
-file that says what the simulated vCenter contains, who may log in, which
-certificate it serves, and how it misbehaves. Change the file and restart, or
-edit a running simulator in the control console (below). Examples live in
-[`examples/scenarios/`](../examples/scenarios/).
+A scenario file is one YAML file that says what the simulated vCenter contains,
+who may sign in, which certificate it serves and how it misbehaves. You do not
+need one: the console changes everything below on a running simulator. Use a file
+when you want an environment you can keep in version control and start the same
+way every time. Examples are in [`examples/scenarios/`](../examples/scenarios/).
 
 ```sh
-vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443
+vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data
 ```
+
+| Example | What it is |
+|---|---|
+| `phase1.yaml` | the default: 1 cluster, 4 hosts, 4 VMs |
+| `ten-clusters.yaml` | 10 ESA clusters of varied size: 80 hosts, 370 VMs |
+| `faults-and-latency.yaml` | `ten-clusters` with a fault and slowness switched on |
+| `storage.yaml` | shared NFS and iSCSI datastores, an unreachable mount and a dead path |
+| `osa.yaml` | a three-host vSAN OSA cluster |
+| `scale-10.yaml`, `scale-50.yaml`, `scale-100.yaml` | 100, 400 and 848 hosts, for sizing and load tests |
+
+The file is read once at start. Changes you make in the console after that are
+kept in the data directory and resume at the next start, unless the file has
+changed, in which case the file wins.
 
 NFS and iSCSI entries describe simulated inventory and do not connect to the named
 server. Capacity and free space are bytes. The configured name must be unique within
@@ -61,7 +74,8 @@ server or create real LUNs and filesystems.
 
 ## Identity: seed, registry, regenerate
 
-Every identity a client keys on (the vCenter instance uuid, vSAN cluster
+The seed names the environment. Two simulators with the same seed present the same
+vCenter identity, so give each its own. Every identity a client keys on (the vCenter instance uuid, vSAN cluster
 uuids, host node and hardware uuids, disk vsanUuids and ScsiLun uuids, VM
 uuids and instanceUuids, VM namespace paths) is derived, never stored: a
 UUID v5 of (namespace, kind, serial). The namespace comes from `seed`; the
@@ -175,7 +189,7 @@ latency:                    # fixed delay plus uniform jitter, milliseconds
 
 ### Fault kinds and what the pack does with them
 
-The reference management pack treats `InvalidArgument` and `NotSupported`
+The vSAN Host Metrics pack treats `InvalidArgument` and `NotSupported`
 as "feature absent" and skips the family quietly; any other fault is a
 collection problem it reports. `timeout` holds the response past the pack's
 120-second request timeout, which it reports as a failed cluster.
@@ -220,9 +234,9 @@ Entities per cluster, by family (the fan-out the live capture showed):
 | virtual-machine | hosts × vms.perHost |
 | virtual-disk, vscsi | VMs × disksPerVM |
 
-Ten clusters of the example scenario (82 hosts, 446 VMs) build in under a
-second and the process uses tens of megabytes; nothing is stored per metric
-sample.
+The ten clusters of `ten-clusters.yaml` (80 hosts, 370 VMs) build in about half a
+second and use about 60 MB; nothing is stored per metric sample. For larger
+environments see [sizing](sizing.md).
 
 ## OSA evidence and limits
 
@@ -309,15 +323,15 @@ starts, the file's own `faults:`, `latency:` and `statsPrimary: false` are
 turned into conditions, so the console lists and can turn off everything that
 is on. A scenario file may also write `conditions:` directly.
 
-The console no longer offers "Regenerate" or "Reset cluster seed"; `seedEpoch`
-on a cluster and `-regenerate` remain available to a scenario file.
+`seedEpoch` on a cluster and `-regenerate` are available only in a scenario file
+and at start.
 
 ## Licensing
 
 What the simulated vCenter tells a tool about its own license. Nothing here
 is a license: a vCenter can say it is in evaluation with no entitlement at
 all, and that is as far as the simulator goes
-([what is answered and what is unverified](../README.md#licensing-and-sign-on)).
+([what is answered and what is unverified](REFERENCE.md#licensing-and-sign-on)).
 
 ```yaml
 licensing:

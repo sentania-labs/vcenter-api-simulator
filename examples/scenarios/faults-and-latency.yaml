@@ -1,8 +1,8 @@
 # The ten-cluster scenario with the failure and latency knobs on: one
 # family faulted on one cluster, a slow family, and a few milliseconds on
-# every /sdk call. The reference pack skips vsan-pnic-net on cluster-03 as
-# "feature absent" and reports nothing else; a collection of all ten
-# clusters takes minutes instead of seconds. Same seed as
+# every /sdk call. The vSAN Host Metrics pack skips vsan-pnic-net on
+# cluster-03 as "feature absent" and reports nothing else; a collection of all
+# ten clusters takes minutes instead of seconds. Same seed as
 # ten-clusters.yaml, so the identities are the same on the same data
 # directory.
 seed: ten-clusters
