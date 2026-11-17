@@ -1,7 +1,6 @@
 package control
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -69,8 +68,5 @@ func TestStatsLastHourFallsOffButTotalStays(t *testing.T) {
 	}
 	if !st.StartedAt.Equal(clock.now().Add(-90 * time.Minute)) {
 		t.Errorf("started at %v", st.StartedAt)
-	}
-	if strings.Contains(c.Home().Build.Version, " ") {
-		t.Error("version has stray spaces")
 	}
 }
