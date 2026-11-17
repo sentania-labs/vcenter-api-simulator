@@ -830,8 +830,15 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%s is not there", name)
 	}
-	if !l.off[cluster][name] {
+	wasOn := !l.off[cluster][name]
+	if wasOn {
 		l.power(cluster, name, false)
+	}
+	kept := func(err error) (string, error) {
+		if wasOn {
+			l.power(cluster, name, true)
+		}
+		return "", err
 	}
 	ctx := l.as(lifeUser)
 	te, chain := l.head(ctx, l.vmEvent(refs, vm, l.hostOf(ctx, vm)).Event, types.TaskInfo{Name: "Destroy_Task", DescriptionId: "VirtualMachine.destroy", Entity: &vm.ref, EntityName: name, Reason: byUser(), QueueTime: time.Now()})
@@ -846,7 +853,7 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 		if ds != nil {
 			ctx.WithLock(ds, func() { ds.Summary.Url = address })
 		}
-		return "", fmt.Errorf("remove %s: %s", name, f.String)
+		return kept(fmt.Errorf("remove %s: %s", name, f.String))
 	}
 	t, ok := l.reg.Get(taskOfDestroy(body)).(*simulator.Task)
 	if ok {
@@ -862,7 +869,7 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 		te.Info.Key, te.Info.Task = t.Self.Value, t.Self
 		l.own(ctx, t, vm.ref, chain, "Destroy_Task", byUser())
 		if t.Info.Error != nil {
-			return "", fmt.Errorf("remove %s: %s", name, t.Info.Error.LocalizedMessage)
+			return kept(fmt.Errorf("remove %s: %s", name, t.Info.Error.LocalizedMessage))
 		}
 	}
 	l.adopt(ctx, chain, vm.ref)

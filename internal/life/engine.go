@@ -345,7 +345,10 @@ func reason(err error) string {
 // nothing else, until the owner switches it on again.
 func (e *Engine) failed(t int64, b string, c Cluster, text string) {
 	if e.State.Fails == nil {
-		e.State.Fails, e.State.Held = map[string]int{}, map[string]int64{}
+		e.State.Fails = map[string]int{}
+	}
+	if e.State.Held == nil {
+		e.State.Held = map[string]int64{}
 	}
 	e.State.Fails[b]++
 	e.add(t, Entry{Kind: KindFail, Cluster: c.Key, Why: b, Text: text, Counts: map[string]int{"fail": 1}})
