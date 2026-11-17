@@ -1,739 +1,508 @@
 # Reference
 
-Everything the [README](../README.md) leaves out: every start-up flag, what a
-scenario file controls and what the simulator guarantees, request capture,
-the console's password and certificate, how the checks are run, and the
-details of running it with Docker, Compose, Helm and Argo CD.
+Exact settings and behaviour. For how to get started, see the
+[README](../README.md). For the scenario file, see [SCENARIO](SCENARIO.md). For
+Kubernetes, see the [chart's README](../charts/vcenter-api-simulator/README.md).
 
-## Standard vSphere performance
+- [Start-up flags and environment variables](#start-up-flags-and-environment-variables)
+- [The data directory](#the-data-directory)
+- [Accounts and the console password](#accounts-and-the-console-password)
+- [The console](#the-console)
+- [Request capture](#request-capture)
+- [Activity](#activity)
+- [Licensing and sign-on](#licensing-and-sign-on)
+- [What is and is not answered](#what-is-and-is-not-answered)
+- [Standard vSphere performance](#standard-vsphere-performance)
+- [Docker Compose](#docker-compose)
 
-`QueryPerf`, `QueryPerfComposite`, counter discovery, and host/VM quickStats
-share a workload model. Six VM cohorts range from idle to busy, with a daily
-cycle, a weekly cycle, smooth shorter variation and brief daily contention
-and latency peaks. Values depend on telemetry seed, VM identity and sample
-time, without stored series or random request-time noise. A repeat of the
-same historical query against unchanged inventory returns the same values,
-including after restart.
-
-The inventory reader supplies power state, connection state, maintenance,
-placement, hardware capacity, network interfaces and datastore membership.
-Powered-off VMs have no samples. VMs on unavailable or maintenance hosts
-contribute no load. VM placement changes move the load. Host CPU and memory
-budgets cap usage under overcommit; host values sum their VMs, clusters sum
-hosts, and datacenters sum clusters. Datastore I/O partitions each VM's load
-among its attached datastores. Unused datastores have zero I/O. No VM lifecycle
-operations, GPU devices, guest agents or alarms are invented.
-
-History is a replay of the synthetic workload at the requested times using
-**current inventory state and placement**. Past power transitions or migrations
-are not retained or reconstructed. This is a model of that inventory's workload,
-not an audit history of inventory changes.
-
-| Interval | Retention | Providers |
-|---|---|---|
-| 20 seconds | 1 hour | VM, host, resource pool |
-| 300 seconds | 1 day | VM, host, pool, cluster, datastore, datacenter |
-| 1,800 seconds | 1 week | Same historical providers |
-| 7,200 seconds | 30 days | Same historical providers |
-| 86,400 seconds | 1 year | Same historical providers |
-
-Samples are ascending on UTC interval boundaries, strictly after `startTime`
-and at or before `endTime`. Future samples are excluded. `maxSample` selects
-the latest samples in the requested window. Historical average, minimum,
-maximum and summation counters roll up the underlying 20-second values;
-latest counters take the endpoint. Independent integer averages can differ
-from the sum of child averages by less than one native unit per child.
-Percent counters use hundredths of a percent, CPU rates MHz, memory KiB,
-throughput KiB/s, ready/wait time milliseconds over the interval, and latency
-the counter's advertised unit. Normal XML preserves zero positions; CSV uses
-the same samples. Wildcards expand into the aggregate empty instance and
-inventory-backed CPU, NIC, virtual-disk or datastore instances. Unknown or
-unsupported metrics are omitted. The published catalog includes inherited
-vSphere metadata beyond the available synthetic subset; availability discovery
-is the supported-entity/instance contract.
-
-Requests are bounded to two million returned values and one hundred million
-inventory-node/sample evaluations, plus thirty million counter evaluations.
-Requests exceeding these limits return
-`InvalidArgument`; split broad history into smaller windows. The evaluator
-builds each shared timestamp once per request and discards it after use.
-It retains no cross-request cache or background telemetry series.
-
-Operations 9.1.1 uses CSV queries, 20-second VM/host samples and configured
-historical container intervals (normally 300 seconds), including wildcard
-instances. Its datacenter CPU wait, contention, usage and storage throughput
-come from host/VM aggregation in `LWManagedObject` and `LWDatacenter`; the
-adapter's container counter configuration directly requests VM-operation
-counters. Cluster resource metrics can also be queried through this service.
-Both paths therefore use the same underlying load. The adapter's
-`QueryPerfCounterInt` discovery receives 28 enabled guest counters, with
-names and units checked through a read-only vCenter 9.1.1 metadata query.
-These counters use stable simulator-owned IDs starting at 20001.
-
-The default vStats specification in the 9.1.1 adapter requests only GPU and
-vGPU metrics. The three GPU-less real-vCenter adapter logs contain `/stats`
-read timeouts, without the simulator's "Empty snapshots from VC stats registry"
-message. The simulator now keeps these streams open without emitting empty
-frames. Query creation, attachment, deletion and cancellation still work;
-there are no fabricated GPU snapshots. ESX-direct collection remains outside
-this simulator. API decoding is checked with the adapter's own VLSI and vAPI
-classes; chart ingestion in Operations must still be checked after deployment.
-
-## The simulator, its flags and what a scenario controls
-
-The simulator is a Go service on [govmomi vcsim](https://github.com/vmware/govmomi/tree/main/vcsim)
-with an out-of-tree `/vsanHealth` extension. A **scenario file** describes
-the simulated vCenter: datacenters, vSAN ESA and OSA clusters with their own
-host, device, VM, CPU, DOM-world and uplink counts, who may log in, the
-certificate, and failure and latency knobs. An **identity registry** in the
-data directory keeps every MoRef and uuid stable across restarts and
-scenario edits. The Performance Service serves every entity family the
-sanitized live capture ([`fixtures/live/9.1.1`](../fixtures/live/9.1.1/README.md))
-showed, with five-minute buckets and gauge values that stay inside the envelope
-the live service showed for each metric (cumulative `Raw` counters only climb
-from the observed minimum and never wrap).
+## Start-up flags and environment variables
 
 ```sh
 go build ./cmd/vcsimulator
 ./vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443
-# add -listen 0.0.0.0:443 (needs CAP_NET_BIND_SERVICE) for the 1.4.7 pack line, which ignores the port
 ```
+
+With no flags the simulator builds one cluster of 4 hosts and 4 VMs, listens on
+`0.0.0.0:8443`, serves the console on `127.0.0.1:9090` and keeps its state in
+`./data`. In the container, flags go after the image name.
 
 | Flag | Meaning |
 |---|---|
-| `-scenario FILE` | the scenario ([reference](SCENARIO.md)); without it the built-in one-cluster Phase 1 shape runs under `-seed` |
-| `-data DIR` | holds `registry.json` (identities), `tls/` (the self-signed certificate, created once) and `sign-on-key.json` (the key sign-on tokens are signed with, created when first needed and kept for as long as the seed is the same); default `$VCSIM_DATA`, else `data`; the image sets `VCSIM_DATA=/data`, its state volume |
-| `-describe` | print the scenario's cardinality (clusters, hosts, VMs, devices, per cluster) as JSON and exit |
-| `-query-log PATH` | initially enable the full JSONL query log at `PATH`; it can contain inventory identifiers. The log is bounded: it rotates by size into gzip archives and the oldest files are deleted, so its total stays inside the cap. A start-up default: see the saved capture settings below |
-| `-query-log-max-bytes N` | bytes one log file may hold before it is gzipped and a new one starts (default 4194304) |
-| `-query-log-max-files N` | how many log files to keep at most, oldest deleted first (default 4) |
-| `-query-log-max-total N` | total bytes the whole log may take across its files (default 25165824, or the data volume's capacity less 8 MiB kept for the state files when that is smaller) |
-| `-unanswered-stdout` | initially send unanswered requests as JSON lines to stdout; a start-up default, and the console has no switch for it |
-| `-debug-capture=false` | initially stop writing what tools ask about licensing and sign-on to stdout (the requests listed under "Debug capture" below); on by default. A start-up default: see the saved capture settings below |
-| `-lookup-trust-cert FILE` | a PEM file with the certificate tools see at the simulator's address when a proxy in front of it ends TLS (env `VCSIM_LOOKUP_TRUST_CERT`). The lookup service names it as the certificate to trust for the sign-on addresses it hands out, in place of the simulator's own, which such a tool never sees. The file is read again when it changes. Without it the simulator's own certificate is named |
-| `-regenerate` | discard the registry; required after a seed change (identities change only if the seed did) |
-| `-tls-cert`, `-tls-key` | serve a provided certificate instead of the self-signed one (the scenario's `tls:` does the same) |
-| `-session-timeout` | idle session timeout; sessions never expire by default |
-| `-any-login` | explicitly allow any non-empty vCenter username and password |
-| `-username`, `-password`, `-role` | one vCenter account supplied at start (env `VCSIM_USERNAME`, `VCSIM_PASSWORD`, `VCSIM_ROLE`); with no account supplied here or in the scenario, the console's first-run set-up chooses the password |
-| `-public-url URL` | the address tools should use, shown in the console (env `VCSIM_PUBLIC_URL`); default `https://<name>:<port>` from the first `-tls-names` entry or the machine's name. Set it when a proxy or ingress gives the simulator another name |
-| `-appliance-dns-servers IPS` | comma-separated DNS server IPs reported by appliance networking reads; default: the process resolver in `/etc/resolv.conf` |
-| `-appliance-ipv4 CIDR` | IPv4 address/prefix reported by appliance networking reads; default: the first non-loopback local IPv4 interface |
-| `-report-url URL` | where the console sends people to report a request the simulator cannot answer (env `VCSIM_REPORT_URL`); default this project's new-issue page |
-| `-listen ADDR` | repeatable; default `0.0.0.0:8443` |
-| `-admin ADDR` | the password-protected control console (plain HTTP); default `127.0.0.1:9090`, env `VCSIM_ADMIN`; empty turns it off |
-| `-admin-allowed-hosts NAMES` | comma-separated Host names the console answers to besides `localhost`, `127.0.0.1` and `::1` (any port); every other Host gets 403, which stops a web page from reaching the console through DNS rebinding. Add the name your proxy or ingress forwards; env `VCSIM_ADMIN_ALLOWED_HOSTS` |
+| `-listen ADDR` | Where the vCenter API listens, over HTTPS. Repeat for more than one. Default `0.0.0.0:8443`. A tool that ignores the port in its settings and uses 443 needs `-listen 0.0.0.0:443`, which needs permission to bind a low port |
+| `-admin ADDR` | Where the console listens, over plain HTTP. Default `127.0.0.1:9090`. Env `VCSIM_ADMIN`. Empty turns the console off |
+| `-admin-allowed-hosts NAMES` | Host names the console answers to besides `localhost`, `127.0.0.1` and `::1`. Any other name gets 403, which stops a web page reaching the console through DNS rebinding. Add the name your proxy forwards. Env `VCSIM_ADMIN_ALLOWED_HOSTS` |
+| `-admin-secure-cookie` | Mark console cookies Secure. Use behind a proxy that ends TLS |
+| `-admin-reset` | Remove the console password and exit. See [Accounts and the console password](#accounts-and-the-console-password) |
+| `-scenario FILE` | The [scenario file](SCENARIO.md). Without it, the built-in one-cluster environment runs under `-seed` |
+| `-seed NAME` | Identity seed for the built-in environment (default `phase1`). Ignored with `-scenario`, which names its own. The same seed gives the same vCenter identity, so give each simulator its own |
+| `-regenerate` | Discard the identity registry. Needed after a seed change, which otherwise is refused at start |
+| `-describe` | Print the environment's size (clusters, hosts, VMs, devices, and per cluster) as JSON and exit |
+| `-data DIR` | Where state is kept (see below). Default `$VCSIM_DATA`, else `data`. The image sets `VCSIM_DATA=/data` |
+| `-tls-names NAMES` | Extra DNS names or IPs for a newly made certificate. Used once, when the certificate is first created |
+| `-tls-cert`, `-tls-key` | Serve this certificate and key (PEM) instead of a self-signed one. The scenario's `tls:` does the same |
+| `-tls-dir DIR` | Where the self-signed certificate is kept. Default `<data>/tls` |
+| `-tls-managed` | The deployment manages the certificate in `-tls-dir`: the console shows it read-only. The chart sets this |
+| `-username`, `-password`, `-role` | One vCenter account supplied at start. Env `VCSIM_USERNAME`, `VCSIM_PASSWORD`, `VCSIM_ROLE`. `-role` is `administrator` (default) or `read-only` |
+| `-any-login` | Accept any non-empty account name and password |
+| `-session-timeout DURATION` | Idle timeout for vCenter sessions. Default none: sessions never expire |
+| `-public-url URL` | The address tools should use, as shown in the console. Env `VCSIM_PUBLIC_URL`. Default `https://<name>:<port>` from the first `-tls-names` entry, or the machine's name. Set it when a proxy or ingress gives the simulator another name. Also the hostname appliance networking reads report |
+| `-lookup-trust-cert FILE` | A PEM file with the certificate tools see at the simulator's address when a proxy in front ends TLS. Env `VCSIM_LOOKUP_TRUST_CERT`. See [behind a proxy](#behind-a-proxy-that-ends-tls) |
+| `-appliance-dns-servers IPS` | Comma-separated DNS servers appliance networking reads report. Default: the process's own resolver |
+| `-appliance-ipv4 CIDR` | The IPv4 address and prefix appliance networking reads report, for example `10.0.0.2/24`. Default: the first non-loopback address |
+| `-report-url URL` | Where the console sends people to report a request the simulator cannot answer. Env `VCSIM_REPORT_URL`. Default this project's new-issue page |
+| `-query-log PATH` | Start with full request capture on, writing to `PATH` |
+| `-query-log-max-bytes N` | Bytes one log file may hold before it is compressed and a new one starts. Default 4194304 |
+| `-query-log-max-files N` | How many log files to keep, oldest deleted first. Default 4 |
+| `-query-log-max-total N` | Bytes the whole log may take. Default 25165824, or the data volume's size less 8 MiB when that is smaller |
+| `-unanswered-stdout` | Start with unanswered requests also written to standard output as JSON lines. Has no console switch |
+| `-debug-capture=false` | Start with the licensing and sign-on request record off. It is on by default |
+| `-version` | Print the version and exit |
 
-To capture what a client asks for, open **Requests** in the console. Requests
-the simulator has no answer for are captured from the start; "Capture every
-request in full" keeps everything while it is on (or start with
-`-query-log /data/query-log.jsonl`). Repeat the action in the client, then
-download from the same screen. The chart's `simulator.capture.queryLog` and
-`simulator.capture.unansweredStdout` set the initial defaults; sending
-unanswered requests to stdout is an install-time choice and has no switch in
-the console. SOAP credentials, session operations and headers are omitted or
-redacted, but request bodies can contain inventory identifiers. Treat the
-records accordingly. Unanswered records are bounded in memory and kept until
-deleted; turning full capture off deletes what it captured.
+`VCSIM_ADMIN_PASSWORD` supplies the console password (see below).
 
-The full log lives in the data volume as `query-log.jsonl` plus its gzip
-archives `query-log.N.jsonl.gz`. It cannot grow past its cap: when a file
-reaches `-query-log-max-bytes` it is compressed and a new one starts, and when
-the files together pass `-query-log-max-total` the oldest are deleted first.
-Where the volume's capacity is known, the cap never passes that capacity less
-8 MiB, so the state files always keep their room. The chart sets the three
-limits with `simulator.capture.queryLogMaxFileBytes`, `queryLogMaxFiles` and
-`queryLogMaxTotal` (0 keeps the default). Downloads and "every request, one at a
-time" read across the rotated and compressed files.
+## The data directory
+
+Everything the simulator keeps is in `-data`, so a volume mounted there keeps
+the environment across restarts.
+
+| File | What it holds |
+|---|---|
+| `registry.json` | Every identity the simulator has handed out. Never reused |
+| `tls/` | The self-signed certificate, made once |
+| `sign-on-key.json` | The key sign-on tokens are signed with. Made when first needed, and kept while the seed stays the same |
+| `console.json` | The environment as the console last changed it. Resumed at the next start, unless the scenario file changed, in which case the file wins |
+| `vcenter-users.json` | Accounts made in the console, as password hashes |
+| `console-password` | The console password, as a hash |
+| `life.json` | Activity's dials and where it has put things |
+| `capture-settings.json` | The request capture switches, once any has been used |
+| `query-log.jsonl`, `query-log.N.jsonl.gz` | The full request log, when capture is on |
+| `last-signin.json` | When tools last signed in, for Home |
+
+If the volume is full, the simulator keeps serving from memory and says so in
+its log and on Home. The environment may be lost at the next restart, and a
+certificate that could not be saved changes then.
+
+## Accounts and the console password
+
+There is no published default password. Until an account exists nothing can sign
+in to the simulated vCenter. An account comes from one of these:
+
+- the console's first-run set-up, which chooses the password for
+  `administrator@vsphere.local`;
+- the scenario's `auth.users`;
+- `-username` and `-password` (or `VCSIM_USERNAME` and `VCSIM_PASSWORD`), with
+  `-role` or `VCSIM_ROLE` for a read-only account;
+- `-any-login`, which accepts any non-empty name and password.
+
+Accounts made in the console are kept, and win over the others until the
+scenario file changes. Changing or removing an account ends its sessions.
+Read-only accounts can read inventory and performance. Calls that change
+something are refused. With the console off (`VCSIM_ADMIN=`), supplying an
+account is the only way to sign in.
+
+**The console has its own password**, separate from the vCenter accounts. The
+first visit asks for it (at least 8 characters). It is kept as a hash in
+`console-password`, and can be changed on Security. Set `VCSIM_ADMIN_PASSWORD`
+(the chart's `admin.existingSecret`) to supply it instead. A supplied password
+wins: if it differs from the stored one, the stored one is replaced at the next
+start, console sessions end and one log line (never the value) says so. The
+console shows it as read-only.
+
+Console sessions end after 30 minutes without a person using the console (its
+own background refresh does not count) and after 12 hours in any case. They do
+not survive a restart.
+
+**To reset the console password,** stop the simulator, run
+`vcsimulator -admin-reset -data <dir>` (or delete `console-password` from the
+data directory), start it again and choose a new one. Remove
+`VCSIM_ADMIN_PASSWORD` first if your deployment supplies one.
+
+**Upgrading from 0.3.x.** Earlier versions accepted a published default password
+for `administrator@vsphere.local` when no account was supplied. It is gone.
+After the upgrade a simulator with no supplied account refuses every sign-in
+until the console's set-up chooses a password. A saved account keeps whatever
+password it had, including the old default.
+
+## The console
+
+Open `http://127.0.0.1:9090/`. It has nine tabs: **Home, Clusters, Storage,
+Versions, Users, Security, Activity, Slowness and faults, Requests**. It works
+in light and dark, and at phone width.
+
+It binds to loopback by default. It answers only to the Host names `localhost`,
+`127.0.0.1` and `::1` (any port, so a port-forward and Docker work) and those in
+`-admin-allowed-hosts`. Use TLS in front of it beyond loopback. State-changing
+requests must be same-origin JSON.
+
+- **Every change works the same way.** A short screen asks a few questions that
+  are already answered. "What will happen" says in sentences what the change will
+  do, and one button makes it: right away, or at a time later the same day. There
+  is no shared draft. A scheduled change shows as a bar on every screen with "Do
+  it now" and "Cancel it", locks nothing, and does not survive a restart.
+- **Changes to clusters, hosts, storage and versions build a new vCenter** next
+  to the running one and swap them. Connected tools are signed out and sign in
+  again, as after a vCenter restart. Every identity the change keeps is
+  unchanged. Users, the certificate, idle sign-out, slowness and faults, how
+  licensing looks to tools, and everything Activity does change in place.
+- **The simulator names clusters** (`cluster-12`) and invents storage connection
+  details. Hosts are removed by name, and a removed host's number is not reused.
+- **Home says what is true.** Whether a tool is connected, as which account and
+  what it calls itself, and, if it is not, since when and why (its user was
+  removed, the certificate was replaced, the simulator is paused, it signed
+  itself out, or it has gone quiet). A tool counts as connected while it has been
+  answered in the last 15 minutes and has not signed out since. Home also shows
+  the build running (version, commit, the vCenter it presents, uptime) and how
+  busy it has been: requests by outcome and by service, with a typical and a
+  slow-end response time, for the last hour or since it started. Neither view
+  survives a restart.
+- **Requests says why each request was answered as it was.** "Not answered" means
+  only requests the simulator has no answer for. A refused sign-in, a refusal a
+  real vCenter makes too, and a fault you switched on are counted separately.
+- **Add and remove, in scenario terms:** see
+  [editing a running simulator](SCENARIO.md#editing-a-running-simulator-the-control-console).
+
+The console's planning estimate for a change is 128Mi plus 2Mi per host, 256Ki per
+VM and 16Ki per physical device, rounded up to 256Mi. When the simulator can read
+its container's memory limit it warns before a change that exceeds it. It is a
+planning number, not a forecast.
+
+## Request capture
+
+Open **Requests**. Requests the simulator has no answer for are captured from the
+start. "Capture every request in full" keeps everything while it is on. Repeat the
+action in your tool, then download from the same screen. Turning full capture
+off deletes what it captured.
+
+SOAP passwords, session operations and headers are left out or replaced, but
+request bodies can contain inventory identifiers. Treat the downloads
+accordingly. Unanswered records are kept in memory until deleted, and the console
+shows the last 20,000 calls.
+
+The full log is bounded. When a file reaches `-query-log-max-bytes` it is
+compressed and a new one starts, and when the files together pass
+`-query-log-max-total` the oldest are deleted. The chart's
+`simulator.capture.queryLogMaxFileBytes`, `queryLogMaxFiles` and `queryLogMaxTotal`
+set the three limits (0 keeps the default).
 
 The start-up flags `-query-log`, `-unanswered-stdout` and `-debug-capture` only
-set the first defaults. The first time any capture switch on **Requests** is
-used, all the capture settings (including the ones with no switch, such as
-unanswered requests to stdout) are saved in `capture-settings.json` in the
-data directory, and from then on the saved settings win over the flags at
-every start.
+set the first defaults. The first time a capture switch on Requests is used, all
+the capture settings are saved in `capture-settings.json`, and from then on the
+saved settings win at every start.
 
-Debug capture is on by default. **Requests** has a third capture switch,
-"Record what tools ask about licensing", that turns it on and off; the choice
-is saved with the other capture settings. It
-writes one JSON line to stdout (`"event":"request-capture"`) for:
+**Licensing and sign-on record.** On by default, with its own switch on Requests,
+"Record what tools ask about licensing". It writes one JSON line to standard
+output (`"event":"request-capture"`) for every request to the license service
+(`/ls`), the lookup service (`/lookupservice`), the sign-on admin service
+(`/sso-adminserver`) and the token service (`/sts`); for a `POST` to `/api`; and
+for the four `/sdk` operations that carry a session from one connection to
+another (`LoginBySessionTicket`, `AcquireSessionTicket`, `AcquireCloneTicket` and
+`CloneSession`). Each line has the method, path, query, SOAP operation, status,
+the fault type if the answer was one, whether a session cookie came with the
+request (never its value), the names of all headers, the values of
+Content-Type, SOAPAction, User-Agent, Accept and Content-Length, and the request
+body.
 
-- every request to the license service (`/ls`), the lookup service
-  (`/lookupservice`), the sign-on admin service (`/sso-adminserver`) and the
-  token service (`/sts`);
-- a `POST` to `/api` itself, which is how a tool opens a session on the
-  interface licenses are assigned through;
-- on `/sdk`, the four operations by which a tool carries a session from one
-  connection to another: `LoginBySessionTicket`, `AcquireSessionTicket`,
-  `AcquireCloneTicket` and `CloneSession`. No other `/sdk` request is logged.
+Before logging, the content of any element, and the value of any attribute, JSON
+or form field or query parameter whose name contains a credential word (password,
+secret, token, cookie, ticket, credential, session, hash, assertion, license key,
+signed entitlement, private key, security, signature, x509, sslTrust, user, owner
+id or principal) is replaced by `[scrubbed:Name len=N]`, as is any run of more than
+64 base64 or hex characters. A request to the token service is treated the other
+way round so that its shape can be learned: every element and attribute is kept,
+and the text of every element is removed unless it is a fixed name or a time. An
+assertion loses everything inside it. A body over 64 KiB is cut and flagged.
+Nothing of an answer is logged but its status and fault type.
 
-Each line has the method, path, query, the SOAP operation, the status, the
-type of the fault when the answer was one (so a refused `AcquireCloneTicket`
-shows as `NotAuthenticated`, which no other list records), `cookieSent`
-(whether a session cookie came with the request; its value is never logged),
-the names of all headers, the values of Content-Type, SOAPAction, User-Agent,
-Accept and Content-Length, and the request body. Before
-logging, the content of any element, and the value of any attribute, JSON or
-form field or query parameter, whose name contains a credential word (password,
-secret, token, cookie, ticket, credential, session, hash, assertion, license
-key, signed entitlement, private key, security, signature, x509, sslTrust,
-user, owner id or principal) is
-replaced by a `[scrubbed:Name len=N]` marker, as is any run of more than 64
-base64 or hex characters. Element names, namespaces, other attributes and order
-are kept. A request to the token service is treated the other way round, so
-that its shape can be learned: every element and attribute is kept, and the
-text of every element is removed unless the element is one whose text is a
-fixed name or a time (the kind of token, of key and of signature asked for,
-and its lifetime). An assertion loses everything inside it. Authorization,
-Cookie and session headers never have their values
-logged. A body over 64 KiB is cut and flagged. Nothing of an answer is logged
-but its status and fault type.
+## Activity
 
-The console uses a separate password from vCenter. The first time it is
-opened it asks for two things: a password for the console itself (at least 8
-characters), then, when the deployment supplied no vCenter account, the
-password of the first account tools sign in with,
-`administrator@vsphere.local`. There is no published default password: until
-that step is done nothing can sign in to the simulated vCenter. A deployment
-that supplies an account (the scenario's `auth.users`, `-username` and
-`-password`, or `-any-login`) skips the step.
+A vCenter nobody uses is still: no events, no tasks, a flat inventory. **Activity**
+makes the simulated environment change by itself, the way one in use does. It is
+off until you start it, and one button stops all of it.
 
-**Upgrading from 0.3.x.** Earlier versions accepted a published default
-password for `administrator@vsphere.local` when no account was supplied. That
-password is retired. After the upgrade a simulator with no supplied account
-refuses every sign-in until the console's set-up step chooses a password. A
-saved account keeps whatever password was set, including the old default
-value. Tools that used the default need the new password, or supply an
-account at install: `VCSIM_USERNAME` and `VCSIM_PASSWORD`, the chart's
-`credentials`, or the scenario's `auth.users`. With the console turned off
-(`VCSIM_ADMIN=`) supplying an account is the only way to sign in.
-
-Set `VCSIM_ADMIN_PASSWORD` to supply the console password instead (the chart's
-`admin.existingSecret` points to a Secret with key `password`). A chosen
-password persists as a bcrypt hash in `console-password` under the data
-directory and can be changed on the console's Security screen. A password
-supplied by the deployment wins: if it differs from the stored hash, the hash is
-replaced at start, existing sessions end, and one log line (never the value)
-says so; the console then shows it as read-only.
-Sessions expire after 30 minutes without a person using the console (the
-console's own background refresh does not count) and after 12 hours in any
-case; they do not survive restart. An ended session returns to the sign-in page
-with a notice.
-
-**Reset the console password.** It cannot be reset from the sign-in page. On
-the machine the simulator runs on, stop it, remove `console-password` from the
-data directory or run `vcsimulator -admin-reset -data <dir>`, then start it
-again and choose a new password. Remove `VCSIM_ADMIN_PASSWORD` first if the
-deployment supplies one.
-
-The chart keeps the console on loopback unless `admin.service.enabled` is set;
-an optional `admin.ingress` exposes that Service. Use TLS outside loopback. For
-a TLS-terminating proxy, set `-admin-secure-cookie` so cookies require HTTPS;
-the chart sets it automatically for its TLS ingress.
-
-| Where to set it | Settings |
-|---|---|
-| Console | clusters, hosts and shared storage; vCenter and ESX versions; vCenter users and what they may do (full access or read-only; a deployment sets `role: read-only` on an `auth.users` entry, `VCSIM_ROLE`/`-role` for the `VCSIM_USERNAME` user, or the chart's `credentials.role`; an environment variable's name never changes a role); idle sign-out; request capture; slowness and faults; an unmanaged certificate; the console password |
-| Start-up | API and console listen addresses and ports, data directory, console allowed hosts, the address shown to tools (`-public-url`), where unanswered requests are reported (`-report-url`), and sending unanswered requests to stdout. |
-
-An uploaded or regenerated console certificate is kept in the data directory.
-Changing it ends sessions, and clients must trust the new certificate. A
-certificate supplied through `-tls-cert`/`-tls-key`, scenario `tls`, or the
-chart's existing Secret or cert-manager takes precedence and is read-only in
-the console. If the chart's supply is removed, the previously configured console certificate is used again.
-
-What the scenario controls, and what the simulator guarantees:
-
-- **Topology.** Any number of datacenters and clusters. Each cluster draws
-  its own counts from the file's `vary` distributions with its own seed, so
-  ten generated clusters differ; explicit `clusters:` overrides pin any of
-  them. One vDS per datacenter with management, vMotion, vSAN and VM
-  portgroups; every host has management, vMotion and vSAN vmkernel NICs,
-  a local VMFS datastore per unclaimed NVMe device, and the cluster's vSAN
-  datastore.
-- **Identity.** uuids are UUID v5 of (seed namespace, kind, registry
-  serial); the registry also reserves MoRefs. A restart on the same data
-  directory and a removal preserve the identities of surviving entities.
-  A seed change plus `-regenerate` changes identities.
-- **Metrics.** Values are a pure function of (telemetry seed, entity,
-  label, bucket); nothing is stored. Each label stays inside the min..max
-  the live capture showed for it, follows a business-hours day and drifts
-  smoothly; labels the live service held constant stay constant.
-- **Auth and TLS.** Configured users are enforced on `/sdk` (password
-  login; the token and certificate logins vcsim would accept from anyone
-  are refused), and `/vsanHealth` shares the session (no cookie,
-  `NotAuthenticated`). With no users configured there is no default
-  password: the console's first-run set-up chooses the password of
-  `administrator@vsphere.local`, and nothing signs in before then. Set
-  `auth.anyLogin: true` or `-any-login` to accept arbitrary non-empty credentials. The certificate persists,
-  so the 2.0.0 pack's certificate pin survives restarts.
-- **Lookup, sign-on and license services.** The chain VCF Operations walks
-  before it collects ([what each answers and what is unverified](../README.md#licensing-and-sign-on)):
-  - `/lookupservice/sdk`: `RetrieveServiceContent`, and `List` for three
-    filters (`vcenterserver` with `vmomi` / `com.vmware.vim`; `cs.identity`
-    with `vmomi` / `com.vmware.cis.cs.identity.admin`; `cs.identity` with
-    `wsTrust` / `com.vmware.cis.cs.identity.sso`). Any other filter, and no
-    filter, returns an empty list. Addresses are built on the address the
-    client used: `X-Forwarded-Host` when a proxy sets it, else `Host`.
-    `sslTrust` is the listener's certificate, or the one in
-    `-lookup-trust-cert`. The node id is its own UUID and is the scope of the
-    license service; the vCenter registration's service id is
-    `about.instanceUuid`.
-  - `/sso-adminserver/sdk/vsphere.local`: `SsoAdminServiceInstance`,
-    `IdS_getSystemDomainName`, `IdS_getSslCertificateManager` and
-    `GetIssuersCertificates`, without a
-    sign-in.
-  - `/sts/STSService/vsphere.local` (and `/sts/STSService`): a WS-Trust `Issue`
-    for a bearer token with a username token, checked against the same accounts as `/sdk`. The
-    SAML assertion carries an enveloped RSA-SHA256 signature over its
-    exclusive canonical form, made with an RSA 3072 key kept in
-    `sign-on-key.json`; `GetIssuersCertificates` returns that key's
-    certificate. The vCenter settings `config.vpxd.sso.sts.uri`,
-    `config.vpxd.sso.admin.uri` and `config.vpxd.sso.groupcheck.uri` name
-    these two paths under `-public-url`.
-  - `/ls/sdk`: `Login` and `Logout` of the session-management service, and,
-    signed in, `SearchAssets` (the plain form and the forms by product family
-    names, by license state and by license id, with `maxResults` and
-    `offset`), `SearchLicenses` and `QuerySystemTime`. A license session never
-    authenticates `/sdk`; the two stores are separate.
-  - `/sdk`: `LoginBySessionTicket` answers `InvalidTicket`. The extension
-    `com.vmware.vrops.license.managed` is seeded from the scenario, and
-    `RegisterExtension`, `UpdateExtension` and `UnregisterExtension` of it
-    are saved, so that a claim by an Operations outlives a restart.
-
-  Operations 9.1.1 license usage collection reads the host evaluation block
-  (`evalInfo`) as well as the assigned evaluation license. Resource-model queries
-  supply host datacenter references, datacenter names and host cluster names
-  (plus cluster datacenter names). License search remains empty in evaluation;
-  no entitlement is manufactured. Local validation uses the adapter's own
-  `AssetPropertiesFetcher` and usage payload builders against these responses.
-
-  The captured adapter logs for all three real lab vCenters also contain
-  `No ESX health reports found` per host. That warning is normal for this lab
-  baseline. `EsxSdkClientManager` schedules the data SDK's ESX health collector;
-  `EsxAuthentication` exchanges a vCenter token scoped to `HostSystem:<id>,Host.Stats.Query`
-  and connects to each host's IP/FQDN for its ESX vAPI reports. Serving those
-  reports would require reachable host addresses with ESX authentication and
-  observability APIs. The simulator does not build host endpoints or invent
-  reports to suppress this normal warning.
-
-  An anonymous or logged-out
-  `SessionManager.currentSession` read answers an empty `FetchResponse`.
-  `/rest/vcenter/certificate-authority/get-root` and its `/api` and numbered
-  forms return the simulator's own certificate as PEM once the request carries
-  a valid `vmware-api-session-id`.
-- **Faults and latency.** Per-family or per-method SOAP faults
-  (`invalid-argument`, `not-supported`, `system-error`, `timeout`) by
-  cluster and time window; per-family and `/sdk` latency with jitter.
-
-Known gaps: the vDS is served under vcsim's base type
-`DistributedVirtualSwitch` rather than `VmwareDistributedVirtualSwitch`;
-populated vSAN iSCSI target service, file service, and FC-backed datastores
-are not modeled because the walk captured no populated examples.
-A licensed vCenter (a signed entitlement), license assignment, the
-`LicenseManager` managed object on `/sdk`, and the console's
-per-service `currentSession` shapes beyond what was captured are not modelled.
-Among the answered operations, the bad-credential fault of a real vCenter's
-license service was never observed, so a refused license login, and a license
-read that is not signed in, answer the
-captured invalid-request fault shape and that shape is not claimed as verified;
-the other unverified parts of the licensing and sign-on answers are listed in
-the [README](../README.md#licensing-and-sign-on). Shared NFS
-v3 and iSCSI-backed VMFS datastores can be configured in a scenario; the
-iSCSI shape is plausible but not verified against a lab iSCSI host. REST
-inventory reads share SOAP inventory identities. List endpoints honour `names`, the parent and state
-filters that apply to each kind (for example `clusters`, `datacenters`,
-`hosts`, `folders`, `resource_pools`, `power_states`) and the id filter of each
-kind, in both the plain and `filter.`-prefixed spellings; any other parameter
-returns a 400 `INVALID_ARGUMENT`. Some nested VM and OSA health details remain
-partial. The real 9.1.1
-server returns full documents for `/sdk/vimService.wsdl` and `/sdk/vim.wsdl`.
-The simulator serves the captured service descriptor but does not serve
-`vim.wsdl`; a complete sanitized capture is needed to add it.
-
-### Control console
-
-Open `http://127.0.0.1:9090/` (the `-admin` address). The console is the
-way to change a running simulator without editing YAML. It has nine tabs,
-named for what you want to do: **Home, Clusters, Storage, Versions, Users,
-Security, Activity, Slowness and faults, Requests**. It follows the Lattice design
-system, in light and dark, and works at phone width. It answers only to the
-Host names `localhost`, `127.0.0.1` and `::1` (any port, so a port-forward and
-`docker compose` work) plus those in `-admin-allowed-hosts`; behind a proxy,
-add the name the proxy forwards. Helm: `admin.allowedHosts`; the console
-listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
-
-- **Every change works the same way.** A short screen asks a few questions
-  that are already answered. Beside them "What will happen" says in sentences
-  what the change will do, and one button makes it: right away, or at a time
-  later the same day. There is no shared draft and no separate apply step.
-  A scheduled change shows as a bar on every screen with "Do it now" and
-  "Cancel it", locks nothing, and does not survive a restart (the history
-  says so when that happens).
-- **Changes to clusters, hosts, storage and versions build a new vCenter**
-  next to the running one and swap them, so connected tools are signed out
-  and sign in again, as after a vCenter restart. Every identity the change
-  keeps is unchanged. Users, the certificate, idle sign-out, slowness and
-  faults, and everything Activity does change in place. So does how licensing
-  looks to tools (Security):
-  whether the evaluation is running or has run out, whether accounts are
-  licensing administrators, and which VCF Operations, if any, vCenter says
-  manages its license.
-- **The simulator names clusters** (`cluster-12`) and invents storage
-  connection details; hosts are removed by name and a removed host's number
-  is not reused. "Replace everything with a new environment" is the one
-  action that starts a new identity registry.
-- **Home says what is true.** Whether a tool is connected, as which account,
-  what it calls itself, and if it is not connected, since when and why (its
-  user was removed, the certificate was replaced, the simulator is paused, it
-  signed itself out, or it has gone quiet). A tool counts as connected while
-  it has been answered within the last 15 minutes and has not signed out
-  since; one that signs out after each collection shows as connected again
-  when it next signs in. Home also says which simulator build is running
-  (version, commit, the vCenter it presents, uptime) and how busy it has been:
-  requests by outcome and by service, with a typical and a slow-end response
-  time, for the last hour or since it started. The last hour is counted from
-  the request log (below), so on a busy simulator it says how far back the log
-  reaches instead; neither view survives a restart.
-- **Requests says why each request was answered as it was.** "Not answered"
-  means only requests the simulator has no answer for; a refused sign-in, a
-  refusal a real vCenter makes too, and a fault you switched on are each
-  counted separately.
-- **Applied state survives a restart.** The console writes
-  `<data>/console.json`; the next start resumes it unless the scenario file
-  changed, in which case the file wins and the history says so. Accounts
-  made in the console survive that too when the deployment supplies none.
-- **Console login.** The console binds to loopback by default and uses its own
-  password. The chart's console Service and Ingress are opt-in. Use TLS when
-  reaching it beyond loopback. State-changing requests must be same-origin JSON.
-- **The request log is redacted.** The activity log holds the last 20,000 calls
-  in memory. Unanswered requests can retain redacted SOAP bodies, including
-  inventory identifiers; session operations and credentials are omitted.
-
-Projections (entities, series, calls and bytes per cycle) are computed from
-the topology and the catalog, labelled as projections, and never presented
-as measured scale.
-
-### Activity
-
-A vCenter nobody uses is still: no events, no tasks, flat inventory. The
-**Activity** tab makes the simulated environment change by itself the way one
-in use does, so a monitoring tool has something to see. It is off until you
-start it, and one button stops all of it.
-
-**One dial for each thing that happens.** The middle of a dial is a baseline
-for an environment of this size; left is slower (down to off), right is
-busier. The amounts follow the number of VMs and hosts, so a larger
-environment changes more. Next to each dial a sentence says what its position
-means in numbers.
+**One dial for each thing that happens.** The middle of a dial is a baseline for an
+environment of this size. Left is slower, down to off. Right is busier. The amounts
+follow the number of VMs and hosts, so a larger environment changes more. Next to
+each dial a sentence says what its position means in numbers.
 
 | Dial | At the baseline | What a tool sees |
 |---|---|---|
-| Load balancing (DRS) | about 25 vMotions a day for every 100 VMs, in bursts of a few VMs, more in working hours | each VM on another host; one DRS vMotion task and its events for each |
-| VMs powered off and on | about 2 a day for every 100 VMs, mostly in working hours; a VM stays off for a while and comes back; never more than one VM in ten is off | power state, guest state, the VM's performance numbers at zero while it is off |
-| New VMs | about 1 a day for every 100 VMs, mostly in working hours; a cluster with fewer VMs than hosts counts as having one for each host, so an empty cluster can gain VMs | a new VM with a number its cluster has not used since Activity was first started, powered on |
-| VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed; its number and identities are not used again |
-| Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode; a host that comes out gets some VMs back |
+| Load balancing (DRS) | about 25 vMotions a day for every 100 VMs, in bursts of a few VMs, more in working hours | each VM on another host, with one DRS vMotion task and its events for each |
+| VMs powered off and on | about 2 a day for every 100 VMs, mostly in working hours. A VM stays off for a while and comes back. Never more than one VM in ten is off | power state, guest state, the VM's performance numbers at zero while it is off |
+| New VMs | about 1 a day for every 100 VMs, mostly in working hours. A cluster with fewer VMs than hosts counts as having one for each host | a new VM, powered on, with a number its cluster has not used since Activity was first started |
+| VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed. Its number and identities are not used again |
+| Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode. A host that comes out gets some VMs back |
 | Datastores filling | 0.4% of each vSAN datastore's capacity a day, a little every half hour | datastore free space, vSAN used capacity and the datastore's performance numbers |
 | Datastore cleanup | 0.3% of capacity freed at 2 AM | the same numbers falling |
-| CPU load | as the VMs were built (half to double) | CPU usage of VMs, hosts and clusters; above the baseline, ready time (contention) rises too |
+| CPU load | as the VMs were built (half to double) | CPU usage of VMs, hosts and clusters. Above the baseline, ready time (contention) rises too |
 | Memory load | as the VMs were built (half to double) | memory used by VMs, hosts and clusters, up to what each VM has |
 
-- **For the whole vCenter, and for each cluster.** "These dials are for"
-  chooses. A cluster follows the vCenter's dials until you move one of its
-  own; that dial then applies to that cluster only, and "Follow the vCenter
-  again" puts it back.
-- **Exact numbers.** "Type an exact number" sets a dial to one VM every so
-  many minutes, hours or days (a new VM every 30 minutes, one removed every
-  45), so many vMotions a day, or a percentage (hosts in maintenance mode, up
-  to a quarter; datastore growth, up to 10% a day). An exact number stays as
-  typed whatever the size of the environment. One VM every so often is
-  spread evenly over day and night; an exact number of vMotions a day still
-  comes in DRS's bursts, more of them in working hours. Moving the dial goes
-  back to a level.
-- **Limits.** The number of VMs stays between two numbers (5% below and
-  above the number there was before Activity changed anything, unless you
-  change them; they move with clusters and hosts you add or remove); at a
-  limit, adding or removing waits and says so once a day. At most a quarter
-  of a cluster's hosts are in maintenance mode at once. A vSAN datastore is
-  not filled past 90%, and a cleanup frees only what Activity filled.
-- **The Clusters tab shows where Activity has put things**: each host's VM
-  count and whether it is connected or in maintenance mode, and each
-  cluster's VM count, follow what Activity has done.
-- **"Do it now"** on a cluster's dial does that thing once, straight away,
-  after saying what it will do.
-- **A change that moves hosts asks first**: starting, stopping, and raising
-  or lowering the share of hosts in maintenance mode each say how many hosts
-  and VMs will move before anything happens.
-- **While the simulator is paused** nothing moves: Start, Stop, "Do it now"
-  and a change to the hosts in maintenance mode are refused until you resume.
-- **Stop** leaves the environment still and healthy: hosts come out of
-  maintenance mode and VMs that are off are powered on. VMs that were added
-  or removed stay that way, and datastores stay as full as they are.
-- **"What has happened"** lists every cause with what it set off as one
-  line (a host going into maintenance mode is one line, however many VMs
-  moved), newest first, with the detail one click away. It says which lines
-  came from a button you pressed. The last 1,000 lines are kept.
-- **The same seed and the same settings make the same things happen** at the
-  same times. Times of day are the simulator's local time.
-- **It survives a restart**: the dials, where each VM is, which are off,
-  which hosts are in maintenance mode and how full the datastores are are
-  written to `<data>/life.json`; VMs that were added or removed are part of
-  the saved scenario (`addedVMs` and `removedVMs`, see
-  [the scenario file](SCENARIO.md)). Nothing happens while the simulator is
-  off or paused, and nothing is caught up afterwards. A change that rebuilds
-  the vCenter (clusters, hosts, storage, versions) keeps all of it; "Replace
-  everything with a new environment" starts again. When the scenario file
-  changes, the file wins for what it says; the VMs Activity added and
-  removed are kept for the clusters the file still has, and the limits are
-  set again if the new size is outside them.
-- **If something fails three times in a row**, that one dial stops itself,
-  the tab shows a problem, and "Switch it on again" resumes it. The rest
-  carries on.
+- **For the whole vCenter, and for each cluster.** "These dials are for" chooses.
+  A cluster follows the vCenter's dials until you move one of its own. That dial
+  then applies to that cluster only, and "Follow the vCenter again" puts it back.
+- **Exact numbers.** "Type an exact number" sets a dial to one VM every so many
+  minutes, hours or days, so many vMotions a day, or a percentage (hosts in
+  maintenance mode, up to a quarter; datastore growth, up to 10% a day). An exact
+  number stays as typed whatever the size of the environment. One VM every so often
+  is spread evenly over day and night. An exact number of vMotions a day still
+  comes in bursts, more in working hours. Moving the dial goes back to a level.
+- **Limits.** The number of VMs stays between two numbers, 5% below and above the
+  number there was before Activity changed anything unless you change them. They
+  move with clusters and hosts you add or remove. At a limit, adding or removing
+  waits and says so once a day. At most a quarter of a cluster's hosts are in
+  maintenance mode at once. A vSAN datastore is not filled past 90%, and a cleanup
+  frees only what Activity filled.
+- **"Do it now"** on a cluster's dial does that thing once, straight away, after
+  saying what it will do.
+- **A change that moves hosts asks first.** Starting, stopping, and changing the
+  share of hosts in maintenance mode each say how many hosts and VMs will move.
+- **While the simulator is paused** nothing moves. Start, Stop, "Do it now" and a
+  change to the hosts in maintenance mode are refused until you resume.
+- **Stop** leaves the environment still and healthy: hosts come out of maintenance
+  mode and VMs that are off are powered on. VMs that were added or removed stay
+  that way, and datastores stay as full as they are.
+- **"What has happened"** lists every cause with what it set off as one line, newest
+  first, with the detail one click away. It says which lines came from a button you
+  pressed. The last 1,000 lines are kept.
+- **The same seed and settings make the same things happen** at the same times.
+  Times of day are the simulator's local time.
+- **It survives a restart.** The dials, where each VM is, which are off, which hosts
+  are in maintenance mode and how full the datastores are are in `life.json`. VMs
+  that were added or removed are part of the saved scenario (`addedVMs` and
+  `removedVMs`, see [the scenario file](SCENARIO.md#editing-a-running-simulator-the-control-console)).
+  Nothing happens while the simulator is off or paused, and nothing is caught up
+  afterwards. A change that rebuilds the vCenter keeps all of it. "Replace
+  everything with a new environment" starts again.
+- **If something fails three times in a row,** that one dial stops itself, the tab
+  shows a problem, and "Switch it on again" resumes it. The rest carries on.
 
-**What vCenter records.** Each operation is recorded as a real vCenter 9.1.1
-records it; the shapes were read from one (read-only) and are decoded by the
-VCF Operations 9.1.1 vCenter adapter's own client classes in the checks. A
-`TaskEvent` comes first, carrying the task as it was queued; its key is the
+**What vCenter records.** Each operation is recorded as a real vCenter 9.1.1 records
+it. A `TaskEvent` comes first, carrying the task as it was queued. Its key is the
 chain id of every event of the operation and of the task itself.
 
 | Operation | Task (description id), started by | Events after the `TaskEvent` |
 |---|---|---|
-| DRS moves a running VM | `Drm.ExecuteVMotionLRO`, the system (no user) | `EventEx` `com.vmware.vc.vm.VmHotMigratingWithEncryptionEvent`, `VmEmigratingEvent`, `DrsVmMigratedEvent` |
+| DRS moves a running VM | `Drm.ExecuteVMotionLRO`, the system | `EventEx` `com.vmware.vc.vm.VmHotMigratingWithEncryptionEvent`, `VmEmigratingEvent`, `DrsVmMigratedEvent` |
 | A VM is powered on, or off | `VirtualMachine.powerOn`, `VirtualMachine.powerOff`, a user | `VmStartingEvent`, `VmPoweredOnEvent`; `VmStoppingEvent`, `VmPoweredOffEvent` |
-| A VM is added | `Folder.createVm`, a user; then its power-on | `VmBeingCreatedEvent`, `VmInstanceUuidAssignedEvent`, `VmUuidAssignedEvent`, `VmCreatedEvent` |
-| A VM is removed | its power-off; then `VirtualMachine.destroy`, a user | `VmRemovedEvent` |
-| A host goes into maintenance mode | `HostSystem.enterMaintenanceMode`, a user; each running VM leaves by a DRS vMotion of its own | `EnteringMaintenanceModeEvent`, `VmBeingRelocatedEvent` and `VmRelocatedEvent` for each VM that is off, `HostDasDisabledEvent`, `EnteredMaintenanceModeEvent` |
+| A VM is added | `Folder.createVm`, a user, then its power-on | `VmBeingCreatedEvent`, `VmInstanceUuidAssignedEvent`, `VmUuidAssignedEvent`, `VmCreatedEvent` |
+| A VM is removed | its power-off, then `VirtualMachine.destroy`, a user | `VmRemovedEvent` |
+| A host goes into maintenance mode | `HostSystem.enterMaintenanceMode`, a user. Each running VM leaves by a DRS vMotion of its own | `EnteringMaintenanceModeEvent`, `VmBeingRelocatedEvent` and `VmRelocatedEvent` for each VM that is off, `HostDasDisabledEvent`, `EnteredMaintenanceModeEvent` |
 | A host comes out | `HostSystem.exitMaintenanceMode`, a user | `ExitMaintenanceModeEvent`, `HostDasEnabledEvent` |
 
 The user is `VSPHERE.LOCAL\Administrator`. Finished tasks leave vCenter's
 recent-task list after ten minutes, as on a real vCenter.
 
-**What it does not do.** Datastore filling changes each cluster's vSAN
-datastore only, not local, NFS or iSCSI datastores. A real vCenter also
-records a `VmMacAssignedEvent` for a new VM, distributed-switch port events
-around power and removal, and a vSphere HA state event when a host comes out
-of maintenance mode; the simulator does not.
+**What it does not do.**
+- Datastore filling changes each cluster's vSAN datastore only, not local, NFS or
+  iSCSI datastores.
+- A real vCenter also records a `VmMacAssignedEvent` for a new VM, distributed
+  switch port events around power and removal, and a vSphere HA state event when
+  a host comes out of maintenance mode. The simulator does not.
+- Nothing Activity does raises an alarm. Patching hosts one after another, nightly
+  backups and snapshots, and a host that crashes are not built.
+- An event collector created with a filter on one chain id does not receive that
+  chain's later events as they happen, though a query made afterwards finds them.
+  A tool streaming events at the instant one is posted can see it with its own key
+  as chain id (for a new VM, about a millisecond). A tool that reads events in pages
+  afterwards, as VCF Operations does, sees the finished chain.
 
-vcsim gives every event its own key as chain id when it is posted, and
-Activity sets the operation's chain id straight afterwards. Two things follow.
-An event collector that was created with a filter on one chain id does not
-receive that chain's later events as they happen (a query made afterwards
-finds them). And a tool that is streaming events at the instant one is posted
-can see it with its own key as chain id; for a new VM that instant is the
-whole creation, about a millisecond, during which its creation events also
-carry the UUIDs vcsim first gave it. A tool that reads events in pages
-afterwards, as the VCF Operations adapter does, sees the finished chain.
+## Licensing and sign-on
 
-Nothing Activity does raises an alarm. Rolling patching, nightly backups and
-snapshots, and a host that crashes are not built yet.
+VCF Operations asks a vCenter a chain of questions before it collects: where its
+sign-on service is, whether the account may manage licenses, what license the
+vCenter has, and which Operations manages that license. The simulator answers the
+chain with its own values only. No key, token, certificate or license in it comes
+from a real system. It presents as an evaluation vCenter and never as a licensed
+one: a licensed vCenter has a signed entitlement that only the vendor can issue,
+and the simulator does not make one, copy one or accept one.
 
-### Checks
+| Operations asks | The simulator answers |
+|---|---|
+| The lookup service (`/lookupservice/sdk`) for vCenter and its sign-on service | One registration each, with addresses built on the address the tool used (`X-Forwarded-Host` when a proxy sets it, else `Host`) and the certificate to trust for them. Any other filter, and no filter, returns an empty list |
+| The sign-on admin service (`/sso-adminserver/sdk/vsphere.local`) for its content, its domain, its SSL certificate manager and its signing certificate | `vsphere.local`, a typed manager reference, and the certificate of the simulator's own signing key. No sign-in needed |
+| The token service (`/sts/STSService/vsphere.local`, and `/sts/STSService`) for a token, with a username and password | A signed SAML bearer token for one of the simulator's accounts, with an RSA-SHA256 signature made with an RSA 3072 key kept in `sign-on-key.json`. It lists the groups that make an account a licensing administrator, unless you take them out |
+| The license service (`/ls/sdk`): `Login`, `Logout`, and signed in `SearchAssets` (plain and filtered by product family, license state and license id, with paging), `SearchLicenses` and `QuerySystemTime` | vCenter and each host in evaluation with 90 days left, or with the evaluation run out. No licenses. A license session never signs in to `/sdk` |
+| Whether the extension `com.vmware.vrops.license.managed` is there (`/sdk`) | Not there, or there with the Operations id and address you typed, or as an Operations registered it. Registering, changing and removing it all work and are kept across restarts |
+| To sign in with a session ticket (`LoginBySessionTicket`) | "The session ticket is invalid", as a real vCenter says to a ticket it did not issue |
+| Host and datacenter references for usage collection | Answered, including the host's evaluation block and the datacenter and cluster names |
 
-The first real Operations collection gate passed against the installed vSAN
-Host Metrics 2.0.0 pack; its scope, procedure and measured result are in
-[OPERATIONS-ACCEPTANCE](OPERATIONS-ACCEPTANCE.md).
+The settings `config.vpxd.sso.sts.uri`, `config.vpxd.sso.admin.uri` and
+`config.vpxd.sso.groupcheck.uri` name the sign-on paths under `-public-url`.
 
-| Check | How | Where it runs |
+**How it looks to tools** is on the console's Security screen ("How licensing
+looks to tools") and in the [scenario file](SCENARIO.md#licensing): whether the
+evaluation is running or has run out, whether accounts are licensing
+administrators, and which VCF Operations, if any, vCenter says manages its
+license. Changing it does not rebuild the vCenter.
+
+### Behind a proxy that ends TLS
+
+Give the simulator the proxy's certificate with `-lookup-trust-cert` (the chart's
+`simulator.lookupTrustSecret`), and route `/lookupservice`, `/sso-adminserver`,
+`/sts`, `/ls`, `/api`, `/rest` and `/stats` to it as well as `/sdk`. The lookup
+service tells a tool which certificate to trust at the sign-on addresses, and
+behind a proxy that is the proxy's, not the simulator's. The file is read again
+when it changes.
+
+### What is not built, and what is unverified
+
+**Not built:** a licensed vCenter, assigning a license to the simulator, the REST
+lists of license assignments, session tickets that work (`AcquireSessionTicket`),
+and an unfiltered lookup list (a real vCenter returns about 48 registrations, the
+simulator none).
+
+**Unverified.** The answers were built from what three real vCenter 9.1.1 systems
+returned and from what the Operations adapter reads. These parts were not
+observed, so the simulator's answer is its own:
+
+- Lookup service: the values of the `GroupInternalId`, `ControlScript` and
+  `Capabilities` attributes and of the site id (only their lengths were seen), the
+  owner name of the sign-on registration, the text of the fault for a wrong
+  reference (its type was seen), and whether the session cookie repeats from one
+  answer to the next. The `localurl` attribute names port 8085, which the simulator
+  does not serve.
+- Sign-on admin: the value of `apiRevision` and the SSL certificate-manager
+  reference value. Only the four reads above are answered.
+- Token service: the request it accepts is the standard form a real vCenter
+  accepted, not one captured from Operations. The answer to a wrong password is the
+  standard WS-Security fault. The given name and surname in the token are taken
+  from the account name. A read-only account is listed in `Everyone` only.
+- License service: every real vCenter observed was licensed, so vCenter's asset in
+  evaluation is put together from the evaluation block those assets carry and from
+  one host that was in evaluation. For hosts, the asset id, the product id and name,
+  and the cost units are the simulator's own. So are the hours and minutes left, the
+  90 days, an evaluation that never counts down, what an expired evaluation looks
+  like, and the fault for a read that is not signed in or a refused login. The
+  `disallowedHostEditions` property and vSAN assets are left out.
+- The "managed by" extension: the subject name is left out unless an Operations
+  registered one, and the version is vCenter's own unless an Operations registered
+  another.
+
+The licensing and sign-on record (see [Request capture](#request-capture)) lets these
+gaps be closed from what Operations really sends.
+
+## What is and is not answered
+
+**Answered.**
+- Sign-in and sign-out on SOAP (`/sdk`) and REST (`/api/session`,
+  `/rest/com/vmware/cis/session`), for the accounts you set up. A signed-out or
+  anonymous `SessionManager.currentSession` read answers an empty result.
+- Datacenters, clusters, hosts, VMs, datastores, networks, resource pools and
+  distributed switches on SOAP, built on vcsim.
+- The same lists on REST (`/api/vcenter/...`). List endpoints honour `names`, the
+  parent and state filters that apply to each kind and the id filter of each kind,
+  in the plain and `filter.`-prefixed spellings. Any other parameter returns 400
+  `INVALID_ARGUMENT`. REST reads share SOAP identities.
+- vSAN (`/vsanHealth`): performance data for all 69 kinds on ESA and OSA clusters,
+  settings, disk lists, health summary and the resync summary (always nothing
+  to sync). Values are made up, the same every time for the same moment, and inside
+  the range a real vCenter showed. The service-versions document
+  (`/sdk/vsanServiceVersions.xml`) is cut back to the namespaces the selected
+  vCenter version speaks.
+- Standard vSphere performance and counter discovery ([below](#standard-vsphere-performance)).
+- The inventory-relationship query Operations uses for hosts, datacenters and
+  clusters.
+- Version, appliance, topology and supervisor reads on `/api`: the version,
+  account settings and policy, access, firewall, logging forwarding, time
+  synchronisation and TLS profile (invented values), the Salt minion settings,
+  networking, DNS and hostname (the simulator's own hostname, DNS servers and
+  address), the backup lists (none) and the topology nodes. `/wcp` answers as a
+  vCenter with Kubernetes turned off does. Namespaces, storage policies and
+  supervisors are empty.
+- REST paths that answer with a refusal: appliance health, content libraries, ESX
+  cluster settings and the deployment type get 403. Any other REST path the
+  simulator does not know gets 404.
+- Tag collection (`POST /api`): sign-in, an empty list, and sign-out.
+- The root certificate (`/rest/vcenter/certificate-authority/get-root` and its
+  `/api` forms), as the simulator's own certificate, once the request is signed in.
+- Licensing, sign-on and token services, [above](#licensing-and-sign-on).
+- Operations' GPU vStats query and live stream (`/api`, `/stats`): the query is
+  accepted, and the stream stays open and silent, as on a vCenter with no GPUs.
+  Tokens use only the simulator's signing key.
+- iSCSI and NFS datastores, when you add them. Capacity matches inventory. I/O
+  follows the VMs using each datastore and is zero on unused ones.
+- Which version vCenter and its hosts are: 8.0 Update 3, 9.0, 9.1.1, or a number you
+  type. One cluster can hold a mix of ESX versions.
+
+**Not answered or only partly.**
+- The simulator has no ESX endpoints. Direct connections to a host, and the host
+  health reports Operations reads through them, get no answer. Operations logs "No
+  ESX health reports found" for each host, as it does against real lab vCenters.
+- Distributed switches are served as vcsim's base type `DistributedVirtualSwitch`,
+  not `VmwareDistributedVirtualSwitch`.
+- Fibre Channel storage, and vSAN acting as a file server or an iSCSI server: reported
+  as absent. NFS 4.1, storage I/O, discovery or rescan, CHAP and live path
+  transitions are not modelled. The iSCSI shape is plausible, not verified against
+  an iSCSI host.
+- Some nested VM and OSA health details are partial. OSA has no samples for VM-level
+  families, stretched clusters, several disk groups per host, dedup or populated
+  iSCSI ([OSA limits](SCENARIO.md#osa-evidence-and-limits)).
+- `/sdk/vimService.wsdl` is served. `vim.wsdl` is not.
+- GPU statistics, backups, tags, Kubernetes and storage policies answer with nothing,
+  as above.
+- A licensed vCenter, license assignment, session tickets and the unfiltered lookup
+  list ([above](#what-is-not-built-and-what-is-unverified)).
+- Events and tasks beyond what Activity and the build of the inventory make.
+
+The console's Requests screen shows what your tool asked for that got no answer.
+
+## Standard vSphere performance
+
+`QueryPerf`, `QueryPerfComposite`, counter discovery and host and VM quickStats
+share one workload model. Six VM groups range from idle to busy, with a daily
+cycle, a weekly cycle, smooth shorter variation and brief daily peaks of
+contention and latency. Values depend on the telemetry seed, the VM's identity
+and the sample time, with no stored series and no random noise at request time.
+Repeating a historical query on an unchanged environment returns the same values,
+including after a restart.
+
+The inventory supplies power state, connection state, maintenance mode, placement,
+hardware capacity, network interfaces and datastore membership. Powered-off VMs
+have no samples. VMs on unavailable hosts or hosts in maintenance mode contribute
+no load. A VM that moves takes its load with it. Host CPU and memory budgets cap
+usage when the VMs add up to more. Host values sum their VMs, clusters sum hosts,
+and datacenters sum clusters. Datastore I/O is split among each VM's datastores,
+and unused datastores have zero I/O.
+
+History is a replay of the workload at the requested times using the **current**
+inventory and placement. Past power changes and moves are not remembered.
+
+| Interval | Retention | Providers |
 |---|---|---|
-| Contract: every captured request replayed against the Phase 1 shape, responses compared by element structure, labels, bucket timestamps and fault type; identity joins across `/sdk` and `/vsanHealth`; determinism across instances and seeds; fixture sanitization; login restriction | `go test ./...` | CI `go` job |
-| Phase 2: the ten-cluster scenario (identities on both surfaces per cluster, per-cluster cardinality, overrides), restart and edit identity stability through the registry, credentials, fault and latency knobs, inventory realism against the trimmed live inventory capture, gauge values inside the live envelopes, `Raw` counters monotonic | `go test ./...` | CI `go` job |
-| Control plane: every console task keeps the identities it should (and rebuilds only for cluster, storage and version changes), hosts removed by name, faults switched on and off in place, scheduled changes without a lock, first-run account set-up, connected tools across a pause, a removed user and a new certificate, saved state across a restart and a changed scenario file, the reason recorded for each request (with every live capture replayed and never called "not answered"), redaction, admin API guards, the console's screens | `go test ./...` | CI `go` job |
-| Smoke: a plain vSphere client (govc) connects with the scenario's credentials (and is refused with a wrong password), lists clusters, hosts and VMs and compares the counts with what the simulator built, dumps every identity, restarts the simulator on the same data directory and checks the dump is identical | `tools/smoke/smoke.sh` | CI `smoke` job |
-| Chart: `helm lint --strict` with every `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template` and `kubeconform` of the rendered manifests and the Argo CD example | `.github/workflows/package.yml` | CI `package` workflow, `chart` job |
-| Image: build, OCI label and non-root check, `docker compose` boot, then a vSphere client smoke ([`tools/smoke/smoke.ps1`](../tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, expected hosts and VMs back, wrong password refused | PowerCLI on `pwsh` | CI `package` workflow, `image` job |
-| Chart install (manual): the chart in a disposable kind cluster with default values, the same smoke through the Service, the certificate unchanged across a pod restart, an upgrade to `tls.existingSecret` and restricted login that verifies against the issuing CA | [`tools/smoke/helm-kind.sh`](../tools/smoke/helm-kind.sh) | Optional: run manually (needs `kind`, `helm`, `kubectl`, `openssl`, Docker, `pwsh`), not required CI |
-| The reference pack's own `perfsvc.connect/probe/collect/build_name_map/build_parent_map/build_disk_hardware` against every cluster of a scenario, both metric scopes, label sets equal to the live capture, every object named and parented, second collection identical, verify-on with the simulator's certificate pinned | `tools/mp-harness/harness.py` | manual `mp-acceptance` workflow |
-| `mp-test connect` and `mp-test collect` twice through the Operations integration SDK 1.3.1 (builds and runs the pack's adapter container) | `tools/mp-harness/mp_test_run.py` | manual `mp-acceptance` workflow |
+| 20 seconds | 1 hour | VM, host, resource pool |
+| 300 seconds | 1 day | VM, host, pool, cluster, datastore, datacenter |
+| 1,800 seconds | 1 week | the same |
+| 7,200 seconds | 30 days | the same |
+| 86,400 seconds | 1 year | the same |
 
-Locally, with govc installed (release binary: https://github.com/vmware/govmomi/releases/tag/v0.56.2):
+Samples are ascending on UTC interval boundaries, after `startTime` and at or
+before `endTime`. Future samples are not returned. `maxSample` selects the latest
+samples in the window. Historical average, minimum, maximum and summation
+counters roll up the 20-second values, and latest counters take the endpoint.
+Percent counters use hundredths of a percent, CPU rates MHz, memory KiB,
+throughput KiB/s, ready and wait time milliseconds over the interval, and latency
+the counter's own unit. Wildcards expand into the aggregate (empty) instance and
+the CPU, NIC, virtual disk or datastore instances. Metrics the simulator does not
+produce are left out. A query may return at most two million values; a wider one
+returns `InvalidArgument`, so split it into smaller time windows.
 
-```sh
-tools/smoke/smoke.sh                                   # the ten-cluster scenario
-tools/smoke/smoke.sh --scenario examples/scenarios/phase1.yaml
-```
+VCF Operations 9.1.1 uses CSV queries, 20-second VM and host samples and the
+configured historical interval (normally 300 seconds), including wildcard
+instances. Its `QueryPerfCounterInt` discovery receives 28 enabled guest counters
+with stable simulator-owned ids starting at 20001. Operations' default vStats
+request is for GPU metrics only, which a vCenter with no GPUs answers with nothing.
 
-Smoke a simulator you are running yourself with PowerCLI (installs
-VMware.PowerCLI for the current user when missing):
+## Docker Compose
 
-```sh
-pwsh tools/smoke/smoke.ps1 -Server 127.0.0.1 -Port 8443 -Install -User <username> -Password <password>
-```
-
-The pack harness needs the pack checked out at
-`af976fb9fe97bbac2fd94b666a3f79aa12656f2a` of `sentania-labs/vsanhostmetrics`:
-
-```sh
-python3.12 -m venv .venv && .venv/bin/pip install pyvmomi==8.0.3.0.1 vmware-aria-operations-integration-sdk==1.3.1
-# Python 3.12: the Operations SDK 1.3.1 does not install on 3.13 or newer
-./vcsimulator -scenario examples/scenarios/ten-clusters.yaml -data ./data -listen 0.0.0.0:8443 &
-.venv/bin/python tools/mp-harness/harness.py --sim 127.0.0.1:8443 --mp ../vsanhostmetrics \
-    --user administrator@vsphere.local --password 'VMware1!' \
-    --fixtures fixtures/live/9.1.1 --ca data/tls/cert.pem
-PATH=.venv/bin:$PATH python3 tools/mp-harness/mp_test_run.py --mp ../vsanhostmetrics --sim-port 8443 \
-    --user administrator@vsphere.local --password 'VMware1!' --clusters 10 --hosts 82 --vms 446 --attach false
-```
-
-`mp-test` runs the adapter in a container and reaches the simulator through
-the Docker bridge gateway, so bind the simulator to `0.0.0.0`. It needs a TTY
-and gets a pty from the runner. `attach_to_vcenter` must be off under
-`mp-test`, which has no Operations Suite API to resolve vCenter objects.
-
-The OSA scenario and its evidence limits are described in the
-[scenario reference](SCENARIO.md#osa-evidence-and-limits). The REST
-surface models sessions, inventory reads, selected detail reads and captured
-failure statuses. Shared NFS v3 and iSCSI VMFS inventory are optional; live
-vCenter access remains outside this simulator.
-
-## Running it
-
-The image is `ghcr.io/sentania-labs/vcenter-api-simulator`, built from
-[`Dockerfile`](../Dockerfile) on every push to `main` (tags `main` and
-`sha-<commit>`) and on every `vMAJOR.MINOR.PATCH` tag (that tag, plus
-`latest` for the highest version). It is a static binary on a distroless
-non-root base, labeled with the source commit
-(`org.opencontainers.image.revision`) and version. Pull requests build and
-test the image without publishing it.
-
-GHCR creates the package private on first publish. To pull it without
-credentials (what the compose file and the chart's defaults assume), set it to
-public once under the package's settings on GitHub. To keep it private, give
-the chart an `imagePullSecrets` entry naming a registry pull secret.
-
-There is no published vCenter login. Supply one with the scenario's
-`auth.users`, or `VCSIM_USERNAME` and `VCSIM_PASSWORD` (`-username`/`-password`;
-`VCSIM_ROLE`/`-role` makes that user `read-only`); otherwise the console's
-first-run set-up chooses the password of `administrator@vsphere.local`, and
-nothing can sign in before then. Console changes to supplied accounts take
-precedence until the scenario file changes. Explicitly
-opt into arbitrary credentials with `auth.anyLogin: true` or `-any-login`.
-Use simulator-only credentials and never point real credentials at it.
-
-### docker run
+[`docker-compose.yml`](../docker-compose.yml) runs the same container as the
+README's `docker run`, with a named volume for the state.
 
 ```sh
-docker run -d --name vcsim -p 8443:8443 -p 127.0.0.1:9090:9090 -v vcsim-data:/data \
-  --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  ghcr.io/sentania-labs/vcenter-api-simulator:main
-curl -sk https://localhost:8443/sdk/vimServiceVersions.xml
-```
-
-The second `-p` publishes the control console on loopback only. Open it to
-choose the console password and, since this command supplies no account, the
-password tools sign in with. The identity registry, the certificate and the console's applied
-scenario are created on first start and kept
-in the volume mounted at `/data`, so identities and the fingerprint a
-management pack pinned survive restarts.
-Add `-tls-names=<hostname>` (as a command argument) to put the name
-collectors use into it, and `--read-only` needs the `/tmp` tmpfs: vcsim keeps
-scratch files there.
-
-### docker compose
-
-[`docker-compose.yml`](../docker-compose.yml) runs the same thing with a named
-volume for the state directory (registry, certificate and console state):
-
-```sh
-docker compose up -d                 # pulls :main
+docker compose up -d                 # pulls ghcr.io/sentania-labs/vcenter-api-simulator:main
 docker compose up -d --build         # builds from this checkout
-VCSIM_USERNAME=operator VCSIM_PASSWORD=placeholder docker compose up -d   # restricted login
+VCSIM_USERNAME=operator VCSIM_PASSWORD=placeholder docker compose up -d   # starts with an account
 docker compose down -v               # also discards the identities and certificate
 ```
 
-`VCSIM_TAG`, `VCSIM_PORT`, `VCSIM_ADMIN_PORT` (the console's loopback port),
-`VCSIM_SEED` and `VCSIM_TLS_NAMES` are the other knobs.
-
-### Helm
-
-[`charts/vcenter-api-simulator`](../charts/vcenter-api-simulator) installs one
-simulated vCenter per release. It creates a Deployment (one replica, non-root,
-read-only root filesystem, no capabilities), a ClusterIP Service on 443, a
-ServiceAccount with no token mounted, a PVC for the state directory (identity registry, certificate and console state), and
-optionally a Secret for credentials, an Ingress for `/sdk` and `/vsanHealth`
-and a cert-manager Certificate. No RBAC, no privileges, nothing exposed
-outside the cluster until `ingress.enabled`, `admin.service.enabled` or a
-LoadBalancer Service asks for it.
-
-```sh
-helm install vcsim-01 charts/vcenter-api-simulator \
-  --set hostname=vcsim-01.example.test \
-  --set credentials.enabled=true --set credentials.existingSecret=vcsim-01-login \
-  --set ingress.enabled=true --set ingress.className=nginx \
-  --set-string 'ingress.annotations.nginx\.ingress\.kubernetes\.io/backend-protocol=HTTPS' \
-  --set ingress.tls.enabled=true --set ingress.tls.secretName=vcsim-01-ingress-tls
-```
-
-Certificate options, in order of precedence:
-
-- `tls.existingSecret`: a `kubernetes.io/tls` Secret to serve as is.
-- `tls.certManager.enabled`: a cert-manager Certificate for `hostname` (and
-  `simulator.tlsNames`) from `tls.certManager.issuerRef`. A renewal changes
-  the fingerprint a pack pinned.
-- Neither: a self-signed certificate created on first start, kept in the
-  PVC.
-
-The PVC (`persistence.enabled`, default on) is mounted at `/data` in every
-mode: it holds the identity registry and, when no TLS Secret is set, the
-certificate, and the query log when full capture is on. A Secret is overlaid
-read-only on `/data/tls`. The PVC is annotated to survive `helm uninstall` and
-Argo CD prune or Application deletion. With persistence off every new pod
-issues new identities (and a new certificate when self-signed).
-
-`persistence.size` (default 1Gi) must comfortably hold the query log's total
-cap (`simulator.capture.queryLogMaxTotal`, 24 MiB by default) plus the state
-files. On an upgrade the chart patches the claim's size, and Kubernetes grows a
-bound claim only when its storage class sets `allowVolumeExpansion: true`; a
-class without it rejects the whole release update. So for an existing install
-the options are: set `persistence.size` to the size the claim already has (for
-example `100Mi`) and let the log limit itself to the space that is there, which
-keeps room for the state files; or, where the storage class allows it, expand the
-claim (`kubectl patch pvc <name> -p '{"spec":{"resources":{"requests":
-{"storage":"1Gi"}}}}'`), or delete the claim so the next sync recreates it
-with the new size (identities and the pinned certificate are recreated too,
-so do that only when a fresh set is acceptable).
-
-A replaced certificate (a rotated Secret, a cert-manager renewal) is served
-to the next connection without a restart: the simulator re-reads the mounted
-files when they change.
-
-The Ingress backend is HTTPS; tell the controller
-(`nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"` for ingress-nginx).
-When the Ingress terminates TLS, collectors pin the ingress certificate, not
-the simulator's.
-
-For VCF Operations' own vCenter adapter, two more things are needed behind an
-Ingress. Add `/lookupservice`, `/sso-adminserver`, `/sts`, `/ls`, `/api`, `/rest`
-and `/stats` to `ingress.paths` (the default is `/sdk` and `/vsanHealth` only).
-And set `simulator.lookupTrustSecret` to the name of the Secret that holds the
-Ingress's certificate (its `tls.crt` is mounted, nothing else): the lookup
-service then tells Operations to trust that certificate at the sign-on
-addresses, which is the one Operations will see there.
-
-Appliance networking reads use the hostname in `simulator.publicUrl` (or the
-chart's `hostname`). `simulator.applianceNetworking.dnsServers` overrides the
-reported DNS server list; `simulator.applianceNetworking.ipv4` overrides the
-reported address/prefix, for example `10.20.0.10/24`. Empty settings report the
-pod's resolver and first non-loopback IPv4 interface. The interface's `mac` is
-the local interface's hardware address and `default_gateway` is the pod's
-default route when it falls in that subnet; for an address the pod does not
-hold, they are derived from the address (VMware OUI plus its low three bytes,
-and the first host of the subnet). These read-only APIs do not change the pod's
-networking.
-
-VCF Operations' DNS alert uses its own forward and reverse DNS lookups of the
-vCenter endpoint. Correct appliance answers do not repair an ingress address's
-PTR record; that is a deployment DNS matter.
-
-[`charts/vcenter-api-simulator/ci`](../charts/vcenter-api-simulator/ci) holds
-example values for the Ingress, an existing TLS Secret, cert-manager, and no
-persistence; `helm lint` runs each of them.
-
-### Argo CD
-
-[`examples/argocd-application.yaml`](../examples/argocd-application.yaml) is
-one Application per simulated vCenter, pointing at the chart in this
-repository with the hostname, seed, credentials Secret name and Ingress in
-`valuesObject`. Copy it, change the name, hostname and seed, and it is
-another endpoint. The chart needs nothing cluster-wide, so the Application
-fits any project that may create a Deployment, Service, PVC and Ingress in
-its namespace.
+Other settings: `VCSIM_TAG` (the image tag, default `main`), `VCSIM_PORT` (the API
+port, default 8443), `VCSIM_ADMIN_PORT` (the console's loopback port, default 9090),
+`VCSIM_SEED` and `VCSIM_TLS_NAMES`, and `VCSIM_ROLE` for the account.

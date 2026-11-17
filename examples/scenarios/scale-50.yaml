@@ -1,6 +1,6 @@
-# Scale profile "large" (docs/TESTING.md scale matrix): fifty ESA clusters of
-# eight hosts, uniform cardinality so a run's numbers are attributable to
-# volume rather than to varied shapes.
+# Fifty ESA clusters of eight hosts: 400 hosts and 1,600 VMs. Every cluster is
+# the same size, so a load test's numbers come from volume rather than from
+# varied shapes.
 seed: scale-50
 datacenters:
   - name: dc-01

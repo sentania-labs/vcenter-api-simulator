@@ -1,4 +1,5 @@
-# Ten clusters with varied host and VM cardinality.
+# Ten clusters with varied host and VM counts: 100 hosts and 552 VMs. The
+# account below is a placeholder for a lab.
 seed: scale-10
 datacenters:
   - name: dc-01

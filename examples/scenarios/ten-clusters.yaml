@@ -1,8 +1,8 @@
-# Ten vSAN ESA clusters with varied host, VM and device counts: the Phase 2
-# acceptance scenario (82 hosts, 446 VMs). Every cluster draws its own
-# counts from `vary` with its own seed, so the clusters differ; `clusters`
-# pins a few explicitly. No faults or latency, so every collector check
-# passes against it.
+# Ten vSAN ESA clusters with varied host, VM and device counts: 80 hosts and
+# 370 VMs. Every cluster draws its own counts from `vary` with its own seed,
+# so the clusters differ; `clusters` pins a few explicitly. No faults or
+# latency. The account below is a placeholder for a lab: change the password,
+# or leave `auth` out and choose one in the console.
 seed: ten-clusters
 datacenters:
   - name: dc-01
@@ -36,7 +36,7 @@ auth:
   users:
     - name: administrator@vsphere.local
       password: VMware1!
-    # a password can also come from the environment:
+    # a password can also come from the environment (the simulator reads it at start):
     # - name: readonly@vsphere.local
     #   passwordEnv: VCSIM_READONLY_PASSWORD
     #   role: read-only
