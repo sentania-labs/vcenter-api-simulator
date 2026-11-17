@@ -463,7 +463,7 @@ func TestHealthProbeUsesSimulatorSOAP(t *testing.T) {
 	e := start(t, "health-soap")
 	health := &serve.Health{}
 	completed := make(chan *httptest.ResponseRecorder, 1)
-	health.Install(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actual := httptest.NewRecorder()
 		e.sim.Handler.ServeHTTP(actual, r)
 		for key, values := range actual.Header() {
@@ -472,7 +472,8 @@ func TestHealthProbeUsesSimulatorSOAP(t *testing.T) {
 		w.WriteHeader(actual.Code)
 		_, _ = w.Write(actual.Body.Bytes())
 		completed <- actual
-	}))
+	})
+	health.Install(probe, probe)
 	w := httptest.NewRecorder()
 	health.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
 	if w.Code != 200 {

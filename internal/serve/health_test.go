@@ -22,7 +22,8 @@ func TestHealthDuringBuild(t *testing.T) {
 			t.Fatalf("%s: %d %q", tc.path, w.Code, w.Body.String())
 		}
 	}
-	h.Install(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201) }))
+	public := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201) })
+	h.Install(public, public)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil))
 	if w.Code != 200 {
@@ -52,7 +53,7 @@ func TestHealthSOAPStall(t *testing.T) {
 	var calls atomic.Int32
 	entered, release := make(chan struct{}), make(chan struct{})
 	h := &Health{}
-	h.Install(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	soap := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		close(entered)
 		<-release
@@ -60,7 +61,8 @@ func TestHealthSOAPStall(t *testing.T) {
 			t.Error("not a SOAP probe")
 		}
 		_, _ = w.Write([]byte(`<RetrieveServiceContentResponse xmlns="urn:vim25"><returnval>2026-11-17T00:00:00Z</returnval></RetrieveServiceContentResponse>`))
-	}))
+	})
+	h.Install(soap, soap)
 	live := h.next.Load()
 	released := false
 	defer func() {
@@ -111,13 +113,14 @@ func TestHealthSOAPResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &Health{}
-			h.Install(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if tc.status == 0 {
 					panic("probe failure")
 				}
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
-			}))
+			})
+			h.Install(probe, probe)
 			live := h.next.Load()
 			live.lastSuccess.Store(time.Now().Add(-livenessGrace - time.Second).UnixNano())
 			live.live(time.Now())
@@ -126,5 +129,26 @@ func TestHealthSOAPResult(t *testing.T) {
 				t.Fatalf("live=%v", got)
 			}
 		})
+	}
+}
+
+// Oracle: an operator pause drops every public connection and the public
+// handler records each request. Liveness must not depend on either, so a paused
+// simulator stays alive and the probe never reaches the public handler.
+func TestHealthProbeBypassesPublicHandler(t *testing.T) {
+	var public atomic.Int32
+	h := &Health{}
+	h.Install(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		public.Add(1)
+		panic(http.ErrAbortHandler)
+	}), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<RetrieveServiceContentResponse/>`))
+	}))
+	live := h.next.Load()
+	live.lastSuccess.Store(time.Now().Add(-livenessGrace - time.Second).UnixNano())
+	live.live(time.Now())
+	waitForProbe(t, live)
+	if !live.live(time.Now()) || public.Load() != 0 {
+		t.Fatalf("live probe reached the public handler %d times or failed", public.Load())
 	}
 }

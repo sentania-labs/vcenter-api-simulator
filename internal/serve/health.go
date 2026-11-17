@@ -14,6 +14,7 @@ const livenessGrace = 2 * time.Minute
 const livenessInterval = 10 * time.Second
 
 type liveHandler struct {
+	public      http.Handler
 	handler     http.Handler
 	lastSuccess atomic.Int64
 	lastAttempt atomic.Int64
@@ -56,8 +57,11 @@ type Health struct {
 // SetVersions replaces the discovery document served until the inventory exists.
 func (h *Health) SetVersions(doc string) { h.versions.Store(&doc) }
 
-func (h *Health) Install(next http.Handler) {
-	live := &liveHandler{handler: next}
+// Install makes next the public handler. probe is the simulator beneath the
+// pause, activity and capture layers: liveness asks it, so an operator pause
+// does not restart the pod and the probe is not recorded as a client.
+func (h *Health) Install(next, probe http.Handler) {
+	live := &liveHandler{public: next, handler: probe}
 	live.lastSuccess.Store(time.Now().UnixNano())
 	h.next.Store(live)
 }
@@ -78,7 +82,7 @@ func (h *Health) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	case "/sdk/vimServiceVersions.xml":
 		if next != nil {
-			next.handler.ServeHTTP(w, r)
+			next.public.ServeHTTP(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/xml; charset=UTF-8")
@@ -90,6 +94,6 @@ func (h *Health) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "inventory is building", http.StatusServiceUnavailable)
 			return
 		}
-		next.handler.ServeHTTP(w, r)
+		next.public.ServeHTTP(w, r)
 	}
 }

@@ -223,7 +223,7 @@ func main() {
 		ctl.Capture = capture
 		handler = capture.Wrap(ctl)
 	}
-	health.Install(handler)
+	health.Install(handler, ctl.Probe())
 
 	var adminSrv *http.Server
 	if *adminAddr != "" {
