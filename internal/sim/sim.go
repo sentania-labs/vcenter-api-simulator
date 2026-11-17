@@ -123,6 +123,15 @@ type Simulator struct {
 
 	dcs   map[*topology.Datacenter]*dcRefs
 	hosts map[*topology.Host]*simulator.HostSystem
+
+	// life is the in-place operations of package life, made on first use.
+	lifeOnce sync.Once
+	life     *Life
+	// vmRefOffset and vmRefSpan are where a VM's own reference falls in the
+	// range of references its creation takes, and how long that range is:
+	// the same for every VM, and what lets a VM added while tools are
+	// connected get the same reference again when the inventory is rebuilt.
+	vmRefOffset, vmRefSpan int64
 }
 
 type dcRefs struct {
@@ -405,6 +414,15 @@ func (s *Simulator) build() error {
 		iscsiRefs[key] = ds
 	}
 	s.installStoragePerformance(iscsiRefs)
+	for _, refs := range s.Clusters {
+		if len(refs.VMs) == 0 || s.registry == nil {
+			continue
+		}
+		if rng, ok := s.registry.MorefRange(refs.Cluster.VMs[0].Serial); ok {
+			s.vmRefOffset, s.vmRefSpan = refNumber(refs.VMs[0])-rng.Start, rng.End-rng.Start
+			break
+		}
+	}
 	return nil
 }
 
@@ -537,6 +555,14 @@ func taskOf(body soap.HasFault) types.ManagedObjectReference {
 		if b.Res != nil {
 			return b.Res.Returnval
 		}
+	}
+	return types.ManagedObjectReference{}
+}
+
+// taskOfDestroy is taskOf for a Destroy_Task body.
+func taskOfDestroy(body soap.HasFault) types.ManagedObjectReference {
+	if b, ok := body.(*methods.Destroy_TaskBody); ok && b.Res != nil {
+		return b.Res.Returnval
 	}
 	return types.ManagedObjectReference{}
 }
@@ -786,11 +812,14 @@ func (s *Simulator) createVM(ctx *simulator.Context, refs *ClusterRefs, vm *topo
 	}
 	ref := res.(types.ManagedObjectReference)
 	obj := ctx.Map.Get(ref).(*simulator.VirtualMachine)
-	obj.Config.Uuid = vm.UUID
-	obj.Config.InstanceUuid = vm.InstanceUUID
-	obj.Summary.Config.Uuid = vm.UUID
-	obj.Summary.Config.InstanceUuid = vm.InstanceUUID
-	shapeVM(obj, cl, vm, s.Env.Now)
+	// under the VM's lock: Activity makes VMs while tools are reading
+	ctx.WithLock(obj, func() {
+		obj.Config.Uuid = vm.UUID
+		obj.Config.InstanceUuid = vm.InstanceUUID
+		obj.Summary.Config.Uuid = vm.UUID
+		obj.Summary.Config.InstanceUuid = vm.InstanceUUID
+		shapeVM(obj, cl, vm, s.Env.Now)
+	})
 	refs.VMs = append(refs.VMs, ref)
 	return nil
 }

@@ -289,10 +289,12 @@ resumes unless the scenario file changed since, in which case the file wins.
 | Add hosts, Change host hardware | the cluster's entry under `clusters:` | kept; new hosts and VMs get new serials |
 | Remove hosts | `removedHosts` on the cluster's entry: the host numbers left out | the other hosts keep their names and serials; a removed number is not reused |
 | Remove a cluster | the key under `removed:` | the cluster's serials remain reserved |
+| Activity adds a VM, or removes one | `addedVMs` and `removedVMs` on the cluster's entry: the VM numbers added beyond the ones its hosts generate, and the numbers left out. `vmHigh` is the highest VM number the cluster has used, written when hosts are removed after Activity was started so that those hosts' VM numbers are not given to new VMs. The lists only grow: a number stays reserved. | every other VM keeps its name and serials; a number is never used twice, and a rebuild makes an added VM again with the same identities. The vCenter is not rebuilt. |
 | Replace everything with a new environment | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new registry: every identity is replaced (the same layout name and sizes build the same identities again) |
 | Storage | `nfs:` and `iscsi:` under the datacenter | unchanged datastores keep theirs |
 | Versions | `vcenterVersion`, `esxVersion`, a cluster's `esxVersion`, `hostVersions`, `forceNewerHosts` | none |
 | Slowness and faults | `conditions:` | none; the running vCenter is not rebuilt |
+| Activity's dials, and where it has put things (which host each VM is on, which VMs are off, which hosts are in maintenance mode, how full the datastores are) | not in the scenario: `<data>/life.json` | none; the running vCenter is not rebuilt |
 | How licensing looks to tools (Security) | `licensing:` | none; the running vCenter is not rebuilt |
 
 `conditions:` is the console's one list of what is switched on. Each entry

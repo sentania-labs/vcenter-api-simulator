@@ -138,7 +138,7 @@ func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 			p.OSAClusters++
 		}
 		p.Hosts += len(cl.Hosts)
-		p.VMs += len(cl.VMs)
+		p.VMs += len(cl.LiveVMs())
 		p.Datastores++ // the cluster's vSAN datastore
 		var cEnt, cSer int
 		for _, h := range cl.Hosts {
@@ -153,7 +153,7 @@ func Project(cat *catalog.Catalog, t *topology.Topology) *Projection {
 				}
 			}
 		}
-		for _, vm := range cl.VMs {
+		for _, vm := range cl.LiveVMs() {
 			p.VDisks += len(vm.Disks)
 		}
 		for _, n := range names {

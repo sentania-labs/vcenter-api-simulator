@@ -39,4 +39,6 @@ Build → independent self-review → address findings → PR → external revie
 Do not implement broad UI or full generic vCenter support before confirming the MP API contract. Do not probe live endpoints before approved credential sourcing. Do not describe anticipated scale as measured scale. Stop and escalate when a required SOAP operation is destructive or when fixture sanitization is uncertain.
 
 ## Future work
+Activity, second part (the first part is the engine, the dials and moves, power, VMs added and removed, maintenance mode, datastore usage and load): patching hosts one after another through a cluster; nightly backups with their snapshots; a host that crashes, with the HA restarts and the alarms that follow; and the extras proposed with the design (alarms that Activity's own changes trigger among them). Until then nothing Activity does raises an alarm.
+
 Support topology import from *sanitized* read-only live inventory; workload scenario playback; sampled query latency histograms; MP memory/cpu pressure experiments; profile comparison dashboards; optional multiple Helm releases managed by existing Argo workflows instead of in-app Kubernetes administration.
