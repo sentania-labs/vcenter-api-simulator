@@ -165,6 +165,8 @@ job in `package.yml` runs `smoke.ps1` without version arguments.
 
 Limits: the vSphere Automation REST host list has no product-version field, so
 host versions are checked through `/sdk`. The 8.0 U3 vSAN namespace (8.0.0.4)
-is inferred from the ordering of the 9.1.1 capture. License states are not
-served, so the built-in vCenter adapter of a licensed Operations 9.1 still
-cannot collect; no Operations acceptance is recorded for the version presets.
+is inferred from the ordering of the 9.1.1 capture. The simulator
+answers only an evaluation license state, never a licensed one, so whether the
+built-in vCenter adapter of Operations 9.1 starts collecting is not recorded
+(see the licensing section of `docs/SCENARIO.md`); no Operations acceptance is
+recorded for the version presets.
