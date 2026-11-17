@@ -90,6 +90,19 @@ func (s *Simulator) Life() *Life {
 			l.off[refs.Cluster.Key] = map[string]bool{}
 		}
 		l.reg.Put(&clusterLoad{ManagedObjectReference: loadRef})
+		// vcsim's event catalogue has no words for the start of a vMotion
+		em := l.reg.EventManager()
+		l.as("").WithLock(em, func() {
+			for _, info := range em.Description.EventInfo {
+				if info.Key == "VmBeingHotMigratedEvent" {
+					return
+				}
+			}
+			em.Description.EventInfo = append(em.Description.EventInfo, types.EventDescriptionEventDetail{
+				Key: "VmBeingHotMigratedEvent", Description: "VM is hot migrating", Category: "info",
+				FullFormat: "Hot migrating {{.Vm.Name}} from {{.Host.Name}}, {{.Ds.Name}} in {{.Datacenter.Name}} to {{.DestHost.Name}}, {{.DestDatastore.Name}} in {{.DestDatacenter.Name}}",
+			})
+		})
 		s.life = l
 	})
 	return s.life

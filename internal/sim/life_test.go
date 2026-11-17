@@ -139,6 +139,9 @@ func TestLifeBalanceMovesWithEventsAndTasks(t *testing.T) {
 			t.Errorf("events %d and %d: %s chain %d key %d, %s chain %d", i, i+1, kindOf(evs[i]), a.ChainId, a.Key, kindOf(evs[i+1]), b.ChainId)
 		}
 		done := evs[i+1].(*types.DrsVmMigratedEvent)
+		if a.FullFormattedMessage == "" {
+			t.Error("the event that starts a vMotion has no message")
+		}
 		if done.SourceHost.Name == done.Host.Name || done.UserName != "" || done.FullFormattedMessage == "" {
 			t.Errorf("the DRS event must name two hosts, no user and a message: %+v", done.Event)
 		}

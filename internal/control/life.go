@@ -444,7 +444,7 @@ func (c *Controller) Activity(scope string) (*ActivityView, error) {
 	all, by, cs := c.lifeScopes(r)
 	e := c.life
 	v := &ActivityView{SetUp: c.lifeSetUp, Running: e.Settings.Running, Paused: c.paused.Load(), Scope: scope, Hosts: all.hosts, VMs: all.vms,
-		MinVMs: e.Settings.MinVMs, MaxVMs: e.Settings.MaxVMs}
+		MinVMs: e.Settings.MinVMs, MaxVMs: e.Settings.MaxVMs, Lines: []ActLine{}, Clusters: []ActCluster{}}
 	_, _, v.Built, _ = r.topo.Counts()
 	sc := all
 	if scope != "" {
@@ -690,7 +690,7 @@ func (c *Controller) ActivityLog(rng, show string, page int) *ActivityLogView {
 		}
 		list = append(list, en)
 	}
-	v := &ActivityLogView{Range: rng, Show: show, Count: len(list), Sum: lifeSum(list), Full: len(c.life.Log) >= life.LogSize && rng == "week"}
+	v := &ActivityLogView{Range: rng, Show: show, Count: len(list), Sum: lifeSum(list), Full: len(c.life.Log) >= life.LogSize && rng == "week", Lines: []ActLine{}}
 	if len(c.life.Log) > 0 {
 		v.First = c.life.Log[0].At
 	}

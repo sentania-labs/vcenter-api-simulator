@@ -108,7 +108,8 @@ const main = {
         <div class="m-stat"><div class="n">${num(c.hosts)}</div><div class="l">Hosts</div></div>
         <div class="m-stat"><div class="n">${num(c.vms)}</div><div class="l">VMs</div></div>
         <a class="m-stat" href="#/storage"><div class="n">${num(c.datastores)}</div><div class="l">Datastores</div></a></div>
-      <p class="m-small" style="margin-top:10px">vCenter ${h.vcenter} in ${plural(c.datacenters, 'datacenter')}. Hosts and VMs are listed inside each cluster. One full collection by a tool is about ${num(h.estimateAll.requests)} requests. <a href="#" data-act="estimate">How that is worked out</a></p>`);
+      <p class="m-small" style="margin-top:10px">vCenter ${h.vcenter} in ${plural(c.datacenters, 'datacenter')}. Hosts and VMs are listed inside each cluster. One full collection by a tool is about ${num(h.estimateAll.requests)} requests. <a href="#" data-act="estimate">How that is worked out</a></p>
+      ${h.activity ? html`<p style="margin-top:8px;font-size:13.5px">${rich(h.activity.line)} ${link(h.activity.state === 'none' ? 'Make it lively' : 'See Activity', '/activity')}</p>` : ''}`);
 
     const s = h.scheduled;
     const sched = s.length ? html`<ul class="m-list">${s.map((x) => html`<li><span class="m-dot info"></span><div class="grow"><div class="t">${x.text}</div><div class="d">Scheduled for ${timeText(x.at)} today. Nothing has changed yet.</div></div>${btn('Do it now', 'schedNow', '', { id: x.id })}${btn('Cancel it', 'schedCancel', '', { id: x.id })}</li>`)}</ul>`

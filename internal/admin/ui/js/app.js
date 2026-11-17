@@ -13,13 +13,14 @@ import storage from './storage.js';
 import versions from './versions.js';
 import users from './users.js';
 import security from './security.js';
+import activity from './activity.js';
 import faults from './faults.js';
 import requests from './requests.js';
 
-const TABS = [['home', 'Home'], ['clusters', 'Clusters'], ['storage', 'Storage'], ['versions', 'Versions'], null, ['users', 'Users'], ['security', 'Security'], null, ['faults', 'Slowness and faults'], ['requests', 'Requests']];
-const MODULES = { home, clusters, cluster: clusters, storage, versions, users, security, faults, requests };
+const TABS = [['home', 'Home'], ['clusters', 'Clusters'], ['storage', 'Storage'], ['versions', 'Versions'], null, ['users', 'Users'], ['security', 'Security'], null, ['activity', 'Activity'], ['faults', 'Slowness and faults'], ['requests', 'Requests']];
+const MODULES = { home, clusters, cluster: clusters, storage, versions, users, security, activity, faults, requests };
 // addresses of the console before the redesign still land somewhere sensible
-const OLD = { overview: 'home', topology: 'clusters', telemetry: 'faults', activity: 'requests', 'api-activity': 'requests', api: 'requests', compat: 'requests/supported', compatibility: 'requests/supported', settings: 'security' };
+const OLD = { overview: 'home', topology: 'clusters', telemetry: 'faults', 'api-activity': 'requests', api: 'requests', compat: 'requests/supported', compatibility: 'requests/supported', settings: 'security' };
 
 export const ctx = {
   home: null, homeError: null, route: { path: '/home', parts: ['home'], query: {} }, screen: null, data: null, loadError: null,
@@ -104,6 +105,11 @@ function tabBadge(k) {
   if (!h) return '';
   if (k === 'requests') return html`${h.unanswered ? badge('bad', `${h.unanswered} not answered`) : ''}${h.capturing ? html` ${badge('accent', 'Capturing all')}` : ''}`;
   if (k === 'faults') return h.faults ? badge('warn', `${h.faults} on`) : '';
+  if (k === 'activity' && h.activity) {
+    const a = h.activity;
+    if (a.held) return badge('bad', `${a.held} problem`);
+    return a.state === 'running' ? badge('ok', 'On') : a.state === 'stopped' ? badge('warn', 'Stopped') : a.state === 'waiting' ? badge('warn', 'Waiting') : '';
+  }
   return '';
 }
 const dark = () => document.documentElement.getAttribute('data-theme') === 'dark';
