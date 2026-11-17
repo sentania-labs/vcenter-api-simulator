@@ -74,7 +74,7 @@ var secretRequests = []struct{ method, path, body string }{
 func TestNothingSecretIsLogged(t *testing.T) {
 	var stdout bytes.Buffer
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true, Unanswered: true, Stdout: true, Debug: true}, &stdout)
+	c, err := NewCapture(dir, "", Settings{Full: true, Unanswered: true, Stdout: true, Debug: true}, &stdout, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

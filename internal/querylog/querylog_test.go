@@ -74,7 +74,7 @@ func TestLogRejectsOversizedBody(t *testing.T) {
 
 func TestCaptureRedactsAndFindsUnanswered(t *testing.T) {
 	var stdout bytes.Buffer
-	c, err := NewCapture(t.TempDir(), "", Settings{Full: true, Unanswered: true, Stdout: true}, &stdout)
+	c, err := NewCapture(t.TempDir(), "", Settings{Full: true, Unanswered: true, Stdout: true}, &stdout, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestCaptureRedactsAndFindsUnanswered(t *testing.T) {
 
 func TestCaptureSettingsPersistAndClear(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Unanswered: true}, nil)
+	c, err := NewCapture(dir, "", Settings{Unanswered: true}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestCaptureSettingsPersistAndClear(t *testing.T) {
 	if c.State().FullHeld != 1 || c.State().UnansweredHeld != 1 {
 		t.Fatalf("state: %+v", c.State())
 	}
-	restarted, err := NewCapture(dir, "", Settings{}, nil)
+	restarted, err := NewCapture(dir, "", Settings{}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestCaptureOmitsMalformedAndSessionBodies(t *testing.T) {
 }
 
 func TestCapturePartialPropertyFaultWithSuccessfulHTTP(t *testing.T) {
-	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestCapturePartialPropertyFaultWithSuccessfulHTTP(t *testing.T) {
 }
 
 func TestCaptureLicensingDiscoveryRequests(t *testing.T) {
-	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestCaptureLicensingDiscoveryRequests(t *testing.T) {
 }
 
 func TestCaptureFetchPropertyWhenUnauthenticated(t *testing.T) {
-	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+	c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestCaptureReportsWriteFailure(t *testing.T) {
 	if _, err := os.Stat("/dev/full"); err != nil {
 		t.Skip("/dev/full unavailable")
 	}
-	c, err := NewCapture(t.TempDir(), "/dev/full", Settings{Full: true}, nil, int64(0), Limits{MaxFileBytes: 1 << 20})
+	c, err := NewCapture(t.TempDir(), "/dev/full", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestCaptureReportsWriteFailure(t *testing.T) {
 }
 
 func TestCaptureBoundsMemoryButRetainsFullFile(t *testing.T) {
-	c, err := NewCapture(t.TempDir(), "", Settings{Full: true, Unanswered: true}, nil)
+	c, err := NewCapture(t.TempDir(), "", Settings{Full: true, Unanswered: true}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestUnansweredClassification(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil)
+			c, err := NewCapture(t.TempDir(), "", Settings{Unanswered: true}, nil, 0, Limits{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -305,7 +305,7 @@ func TestUnansweredClassification(t *testing.T) {
 }
 
 func TestCaptureDisabledDoesNotInspectRequests(t *testing.T) {
-	c, err := NewCapture(t.TempDir(), "", Settings{}, nil)
+	c, err := NewCapture(t.TempDir(), "", Settings{}, nil, 0, Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

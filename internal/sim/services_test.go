@@ -468,7 +468,7 @@ func TestLicenseServiceOtherOperationsUnanswered(t *testing.T) {
 // The request capture records the operation name of a license-service request,
 // whether it was answered locally or left unanswered.
 func TestLicenseRequestCaptureRecordsOperation(t *testing.T) {
-	capture, err := querylog.NewCapture(t.TempDir(), "", querylog.Settings{Full: true}, nil)
+	capture, err := querylog.NewCapture(t.TempDir(), "", querylog.Settings{Full: true}, nil, 0, querylog.Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

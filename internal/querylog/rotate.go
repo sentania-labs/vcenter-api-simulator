@@ -316,25 +316,19 @@ func (r *rotator) readAll() (out []record, used int64) {
 	return out, r.total
 }
 
-// readChronological returns the records the log holds in the order they were
-// written, oldest first: the archives from the oldest up, then the active file.
-func (r *rotator) readChronological() ([]record, int64) {
+// readChronological returns the log's lines as they were written, oldest
+// first: the archives from the oldest up, then the active file.
+func (r *rotator) readChronological() [][]byte {
 	r.scan()
-	var out []record
+	var out [][]byte
 	for i := len(r.state) - 1; i >= 0; i-- {
 		lines, err := readAny(r.state[i].name)
 		if err != nil {
 			continue
 		}
-		for _, line := range lines {
-			var rec record
-			if json.Unmarshal(line, &rec) != nil {
-				continue
-			}
-			out = append(out, rec)
-		}
+		out = append(out, lines...)
 	}
-	return out, r.total
+	return out
 }
 
 // readAny returns a file's non-empty lines, transparently for gzip.

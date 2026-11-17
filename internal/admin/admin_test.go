@@ -289,7 +289,7 @@ func protectedConsole(t *testing.T, sc *scenario.Scenario, seed string) (*client
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Close)
-	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true}, nil)
+	capture, err := querylog.NewCapture(dir, "", querylog.Settings{Unanswered: true}, nil, 0, querylog.Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

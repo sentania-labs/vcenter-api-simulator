@@ -23,7 +23,7 @@ func soap(n int) string {
 // archive is a complete copy: no line is torn or lost.
 func TestRotationCompressesWithoutTearing(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true}, nil, int64(0), Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 30000})
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 30000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestRotationCompressesWithoutTearing(t *testing.T) {
 // ones gone.
 func TestTotalCapShedsOldestFirst(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true}, nil, int64(0), Limits{MaxFileBytes: 200, MaxFiles: 5, MaxTotal: 900})
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 200, MaxFiles: 5, MaxTotal: 900})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestVolumeCapacityLimitsTheCap(t *testing.T) {
 // requests are still answered.
 func TestSmallCapKeepsStateFilesWritable(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, filepath.Join(dir, "query-log.jsonl"), Settings{Full: true, Unanswered: true}, nil, int64(0),
+	c, err := NewCapture(dir, filepath.Join(dir, "query-log.jsonl"), Settings{Full: true, Unanswered: true}, nil, 0,
 		Limits{MaxFileBytes: 8192, MaxFiles: 2, MaxTotal: 24576})
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestSmallCapKeepsStateFilesWritable(t *testing.T) {
 // still holds comes back, oldest line first.
 func TestWriteJSONLReadsAcrossRotatedFiles(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true}, nil, int64(0), Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 30000})
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 30000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestWriteJSONLReadsAcrossRotatedFiles(t *testing.T) {
 // Concurrent requests all land, and the log stays readable.
 func TestConcurrentWritesStayInsideCap(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true, Unanswered: true}, nil, int64(0), Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 12000})
+	c, err := NewCapture(dir, "", Settings{Full: true, Unanswered: true}, nil, 0, Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 12000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestConcurrentWritesStayInsideCap(t *testing.T) {
 // Clear empties the whole log, archives included.
 func TestClearRemovesArchives(t *testing.T) {
 	dir := t.TempDir()
-	c, err := NewCapture(dir, "", Settings{Full: true}, nil, int64(0), Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 12000})
+	c, err := NewCapture(dir, "", Settings{Full: true}, nil, 0, Limits{MaxFileBytes: 3000, MaxFiles: 3, MaxTotal: 12000})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1412,7 +1412,7 @@ func TestStateSurvivesRestart(t *testing.T) {
 // The Requests headline counts only what the simulator truly cannot answer.
 func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 	c := newCtl(t, small(t), "", "t")
-	capture, err := querylog.NewCapture(t.TempDir(), "", querylog.Settings{Unanswered: true}, io.Discard)
+	capture, err := querylog.NewCapture(t.TempDir(), "", querylog.Settings{Unanswered: true}, io.Discard, 0, querylog.Limits{})
 	if err != nil {
 		t.Fatal(err)
 	}

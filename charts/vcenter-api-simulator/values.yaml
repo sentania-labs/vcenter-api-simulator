@@ -136,7 +136,7 @@ persistence:
   # (simulator.capture.queryLogMaxTotal, 24 MiB by default) plus the state
   # files; 128Mi does. An already-bound claim keeps its old size unless the
   # storage class allows expansion - the log then limits itself to the space
-  # that is actually there. See the chart README.
+  # that is actually there. See docs/REFERENCE.md.
   enabled: true
   existingClaim: ""
   storageClass: ""

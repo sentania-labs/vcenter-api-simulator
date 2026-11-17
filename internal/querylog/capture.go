@@ -60,26 +60,13 @@ type Capture struct {
 // NewCapture loads persisted settings or uses the supplied startup defaults.
 // totalBytes is the capacity of the volume the log lives on (0 when unknown);
 // it limits the log's total cap so the state files always keep their room.
-// A zero in lim means the default for that one cap. extra carries the same two
-// values: an int64 for the volume's capacity and a Limits for the caps.
-func NewCapture(dir, path string, defaults Settings, stdout io.Writer, extra ...any) (*Capture, error) {
-	var (
-		total  int64
-		limits Limits
-	)
-	for _, e := range extra {
-		switch v := e.(type) {
-		case int64:
-			total = v
-		case Limits:
-			limits = v
-		}
-	}
+// A zero in lim means the default for that one cap.
+func NewCapture(dir, path string, defaults Settings, stdout io.Writer, totalBytes int64, limits Limits) (*Capture, error) {
 	if path == "" {
 		path = filepath.Join(dir, "query-log.jsonl")
 	}
 	c := &Capture{settings: defaults, settingsPath: filepath.Join(dir, "capture-settings.json"), path: path, stdout: stdout,
-		rot: newRotator(path, LimitsFrom(limits.MaxFileBytes, limits.MaxFiles, int(limits.MaxTotal), total))}
+		rot: newRotator(path, LimitsFrom(limits.MaxFileBytes, limits.MaxFiles, int(limits.MaxTotal), totalBytes))}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -265,11 +252,13 @@ func (c *Capture) WriteJSONL(w io.Writer, unanswered bool) error {
 		return nil
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	records, _ := c.rot.readChronological()
-	enc := json.NewEncoder(w)
-	for _, rec := range records {
-		if err := enc.Encode(rec); err != nil {
+	lines := c.rot.readChronological()
+	c.mu.Unlock()
+	for _, line := range lines {
+		if _, err := w.Write(line); err != nil {
+			return err
+		}
+		if _, err := w.Write([]byte{'\n'}); err != nil {
 			return err
 		}
 	}
