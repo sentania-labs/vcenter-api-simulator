@@ -61,9 +61,13 @@ Ingress:
 
 An example with all of this is in [`ci/ingress-values.yaml`](ci/ingress-values.yaml).
 
-The console stays on the pod's own loopback. To reach it through the cluster,
-set `admin.service.enabled` (a Service) or `admin.ingress.enabled`, add the
-name it is reached by to `admin.allowedHosts`, and use TLS. Set
+The console stays on the pod's own loopback. To reach it through the cluster, set
+`admin.service.enabled=true`: that adds a Service on `admin.service.port`. To
+publish it through an Ingress as well, set `admin.service.enabled=true`,
+`admin.ingress.enabled=true` and `admin.ingress.host` together. The chart
+refuses `admin.ingress.enabled` without the Service and without a host. Add the
+name the console is reached by to `admin.allowedHosts`, and use TLS
+(`admin.ingress.tls.enabled` and `admin.ingress.tls.secretName`). Set
 `admin.existingSecret` (a Secret with key `password`) to supply the console
 password yourself.
 
