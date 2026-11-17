@@ -279,3 +279,63 @@ func TestStatsStreamOnAPIDoesNotBlockCredentialUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Controller.drain closes a retired simulator while the controller's HTTP
+// listener remains open. Both stream routes must observe that simulator's
+// lifetime, even when their client request contexts have not been cancelled.
+func TestStatsStreamsEndWhenSimulatorCloses(t *testing.T) {
+	e := start(t, "ops-stats-close")
+	out := requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.cis.session", "create", map[string]any{"userName": "user", "password": "pass"}, nil)))
+	security := map[string]any{"sessionId": out.(map[string]any)["SECRET"]}
+	spec := rpcStruct("com.vmware.stats.provider.queries.create_spec", map[string]any{"view": map[string]any{"OPTIONAL": "vstats"}, "instances": []any{rpcStruct("com.vmware.stats.provider.counter_instance", map[string]any{"counter": map[string]any{"OPTIONAL": "gpu.compute.clock.used.DEVICE"}, "resource_ids": map[string]any{}})}})
+	fields := structFields(t, requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.stats.provider.queries", "create", security, map[string]any{"spec": spec}))), "com.vmware.stats.provider.queries.create_result")
+	qid := fields["query"].(string)
+	requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.stats.provider.stream", "create", security, map[string]any{"query": qid, "spec": rpcStruct("com.vmware.stats.provider.stream.create_spec", map[string]any{"interval": map[string]any{"OPTIONAL": 3600}})})))
+	type attached struct {
+		path  string
+		ctx   context.Context
+		ended <-chan error
+	}
+	var streams []attached
+	for _, path := range []string{"/stats", "/api"} {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		request, err := http.NewRequestWithContext(ctx, "POST", e.srv.URL+path, bytes.NewReader(rpcRequest("com.vmware.stats.provider.stream", "attach", security, map[string]any{"query": qid, "spec": rpcStruct("com.vmware.stats.provider.stream.attach_spec", map[string]any{"client_id": "closing-client"})})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/vnd.vmware.vapi.stream.json" {
+			t.Fatalf("%s: stream did not attach", path)
+		}
+		reader := bufio.NewReader(response.Body)
+		if _, err := reader.ReadString('\n'); err != nil {
+			t.Fatal(err)
+		}
+		ended := make(chan error, 1)
+		go func() { _, err := io.Copy(io.Discard, reader); ended <- err }()
+		streams = append(streams, attached{path: path, ctx: ctx, ended: ended})
+	}
+	e.sim.Close()
+	for _, stream := range streams {
+		select {
+		case err := <-stream.ended:
+			if err != nil {
+				t.Fatalf("%s: %v", stream.path, err)
+			}
+			if stream.ctx.Err() != nil {
+				t.Fatalf("%s: client cancellation ended the stream", stream.path)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: stream outlived its simulator", stream.path)
+		}
+	}
+	// A request that already reached the retired handler must not create a new
+	// query after shutdown and escape the cancellation sweep.
+	result := rpcResult(t, e.srv, rpcRequest("com.vmware.stats.provider.queries", "create", security, map[string]any{"spec": spec}))
+	structFields(t, result["error"], "com.vmware.vapi.std.errors.service_unavailable")
+}

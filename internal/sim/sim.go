@@ -213,8 +213,12 @@ func New(opts Options) (*Simulator, error) {
 	return s, nil
 }
 
-// Close stops the internal server and removes vcsim's temporary files.
+// Close ends attached stats streams, stops the internal server, and removes
+// vcsim's temporary files.
 func (s *Simulator) Close() {
+	if h, ok := s.Handler.(*handler); ok {
+		h.rest.closeStats()
+	}
 	if s.server != nil {
 		s.server.Close()
 	}

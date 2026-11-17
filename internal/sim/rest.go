@@ -31,6 +31,7 @@ type restSessions struct {
 	mu          sync.Mutex
 	tokens      map[string]restSession
 	stats       map[string]*statsQuery
+	statsClosed bool
 	issued      map[string]issuedBearer
 	credentials map[string]string
 	check       func(string, string) bool

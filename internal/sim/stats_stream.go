@@ -19,6 +19,18 @@ type statsQuery struct {
 	done     chan struct{}
 }
 
+// The controller keeps its listener open when it retires a simulator, so
+// attached requests need cancellation independent of their HTTP contexts.
+func (s *restSessions) closeStats() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statsClosed = true
+	for id, q := range s.stats {
+		close(q.done)
+		delete(s.stats, id)
+	}
+}
+
 func vapiStruct(name string, fields map[string]any) any {
 	return map[string]any{"STRUCTURE": map[string]any{name: fields}}
 }
@@ -65,6 +77,10 @@ func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, release 
 			ttl = time.Duration(seconds) * time.Second
 		}
 		s.mu.Lock()
+		if s.statsClosed {
+			s.mu.Unlock()
+			return nil, "service_unavailable", false
+		}
 		if s.stats == nil {
 			s.stats = map[string]*statsQuery{}
 		}
@@ -84,6 +100,10 @@ func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, release 
 	}
 	qid, _ := fields["query"].(string)
 	s.mu.Lock()
+	if s.statsClosed {
+		s.mu.Unlock()
+		return nil, "service_unavailable", false
+	}
 	q := s.stats[qid]
 	if q == nil || q.user != user || (q.active == 0 && time.Now().After(q.expires)) {
 		s.mu.Unlock()
