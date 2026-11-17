@@ -950,7 +950,7 @@ func (c *Controller) ActivityDial(req ActDial) (*ActDone, error) {
 	}
 	text := lifeText(b, d, sc)
 	if req.Follow {
-		text = "It follows the vCenter again: " + lower1(lifeText(b, d, sc))
+		text = "It follows the vCenter again. " + lifeText(b, d, sc)
 	}
 	if b == life.Maintenance && e.Settings.Running && !req.Confirmed {
 		if in, out := c.maintChange(next); in+out > 0 {

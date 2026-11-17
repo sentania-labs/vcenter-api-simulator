@@ -70,6 +70,27 @@ func mark(s *Simulator) (key int32) {
 
 func kindOf(e types.BaseEvent) string { return eventName(e) }
 
+// recentTasks is the tasks vCenter lists that were made after the task
+// numbered after.
+func recentTasks(l *Life, after int64) (out []types.TaskInfo) {
+	tm := l.reg.Get(*l.s.model.ServiceContent.TaskManager).(*simulator.TaskManager)
+	for _, ref := range tm.RecentTask {
+		if t, ok := l.reg.Get(ref).(*simulator.Task); ok && refNumber(ref) > after {
+			out = append(out, t.Info)
+		}
+	}
+	return
+}
+
+// lastTask is the number of the newest task vCenter lists.
+func lastTask(l *Life) (n int64) {
+	tm := l.reg.Get(*l.s.model.ServiceContent.TaskManager).(*simulator.TaskManager)
+	for _, ref := range tm.RecentTask {
+		n = max(n, refNumber(ref))
+	}
+	return
+}
+
 // chainsOf groups events by the chain they carry, each chain's events in
 // the order they were posted, and the chains in the order they began.
 func chainsOf(evs []types.BaseEvent) (order []int32, by map[int32][]types.BaseEvent) {
@@ -183,7 +204,6 @@ func TestLifeBalanceMovesWithEventsAndTasks(t *testing.T) {
 	if len(order) != 3 {
 		t.Fatalf("%d chains of events, want one for each of the 3 moves", len(order))
 	}
-	ctx := l.as("")
 	for _, c := range order {
 		chainIs(t, l, by[c], "Drm.ExecuteVMotionLRO", "", "VmHotMigratingWithEncryptionEvent", "VmEmigratingEvent", "DrsVmMigratedEvent")
 		if len(by[c]) != 4 {
@@ -198,9 +218,13 @@ func TestLifeBalanceMovesWithEventsAndTasks(t *testing.T) {
 		}
 	}
 	// old tasks are forgotten
+	t0 := lastTask(l) - 3
+	if n := len(recentTasks(l, t0)); n != 3 {
+		t.Fatalf("vCenter lists %d tasks for the 3 moves", n)
+	}
 	l.Sweep(time.Now().Add(11 * time.Minute))
-	if len(l.old) != 0 || len(ctx.Map.All("Task")) != 0 {
-		t.Errorf("%d tasks are still remembered after ten minutes", len(ctx.Map.All("Task")))
+	if n := len(recentTasks(l, t0)); len(l.old) != 0 || n != 0 {
+		t.Errorf("%d tasks are still listed after ten minutes", n)
 	}
 }
 
@@ -298,7 +322,7 @@ func TestLifeAddedVMKeepsItsIdentityAcrossARebuild(t *testing.T) {
 	l.VMAdded = func(_ string, n int) { added = append(added, n) }
 	l.VMRemoved = func(_ string, n int) { removed = append(removed, n) }
 
-	m0 := mark(s)
+	m0, t0 := mark(s), lastTask(l)
 	name, host, err := l.AddVM(key, 1)
 	if err != nil || name != "cluster-01-vm-021" || host == "" {
 		t.Fatalf("AddVM = %q on %q, %v", name, host, err)
@@ -330,6 +354,18 @@ func TestLifeAddedVMKeepsItsIdentityAcrossARebuild(t *testing.T) {
 	}
 	chainIs(t, l, by[order[0]], "VirtualMachine.powerOff", lifeUser, "VmStoppingEvent", "VmPoweredOffEvent")
 	chainIs(t, l, by[order[1]], "VirtualMachine.destroy", lifeUser, "VmRemovedEvent")
+	// vCenter lists the creation and the removal by the names a real one
+	// gives them, and none of the tasks vcsim made for the VM's files
+	names := map[string]string{}
+	for _, info := range recentTasks(l, t0) {
+		names[info.DescriptionId] = info.Name
+		if info.State != types.TaskInfoStateSuccess {
+			t.Errorf("task %s is %s", info.DescriptionId, info.State)
+		}
+	}
+	if names["Folder.createVm"] != "CreateVM_Task" || names["VirtualMachine.destroy"] != "Destroy_Task" || len(names) != 4 {
+		t.Errorf("the tasks left by a VM added and a VM removed: %v", names)
+	}
 	if !reflect.DeepEqual(added, []int{21}) || !reflect.DeepEqual(removed, []int{3}) {
 		t.Fatalf("told of added %v and removed %v", added, removed)
 	}

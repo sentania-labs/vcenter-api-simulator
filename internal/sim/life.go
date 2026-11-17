@@ -232,18 +232,18 @@ func (l *Life) begin(ctx *simulator.Context, at types.Event, entity types.Manage
 	var info types.TaskInfo
 	l.reg.WithLock(&l.apart, t, func() { info = t.Info })
 	_, chain := l.head(ctx, at, info)
-	l.own(ctx, t, entity, chain, nil)
+	l.own(ctx, t, entity, chain, "", nil)
 	return chain
 }
 
 // own gives a finished task the chain of its events and notes it, to be
-// forgotten when it is old. A task vcsim made itself is also told who
-// started it.
-func (l *Life) own(ctx *simulator.Context, t *simulator.Task, entity types.ManagedObjectReference, chain int32, by types.BaseTaskReason) {
+// forgotten when it is old. A task vcsim made itself is also given the
+// name a real vCenter gives it and told who started it.
+func (l *Life) own(ctx *simulator.Context, t *simulator.Task, entity types.ManagedObjectReference, chain int32, name string, by types.BaseTaskReason) {
 	ctx.WithLock(t, func() {
 		changes := []types.PropertyChange{{Name: "info.eventChainId", Val: chain}}
 		if by != nil {
-			changes = append(changes, types.PropertyChange{Name: "info.reason", Val: by})
+			changes = append(changes, types.PropertyChange{Name: "info.name", Val: name}, types.PropertyChange{Name: "info.reason", Val: by})
 		}
 		ctx.Update(t, changes)
 	})
@@ -264,6 +264,36 @@ func (l *Life) wait(t *simulator.Task) {
 			return
 		}
 		time.Sleep(50 * time.Microsecond)
+	}
+}
+
+// forgetParts forgets, at once, the tasks vcsim made for the parts of a
+// VM's removal (its files and disks): a real vCenter lists the removal only.
+func (l *Life) forgetParts(ctx *simulator.Context, after types.ManagedObjectReference) {
+	tm, ok := l.reg.Get(*l.s.model.ServiceContent.TaskManager).(*simulator.TaskManager)
+	if !ok {
+		return
+	}
+	var recent []types.ManagedObjectReference
+	ctx.WithLock(tm, func() { recent = append(recent, tm.RecentTask...) })
+	for _, ref := range recent {
+		t, ok := l.reg.Get(ref).(*simulator.Task)
+		if !ok || refNumber(ref) <= refNumber(after) {
+			continue
+		}
+		var part bool
+		var entity types.ManagedObjectReference
+		l.reg.WithLock(&l.apart, t, func() {
+			id := t.Info.DescriptionId
+			part = strings.HasPrefix(id, "FileManager.delete") || strings.HasPrefix(id, "VirtualDiskManager.delete")
+			if t.Info.Entity != nil {
+				entity = *t.Info.Entity
+			}
+		})
+		if part {
+			l.wait(t)
+			l.forget(ctx, tm, ref, entity)
+		}
 	}
 }
 
@@ -318,28 +348,34 @@ const taskAge = 10 * time.Minute
 // they do not pile up for as long as the simulator runs.
 func (l *Life) Sweep(now time.Time) {
 	ctx := l.as("")
+	tm, _ := l.reg.Get(*l.s.model.ServiceContent.TaskManager).(*simulator.TaskManager)
 	n := 0
 	for _, o := range l.old {
 		if now.Sub(o.at) < taskAge {
 			break
 		}
 		n++
-		if tm, ok := l.reg.Get(*l.s.model.ServiceContent.TaskManager).(*simulator.TaskManager); ok {
-			ctx.WithLock(tm, func() {
-				ctx.Update(tm, []types.PropertyChange{{Name: "recentTask", Val: without(tm.RecentTask, o.ref)}})
-			})
-		}
-		if e, ok := l.reg.Get(o.entity).(mo.Entity); ok {
-			ctx.WithLock(e, func() {
-				ctx.Update(e, []types.PropertyChange{{Name: "recentTask", Val: without(e.Entity().RecentTask, o.ref)}})
-			})
-		}
-		l.reg.Remove(ctx, o.ref)
+		l.forget(ctx, tm, o.ref, o.entity)
 	}
 	if n > 0 {
 		// copied, so the tasks already forgotten do not stay in memory behind the rest
 		l.old = append([]oldTask(nil), l.old[n:]...)
 	}
+}
+
+// forget takes a task out of vCenter's list, its entity's and vCenter.
+func (l *Life) forget(ctx *simulator.Context, tm *simulator.TaskManager, ref, entity types.ManagedObjectReference) {
+	if tm != nil {
+		ctx.WithLock(tm, func() {
+			ctx.Update(tm, []types.PropertyChange{{Name: "recentTask", Val: without(tm.RecentTask, ref)}})
+		})
+	}
+	if e, ok := l.reg.Get(entity).(mo.Entity); ok {
+		ctx.WithLock(e, func() {
+			ctx.Update(e, []types.PropertyChange{{Name: "recentTask", Val: without(e.Entity().RecentTask, ref)}})
+		})
+	}
+	l.reg.Remove(ctx, ref)
 }
 
 func without(list []types.ManagedObjectReference, ref types.ManagedObjectReference) []types.ManagedObjectReference {
@@ -750,7 +786,7 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	})
 	if t, ok := l.reg.Get(made).(*simulator.Task); ok {
 		te.Info.Key, te.Info.Task = t.Self.Value, t.Self
-		l.own(ctx, t, folder.Self, chain, byUser())
+		l.own(ctx, t, folder.Self, chain, "CreateVM_Task", byUser())
 	}
 	// vcsim announced the VM before the builder gave it its own identities
 	for _, e := range l.adopt(ctx, chain, ref) {
@@ -794,14 +830,30 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 	}
 	ctx := l.as(lifeUser)
 	te, chain := l.head(ctx, l.vmEvent(refs, vm, l.hostOf(ctx, vm)).Event, types.TaskInfo{Name: "Destroy_Task", DescriptionId: "VirtualMachine.destroy", Entity: &vm.ref, EntityName: name, Reason: byUser(), QueueTime: time.Now()})
+	// vcsim deletes the VM's files under the datastore's address; see AddVM
+	ds, _ := l.reg.Get(refs.Datastore).(*simulator.Datastore)
+	var address string
+	if ds != nil {
+		ctx.WithLock(ds, func() { address, ds.Summary.Url = ds.Summary.Url, ds.Info.GetDatastoreInfo().Url })
+	}
 	body := obj.DestroyTask(ctx, &types.Destroy_Task{This: vm.ref})
 	if f := body.Fault(); f != nil {
+		if ds != nil {
+			ctx.WithLock(ds, func() { ds.Summary.Url = address })
+		}
 		return "", fmt.Errorf("remove %s: %s", name, f.String)
 	}
-	if t, ok := l.reg.Get(taskOfDestroy(body)).(*simulator.Task); ok {
+	t, ok := l.reg.Get(taskOfDestroy(body)).(*simulator.Task)
+	if ok {
 		l.wait(t)
+	}
+	if ds != nil {
+		ctx.WithLock(ds, func() { ds.Summary.Url = address })
+	}
+	if ok {
 		te.Info.Key, te.Info.Task = t.Self.Value, t.Self
-		l.own(ctx, t, vm.ref, chain, byUser())
+		l.own(ctx, t, vm.ref, chain, "Destroy_Task", byUser())
+		l.forgetParts(ctx, t.Self)
 		if t.Info.Error != nil {
 			return "", fmt.Errorf("remove %s: %s", name, t.Info.Error.LocalizedMessage)
 		}
