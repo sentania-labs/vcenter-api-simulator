@@ -283,7 +283,12 @@ listens on the pod's loopback unless `admin.exposeToPodNetwork` is set.
   signed itself out, or it has gone quiet). A tool counts as connected while
   it has been answered within the last 15 minutes and has not signed out
   since; one that signs out after each collection shows as connected again
-  when it next signs in.
+  when it next signs in. Home also says which simulator build is running
+  (version, commit, the vCenter it presents, uptime) and how busy it has been:
+  requests by outcome and by service, with a typical and a slow-end response
+  time, for the last hour or since it started. The last hour is counted from
+  the request log (below), so on a busy simulator it says how far back the log
+  reaches instead; neither view survives a restart.
 - **Requests says why each request was answered as it was.** "Not answered"
   means only requests the simulator has no answer for; a refused sign-in, a
   refusal a real vCenter makes too, and a fault you switched on are each

@@ -81,6 +81,9 @@ type Log struct {
 	seq   uint64
 	since time.Time
 	total uint64
+	// life counts every request since the log started, however many the
+	// ring has since dropped.
+	life Tally
 }
 
 // DefaultSize is how many calls the console keeps: about five collection
@@ -92,7 +95,7 @@ func New(size int, now time.Time) *Log {
 	if size <= 0 {
 		size = DefaultSize
 	}
-	return &Log{ring: make([]Call, size), since: now}
+	return &Log{ring: make([]Call, size), since: now, life: newTally()}
 }
 
 // Add records a call and returns it with its sequence number.
@@ -107,6 +110,7 @@ func (l *Log) Add(c Call) Call {
 		l.next, l.full = 0, true
 	}
 	l.total++
+	l.life.add(c)
 	return c
 }
 
