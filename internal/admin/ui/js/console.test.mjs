@@ -177,6 +177,15 @@ test('the other screens draw from their data without gaps', () => {
   const se = security.screen(['security'], {}).render(ctx, { idle: '1 hour', consoleManaged: false, certificate: { kind: 'managed', names: ['vcsim.lab.example'], expires: now, days: 12, fingerprint: '93:A1:CC:59:6B:F1:65:2D:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:0B:6C:8E:E7' } });
   clean(se, 'Security'); assert.match(text(se), /signed out after 1 hour of no activity/); assert.match(text(se), /cannot be changed here/); assert.match(text(se), /in 12 days/);
   assert.ok(!String(se).includes('new-certificate'), 'a certificate from the deployment offers no way to replace it');
+  // licensing, in the three states it can be in
+  const sec = { idle: '', consoleManaged: false, certificate: null };
+  const evalText = text(security.screen(['security'], {}).render(ctx, { ...sec, licensing: { expired: false, ends: now, admins: true, managed: false } }));
+  assert.match(evalText, /How licensing looks to tools/); assert.match(evalText, /In evaluation, 90 days left/); assert.match(evalText, /Licensing administrators/); assert.match(evalText, /No VCF Operations/);
+  assert.match(evalText, /It cannot say it is licensed\./);
+  const lic = security.screen(['security'], {}).render(ctx, { ...sec, licensing: { expired: true, ends: now, admins: false, managed: true, managerUrl: 'https://operations.example.test', managerId: '11111111-2222-4333-8444-555555555555' } });
+  clean(lic, 'Security with licensing changed');
+  assert.match(text(lic), /Evaluation, run out on/); assert.match(text(lic), /Not licensing administrators/); assert.match(text(lic), /The VCF Operations at https:\/\/operations\.example\.test/); assert.match(text(lic), /11111111-2222-4333-8444-555555555555/);
+  assert.ok(String(lic).includes('#/security/licensing'), 'the licensing card leads to its task');
   const fa = faults.screen(['faults'], {}).render(ctx, { on: [], ready: [{ key: 'slow', name: 'Slow answers', what: 'w', tool: 't' }] });
   clean(fa, 'Faults'); assert.match(text(fa), /Nothing\. Every request is answered normally and at full speed\./);
 });
@@ -197,6 +206,7 @@ test('every task draws its questions and its summary', async () => {
     'add-user': { values: { name: 'tool-1@vsphere.local', pw: '', role: 'read' } },
     'change-user': { values: { name: 'a@b', role: 'full', pw: '' }, options: { role: 'full' } },
     idle: { values: { idle: 'Never' }, options: { choices: ['Never', '15 minutes'], current: 'Never' } },
+    licensing: { values: { state: 'evaluation', groups: 'in', manager: 'other', identity: '11111111-2222-4333-8444-555555555555', url: 'https://operations.example.test' }, options: {} },
     'new-certificate': { values: { names: 'vcsim.lab.example' } },
     'own-certificate': { values: { crt: 'x', key: '', crtName: 'a.crt', keyName: '' } },
     'console-password': { values: { cur: '', pw: '', pw2: '' }, noWhen: true },

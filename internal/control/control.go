@@ -42,6 +42,7 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
+	"github.com/sentania/vcenter-api-simulator/internal/signon"
 	"github.com/sentania/vcenter-api-simulator/internal/sim"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
@@ -81,6 +82,11 @@ type Options struct {
 	// APIAddrs and AdminAddr are the listeners.
 	APIAddrs  []string
 	AdminAddr string
+	// LookupTrustFile, when set, is a PEM file holding the certificate tools
+	// see at the simulator's address when something in front of it ends
+	// TLS. The lookup service names it as the certificate to trust, in
+	// place of the simulator's own.
+	LookupTrustFile string
 }
 
 // DefaultReportURL is the simulator project's "new issue" page.
@@ -116,6 +122,7 @@ type Controller struct {
 	Log    *activity.Log
 	auth   *credentials.Store
 	tools  *toolbook
+	trust  *sim.TrustSource
 
 	// Capture is the request capture, when the process has one. The
 	// Requests screen and Home read it.
@@ -167,6 +174,11 @@ func New(opts Options) (*Controller, error) {
 	c := &Controller{opts: opts, cat: cat, now: func() time.Time { return now().UTC() }, base: opts.Scenario, signins: map[string]time.Time{}}
 	c.started = c.now()
 	c.tools = newToolbook()
+	if opts.LookupTrustFile != "" {
+		if c.trust, err = sim.NewTrustSource(opts.LookupTrustFile); err != nil {
+			return nil, fmt.Errorf("lookup trust certificate: %w", err)
+		}
+	}
 	if err := c.loadRuntimeSettings(); err != nil {
 		return nil, fmt.Errorf("runtime settings: %w", err)
 	}
@@ -267,13 +279,19 @@ func (c *Controller) build(sc *scenario.Scenario, reg *registry.Registry, versio
 	if err := validateHostVersionTargets(sc, topo); err != nil {
 		return nil, err
 	}
+	// built is the vCenter this call makes: a report of a changed license
+	// marker counts only while that vCenter is the one being served
+	var built atomic.Pointer[sim.Simulator]
 	s, err := sim.New(sim.Options{
 		Topology: topo, Registry: reg, Authenticate: c.auth.Authenticate, UserRole: c.auth.Role, SessionTimeout: c.opts.SessionTimeout,
 		Faults: sc.Faults, Latency: sc.Latency, Conditions: sc.Conditions, Now: c.now, Certificate: c.opts.Certificate,
+		Licensing: sc.Licensing, Issuer: signon.Open(c.opts.DataDir, sc.Seed), Trust: c.trust, PublicAddress: c.Address(),
+		LicenseManagerChanged: func() { c.licenseManagerChanged(built.Load()) },
 	})
 	if err != nil {
 		return nil, err
 	}
+	built.Store(s)
 	c.buildMs = time.Since(start).Milliseconds()
 	return &running{version: version, at: c.now(), sc: sc, topo: topo, sim: s}, nil
 }

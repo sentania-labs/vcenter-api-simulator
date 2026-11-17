@@ -22,7 +22,10 @@ below. Use it in a lab, with made-up credentials.
 | The same lists on REST (`/api/vcenter/...`), the vCenter version, and since v0.3.2 the appliance's Salt minion settings | Answers. Some details of VMs are missing. |
 | vSAN performance data (`/vsanHealth`), for ESA and OSA clusters | Answers all 69 kinds. The values are made up, the same every time for the same moment, and inside the range a real vCenter showed. |
 | vSAN settings, disk lists and the health summary | Answers. Some detailed health checks are missing. |
-| The license service's sign-in and sign-out (`/ls/sdk`), the lookup service (`/lookupservice/sdk`), and the root certificate (`/rest/vcenter/certificate-authority/get-root`) | Answers. Licenses themselves are not modelled. |
+| Where vCenter's other services are (the lookup service, `/lookupservice/sdk`), how its sign-on is set up (`/sso-adminserver`), and a signed sign-on token for an account (`/sts`) | Answers, in the shapes a real vCenter 9.1.1 uses. The key that signs the token is the simulator's own. |
+| Licensing (the license service, `/ls/sdk`) | Answers that vCenter and its hosts are **in evaluation**, or that the evaluation has run out. It cannot say vCenter is licensed. |
+| Which VCF Operations manages vCenter's license | Answers "none", or the one you name, or the one that registered itself. |
+| The root certificate (`/rest/vcenter/certificate-authority/get-root`) | Answers. |
 | iSCSI and NFS datastores | Answers when you add them. Their activity counters read zero. |
 | Which version vCenter and its hosts are | Answers as 8.0 Update 3, 9.0 or 9.1.1, or a number you type. One cluster can hold a mix of ESX versions. |
 
@@ -33,21 +36,25 @@ the simulator slow or make it fail on purpose, to see how a tool copes.
 
 ## What it does not do yet
 
-- **VCF Operations cannot yet use it as a vCenter account.** When you save the
-  account, Operations asks the vCenter license service (`/ls/`). The simulator
-  answers only its sign-in and sign-out, not the licensing itself, so
-  Operations warns that license management is unavailable and then refuses to
-  start collecting, because the account has no VCF license
-  ([#12](https://github.com/sentania-labs/vcenter-api-simulator/issues/12),
+- **Whether VCF Operations 9.x will collect from it as a vCenter account is
+  not known yet.** Operations asks a vCenter about its license before it
+  collects ([#12](https://github.com/sentania-labs/vcenter-api-simulator/issues/12),
   [#14](https://github.com/sentania-labs/vcenter-api-simulator/issues/14)).
-  This is being worked on: the simulator writes every request to the license
-  service to its log, with secrets removed, so that the answers can be built
-  from what Operations really asks.
+  The simulator now answers every request in that chain the way a real
+  vCenter 9.1.1 does, up to saying it is in evaluation
+  ([what it answers, and what is unverified](#licensing-and-sign-on)). It has
+  been checked against a replay of those requests, not yet against a real
+  VCF Operations: whether Operations accepts a vCenter in evaluation, or only
+  a licensed one, is the open question.
+- **A licensed vCenter is not built.** A vCenter that is licensed presents a
+  signed entitlement that only the vendor can issue. The simulator does not
+  make one, copy one or accept one.
 - **Management packs that bring their own collector do work.** The vSAN Host
   Metrics pack 2.0.0 collected from the simulator through a real VCF
   Operations 9.1.1 ([how that was checked](docs/OPERATIONS-ACCEPTANCE.md)).
-- Not answered: the list of performance counters vCenter can report, which
-  license vCenter has, and whether Kubernetes is turned on.
+- Not answered: the list of performance counters vCenter can report, the
+  older license manager on the main interface (`/sdk`), and whether
+  Kubernetes is turned on.
 - Reported as absent: Fibre Channel storage, and vSAN acting as a file server
   or an iSCSI server.
 - Distributed switches are there, but as the basic type rather than the
@@ -56,6 +63,72 @@ the simulator slow or make it fail on purpose, to see how a tool copes.
 The console's Requests screen shows what your tool asked for that got no
 answer, and lets you download those requests to
 [report them](https://github.com/sentania-labs/vcenter-api-simulator/issues/new).
+
+## Licensing and sign-on
+
+VCF Operations asks a vCenter a chain of questions before it collects: where
+its sign-on service is, whether the account may manage licenses, what license
+the vCenter has, and which Operations manages that license. The simulator
+answers the chain with its own values only. No key, token, certificate or
+license in it comes from a real system.
+
+| Operations asks | The simulator answers |
+|---|---|
+| The lookup service for vCenter and its sign-on service | One registration each, with addresses built on the address the tool used and the certificate to trust for them |
+| The sign-on admin service for its content, its domain and its signing certificate | `vsphere.local`, and the certificate of the simulator's own signing key |
+| The token service for a token, with a username and password | A signed token for one of the simulator's accounts. It lists the groups that make an account a licensing administrator, unless you take them out |
+| The license service for vCenter's own license and for every asset | vCenter and each host in evaluation with 90 days left, or with the evaluation run out. No licenses |
+| Whether the extension `com.vmware.vrops.license.managed` is there | Not there, or there with the Operations id and address you typed, or as an Operations registered it. Registering, changing and removing it all work |
+| To sign in with a session ticket | "The session ticket is invalid", as a real vCenter says to a ticket it did not issue |
+
+The three choices are on the console's Security screen ("How licensing looks
+to tools") and in the [scenario file](docs/SCENARIO.md#licensing).
+
+**Behind a proxy that ends TLS** (an ingress), give the simulator that
+proxy's certificate with `-lookup-trust-cert` (the chart's
+`simulator.lookupTrustSecret`), and route `/lookupservice`,
+`/sso-adminserver`, `/sts` and `/ls` to it as well as `/sdk`. The lookup
+service tells a tool which certificate to trust at the sign-on addresses, and
+behind a proxy that is the proxy's, not the simulator's.
+
+**Not built:** a licensed vCenter (see above), assigning a license to the
+simulator, the REST lists of license assignments, session tickets that work
+(`AcquireSessionTicket`), and an unfiltered lookup list (a real vCenter
+returns about 48 registrations, the simulator none).
+
+**Unverified.** The answers were built from what three real vCenter 9.1.1
+systems returned and from what the Operations adapter reads. These parts
+were not observed, so the simulator's answer is its own:
+
+- Lookup service: the values of the `GroupInternalId`, `ControlScript` and
+  `Capabilities` attributes and of the site id (only their lengths were
+  seen), the owner name of the sign-on registration, the text of the fault
+  for a wrong reference (its type was seen), and whether the session cookie
+  repeats from one answer to the next. The `localurl` attribute names port
+  8085, which the simulator does not serve.
+- Sign-on admin: the value of `apiRevision`. Only the three reads above are
+  answered.
+- Token service: the request it accepts is the standard form a real vCenter
+  accepted, not one captured from Operations. The answer to a wrong password
+  is the standard WS-Security fault; a real vCenter's was never seen. The
+  given name and surname in the token are taken from the account name. A
+  read-only account is listed in `Everyone` only.
+- License service: every real vCenter observed was licensed, so vCenter's
+  asset in evaluation is put together from the evaluation block those assets
+  carry and from one host that was in evaluation. For hosts, the asset id,
+  the product id and name, and the cost units (processors and cores only) are
+  the simulator's own. So are the hours and minutes left, the 90 days, an
+  evaluation that never counts down, what an expired evaluation looks like,
+  and the fault for a read that is not signed in. The `disallowedHostEditions`
+  property and vSAN assets are left out.
+- The "managed by" extension: the subject name is left out unless an
+  Operations registered one, and the version is vCenter's own unless an
+  Operations registered another.
+
+The simulator writes what tools ask of these services to its log, with
+usernames, passwords, tickets, tokens and certificates removed, so that the
+gaps above can be closed from what Operations really sends
+([reference](docs/REFERENCE.md#the-simulator-its-flags-and-what-a-scenario-controls)).
 
 ## Run it
 
@@ -112,7 +185,7 @@ the same day.
 | Add iSCSI or NFS datastores, or disconnect hosts from them | Storage |
 | Change the vCenter or ESX version | Versions |
 | Add, change or remove the accounts tools sign in with | Users |
-| Replace the certificate, sign idle tools out, change the console password | Security |
+| Replace the certificate, sign idle tools out, change the console password, change how licensing looks to tools | Security |
 | Make requests slow or fail on purpose | Slowness and faults |
 | See what your tool asks for and what got no answer | Requests |
 

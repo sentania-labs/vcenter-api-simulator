@@ -207,8 +207,9 @@ func licenseCookie(w http.ResponseWriter, value string) {
 	})
 }
 
-// serveLicense answers Login and Logout on /ls/sdk. Every other operation
-// keeps today's answer and stays covered by the request capture.
+// serveLicense answers Login and Logout on /ls/sdk, and the reads of
+// serveLicenseRead. Every other operation stays unanswered and covered by
+// the request capture.
 func (h *handler) serveLicense(w http.ResponseWriter, r *http.Request) bool {
 	s := &h.license
 	if r.URL.Path != licensePath && r.URL.Path != "/ls" {
@@ -222,7 +223,8 @@ func (h *handler) serveLicense(w http.ResponseWriter, r *http.Request) bool {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return true
 	}
-	switch soapOperation(body) {
+	op := soapOperation(body)
+	switch op {
 	case "Login":
 		// a login is serialized with a credential change the way /api/session
 		// and the SessionManager operations are, so it cannot slip in between
@@ -249,6 +251,9 @@ func (h *handler) serveLicense(w http.ResponseWriter, r *http.Request) bool {
 		licenseCookie(w, value.Value)
 		encodeSOAP(w, http.StatusOK, licenseLogoutWire{})
 	default:
+		if h.serveLicenseRead(w, r, op, body) {
+			return true
+		}
 		rewind(r, body)
 		return false
 	}
@@ -279,37 +284,6 @@ func licenseFault(w http.ResponseWriter) {
 		String: "Invalid request",
 		Detail: detailValue{Fault: new(runtimeFaultDetail)},
 	})
-}
-
-// serveLookup answers RetrieveServiceContent on /lookupservice/sdk
-// anonymously; other lookup operations keep today's answer and are captured.
-func serveLookup(w http.ResponseWriter, r *http.Request) bool {
-	if r.URL.Path != lookupPath && r.URL.Path != "/lookupservice" {
-		return false
-	}
-	if r.Method != http.MethodPost {
-		return false
-	}
-	body, err := readBody(r, maxLocalSOAPBody)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return true
-	}
-	if soapOperation(body) != "RetrieveServiceContent" {
-		rewind(r, body)
-		return false
-	}
-	encodeSOAP(w, http.StatusOK, lookupReply())
-	return true
-}
-
-func lookupReply() lookupContent {
-	return lookupContent{Returnval: lookupReference{
-		LookupService:  lookupRef{Type: "LookupLookupService", Value: "lookupService"},
-		ServiceReg:     lookupRef{Type: "LookupServiceRegistration", Value: "serviceRegistration"},
-		DeploymentInfo: lookupRef{Type: "LookupDeploymentInformationService", Value: "deploymentInformationService"},
-		L10n:           lookupRef{Type: "LookupL10n", Value: "l10n"},
-	}}
 }
 
 // caRoot answers the certificate-authority root read with the certificate the

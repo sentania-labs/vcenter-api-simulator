@@ -114,6 +114,13 @@ func TestClassify(t *testing.T) {
 		{"a REST change the read-only interface cannot make", Facts{Surface: SurfaceREST, HTTPMethod: "POST", Path: "/api/vcenter/vm", Status: 405}, ReasonUnknown},
 		{"a server error without a fault", Facts{Surface: SurfaceSDK, HTTPMethod: "POST", Path: "/sdk", Status: 500}, ReasonUnknown},
 		{"paused", Facts{Surface: SurfaceSDK, Paused: true}, ReasonPaused},
+		{"a ticket the vCenter did not issue, as a real vCenter answers it", Facts{Surface: SurfaceSDK, Method: "LoginBySessionTicket", Status: 500, Faulted: true, FaultType: "InvalidTicket"}, ReasonRefused},
+		{"a token request with a wrong password", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/sts/STSService/vsphere.local", Status: 500, Faulted: true}, ReasonDenied},
+		{"a token", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/sts/STSService/vsphere.local", Status: 200}, ReasonAnswered},
+		{"a token request the simulator does not know", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/sts/STSService/vsphere.local", Status: 404}, ReasonUnknown},
+		{"a lookup reference the service did not hand out", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/lookupservice/sdk", Status: 500, Faulted: true, FaultType: "ManagedObjectNotFound", ObjectType: "LookupServiceRegistration"}, ReasonRefused},
+		{"a lookup operation the simulator does not know", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/lookupservice/sdk", Status: 404}, ReasonUnknown},
+		{"a license read that is not signed in", Facts{Surface: SurfaceOther, HTTPMethod: "POST", Path: "/ls/sdk", Status: 500, Faulted: true, FaultType: "InvalidRequest"}, ReasonUnknown},
 	}
 	for _, c := range cases {
 		if got := Classify(c.f); got != c.want {

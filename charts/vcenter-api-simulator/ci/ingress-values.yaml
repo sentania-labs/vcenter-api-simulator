@@ -1,4 +1,7 @@
 hostname: vcsim-01.example.test
+simulator:
+  # the Ingress ends TLS, so tools are told to trust its certificate
+  lookupTrustSecret: vcsim-01-ingress-tls
 ingress:
   enabled: true
   className: nginx

@@ -228,6 +228,14 @@ func Classify(f Facts) string {
 		return ReasonDenied
 	case f.Surface == SurfaceREST && f.Status == http.StatusUnauthorized:
 		return ReasonDenied
+	case f.Faulted && strings.HasPrefix(f.Path, "/sts/"):
+		// the token service refuses a wrong user name or password with a
+		// fault that names no type
+		return ReasonDenied
+	case f.FaultType == "ManagedObjectNotFound" && strings.HasPrefix(f.Path, "/lookupservice"):
+		// a reference the lookup service did not hand out, refused as a
+		// real vCenter refuses it
+		return ReasonRefused
 	}
 	if !f.Faulted && f.Status < 400 {
 		if f.Method == "VsanPerfQueryPerf" && f.Empty >= f.Entities {

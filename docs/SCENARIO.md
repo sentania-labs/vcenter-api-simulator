@@ -154,6 +154,9 @@ tls:                        # a provided pair, or a self-signed one kept in dir
   # dir: ./data/tls         # default <data>/tls; created once, kept across restarts
   # names: [vcsim.lab.example]   # extra SANs for a new self-signed certificate
 
+licensing:                  # what vCenter says about its own license; see "Licensing" below
+  state: evaluation         # or expired-evaluation
+
 faults:                     # SOAP faults on /vsanHealth; families, methods and
   - family: vsan-pnic-net   #   cluster keys are checked at start, a typo is an error
     clusters: [dc-01/cluster-03]   # ... on these clusters (empty: all)
@@ -290,6 +293,7 @@ resumes unless the scenario file changed since, in which case the file wins.
 | Storage | `nfs:` and `iscsi:` under the datacenter | unchanged datastores keep theirs |
 | Versions | `vcenterVersion`, `esxVersion`, a cluster's `esxVersion`, `hostVersions`, `forceNewerHosts` | none |
 | Slowness and faults | `conditions:` | none; the running vCenter is not rebuilt |
+| How licensing looks to tools (Security) | `licensing:` | none; the running vCenter is not rebuilt |
 
 `conditions:` is the console's one list of what is switched on. Each entry
 has a `kind` (`slow`, `error`, `missing`, `timeout`, `perfdown`), `which`
@@ -305,6 +309,45 @@ is on. A scenario file may also write `conditions:` directly.
 
 The console no longer offers "Regenerate" or "Reset cluster seed"; `seedEpoch`
 on a cluster and `-regenerate` remain available to a scenario file.
+
+## Licensing
+
+What the simulated vCenter tells a tool about its own license. Nothing here
+is a license: a vCenter can say it is in evaluation with no entitlement at
+all, and that is as far as the simulator goes
+([what is answered and what is unverified](../README.md#licensing-and-sign-on)).
+
+```yaml
+licensing:
+  state: evaluation              # or expired-evaluation; default evaluation
+  withoutLicensingGroups: false  # true: accounts are not licensing administrators
+  groups: []                     # the groups a sign-on token lists; default the four below
+  manager:                       # leave out when no VCF Operations manages the license
+    identity: 11111111-2222-4333-8444-555555555555
+    url: https://operations.example.test
+```
+
+- `state`: `evaluation` reports vCenter and every host in evaluation, always
+  with 90 days left. `expired-evaluation` reports the same evaluation run out
+  the day before.
+- `groups`: the groups of `vsphere.local` a sign-on token lists for an
+  administrator. The default is `Administrators`, `Everyone`,
+  `LicenseService.Administrators` and `SystemConfiguration.Administrators`,
+  which is what a real vCenter listed. A read-only account is listed in
+  `Everyone` only.
+- `withoutLicensingGroups`: leaves `LicenseService.Administrators` and
+  `Administrators` out of the token. VCF Operations then finds that the
+  account may not manage licenses and says so when the account is saved.
+- `manager`: the VCF Operations that vCenter says manages its license, as the
+  extension `com.vmware.vrops.license.managed` with `LM_IDENTITY` (`identity`)
+  and `LM_URL` (`url`). Use made-up values, or the id of one of your own
+  Operations instances to make that instance see the vCenter as its own;
+  nothing is contacted at the address. `label`, `summary`, `company`,
+  `version` and `subjectName` can be set as well; they are filled in when an
+  Operations registers the extension itself, which the simulator saves here.
+
+None of this rebuilds the vCenter: tools stay signed in and see the change
+the next time they ask.
 
 ## Product versions
 

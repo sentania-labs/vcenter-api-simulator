@@ -47,6 +47,7 @@ func (c *Controller) applyScenario(next *scenario.Scenario, freshRegistry bool) 
 		nr := &running{version: old.version, at: old.at, sc: next, topo: old.topo, sim: old.sim}
 		old.sim.Env.Knobs.Set(next.Faults, next.Latency)
 		old.sim.Env.Knobs.SetConditions(next.Conditions)
+		old.sim.SetLicensing(next.Licensing)
 		c.cur.Store(nr)
 		c.syncConditions(nr)
 		c.armExpiry()
