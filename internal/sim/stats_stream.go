@@ -2,7 +2,6 @@ package sim
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -54,8 +53,8 @@ func optionalValue(raw any) any {
 }
 
 // The Operations vStats spec asks for GPU device and VM counters. This
-// topology has no GPU devices, so each sample has no snapshots. A live
-// query and stream still have the same lifecycle as a real vCenter.
+// topology has no GPU devices, so an attached stream stays idle, as the
+// GPU-less lab vCenters do. Query lifecycle remains available.
 func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, release func(), id json.RawMessage, service, operation, user string, input any) (any, string, bool) {
 	fields := vapiFields(input)
 	if service == "com.vmware.stats.provider.queries" && operation == "create" {
@@ -150,29 +149,19 @@ func (s *restSessions) statsRPC(w http.ResponseWriter, r *http.Request, release 
 		return nil, "operation_not_found", false
 	}
 }
-func (s *restSessions) writeStatsStream(w http.ResponseWriter, r *http.Request, id json.RawMessage, qid string, interval time.Duration, done <-chan struct{}) {
+
+// GPU-less lab vCenters leave this stream idle. Sending periodic empty
+// results makes the Operations SDK log and discard a payload every interval.
+// Keep the stream attached until cancellation, deletion, or simulator close.
+func (s *restSessions) writeStatsStream(w http.ResponseWriter, r *http.Request, _ json.RawMessage, _ string, _ time.Duration, done <-chan struct{}) {
 	w.Header().Set("Content-Type", "application/vnd.vmware.vapi.stream.json")
 	w.WriteHeader(http.StatusOK)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	flush := http.NewResponseController(w)
-	for {
-		output := vapiStruct("com.vmware.stats.provider.result", map[string]any{"query": qid, "timestamp": time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), "snapshots": []any{}, "messages": []any{}})
-		frame, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"output": output}})
-		// vAPI stream frames use chunk framing inside the HTTP response body.
-		if _, err := fmt.Fprintf(w, "%x\r\n%s\r\n", len(frame), frame); err != nil {
-			return
-		}
-		if flush.Flush() != nil {
-			return
-		}
-		select {
-		case <-r.Context().Done():
-			return
-		case <-done:
-			return
-		case <-ticker.C:
-		}
+	if http.NewResponseController(w).Flush() != nil {
+		return
+	}
+	select {
+	case <-r.Context().Done():
+	case <-done:
 	}
 }
 

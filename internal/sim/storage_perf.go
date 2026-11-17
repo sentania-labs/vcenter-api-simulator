@@ -1,24 +1,20 @@
 package sim
 
 import (
-	"strconv"
-	"strings"
+	"time"
 
 	"github.com/vmware/govmomi/simulator"
-	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/govmomi/vim25/xml"
 )
 
-// storagePerformance keeps the observed datastore counters consistent with
-// configured space. Other inventory retains vcsim's performance behavior.
+// storagePerformance serves standard vSphere performance from the shared workload model.
 type storagePerformance struct {
 	*simulator.PerformanceManager
-	stores map[types.ManagedObjectReference]bool
+	seed string
+	now  func() time.Time
 }
-
-var storageCounterIDs = []int32{178, 179, 281, 282, 283, 284, 136, 137}
 
 // vcsim's normal PerfMetricIntSeries uses omitempty on the value slice. Its
 // XML encoder applies that flag to each element, dropping zero samples. Shape
@@ -75,139 +71,3 @@ type storagePerfBody struct {
 }
 
 func (b *storagePerfBody) Fault() *soap.Fault { return b.Fault_ }
-
-func (p *storagePerformance) QueryAvailablePerfMetric(ctx *simulator.Context, req *types.QueryAvailablePerfMetric) soap.HasFault {
-	if !p.stores[req.Entity] {
-		return p.PerformanceManager.QueryAvailablePerfMetric(ctx, req)
-	}
-	body := &methods.QueryAvailablePerfMetricBody{Res: &types.QueryAvailablePerfMetricResponse{}}
-	for _, id := range storageCounterIDs {
-		body.Res.Returnval = append(body.Res.Returnval, types.PerfMetricId{CounterId: id})
-	}
-	return body
-}
-
-func storageCounterValue(ds *simulator.Datastore, id int32) int64 {
-	used := (ds.Summary.Capacity - ds.Summary.FreeSpace) / 1024
-	switch id {
-	case 281, 282, 284:
-		return used
-	case 283:
-		return ds.Summary.Capacity / 1024
-	default:
-		return 0 // The simulator performs no storage I/O.
-	}
-}
-
-func (p *storagePerformance) QueryPerf(ctx *simulator.Context, req *types.QueryPerf) soap.HasFault {
-	// Datacenter VM operation counters are aggregate counters. vcsim echoes
-	// the requested wildcard as an instance, which the Operations client rejects.
-	clone := *req
-	clone.QuerySpec = append([]types.PerfQuerySpec(nil), req.QuerySpec...)
-	for i := range clone.QuerySpec {
-		spec := &clone.QuerySpec[i]
-		if spec.Entity.Type != "Datacenter" {
-			continue
-		}
-		spec.MetricId = append([]types.PerfMetricId(nil), spec.MetricId...)
-		for j := range spec.MetricId {
-			for _, counter := range p.PerfCounter {
-				if counter.Key == spec.MetricId[j].CounterId && counter.GroupInfo.GetElementDescription().Key == "vmop" {
-					spec.MetricId[j].Instance = ""
-					break
-				}
-			}
-		}
-	}
-	response := p.PerformanceManager.QueryPerf(ctx, &clone)
-	body, ok := response.(*methods.QueryPerfBody)
-	if !ok || body.Fault_ != nil || body.Res == nil {
-		return response
-	}
-	needsWire := false
-	for _, entry := range body.Res.Returnval {
-		switch m := entry.(type) {
-		case nil:
-			continue
-		case *types.PerfEntityMetric:
-			if m == nil {
-				continue
-			}
-		case *types.PerfEntityMetricCSV:
-			if m == nil {
-				continue
-			}
-		}
-		ref := entry.GetPerfEntityMetricBase().Entity
-		if ref.Type == "Datacenter" {
-			needsWire = true
-		}
-		if !p.stores[ref] {
-			continue
-		}
-		needsWire = true
-		ds, ok := ctx.Map.Get(ref).(*simulator.Datastore)
-		if !ok {
-			continue
-		}
-		switch v := entry.(type) {
-		case *types.PerfEntityMetric:
-			for _, series := range v.Value {
-				if s, ok := series.(*types.PerfMetricIntSeries); ok && s != nil {
-					value := storageCounterValue(ds, s.Id.CounterId)
-					for i := range s.Value {
-						s.Value[i] = value
-					}
-				}
-			}
-		case *types.PerfEntityMetricCSV:
-			for i := range v.Value {
-				series := &v.Value[i]
-				if series.Value == "" {
-					continue
-				}
-				count := len(strings.Split(series.Value, ","))
-				values := make([]string, count)
-				value := strconv.FormatInt(storageCounterValue(ds, series.Id.CounterId), 10)
-				for i := range values {
-					values[i] = value
-				}
-				series.Value = strings.Join(values, ",")
-			}
-		}
-	}
-	if needsWire {
-		wire := &storagePerfBody{Res: &storagePerfResponse{}}
-		for _, entry := range body.Res.Returnval {
-			switch m := entry.(type) {
-			case *types.PerfEntityMetric:
-				if m != nil {
-					wire.Res.Returnval = append(wire.Res.Returnval, storagePerfEntity{metric: m})
-				}
-			case *types.PerfEntityMetricCSV:
-				if m != nil {
-					wire.Res.Returnval = append(wire.Res.Returnval, storagePerfEntity{metric: m})
-				}
-			case nil: // An absent series cannot contribute samples.
-			default:
-				return body
-			}
-		}
-		return wire
-	}
-	return body
-}
-
-func (s *Simulator) installStoragePerformance(refs map[string]*simulator.Datastore) {
-	ctx := s.model.Service.Context
-	ref := *s.model.ServiceContent.PerfManager
-	base, ok := ctx.Map.Get(ref).(*simulator.PerformanceManager)
-	if !ok {
-		return
-	}
-	p := &storagePerformance{PerformanceManager: base, stores: map[types.ManagedObjectReference]bool{}}
-	for _, ds := range refs {
-		p.stores[ds.Self] = true
-	}
-	ctx.Map.Put(p)
-}

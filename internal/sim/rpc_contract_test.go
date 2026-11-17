@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -173,9 +172,9 @@ func TestOperationsRootSTSAndBearerSession(t *testing.T) {
 	}
 }
 
-// Oracle: QuerySpecManager and StreamManager require create_result.query and
-// messages, then result.query/timestamp/snapshots/messages on every vAPI frame.
-// No GPU is configured, so an empty snapshot is the truthful sample.
+// Oracle: real GPU-less vCenters leave the default GPU stream idle; the
+// Operations logs show read timeouts, not periodic empty-result messages.
+// QuerySpecManager still requires create_result.query and messages.
 func TestOperationsVstatsQueryAndStream(t *testing.T) {
 	e := start(t, "ops-stats")
 	out := requireRPCOutput(t, rpcResult(t, e.srv, rpcRequest("com.vmware.cis.session", "create", map[string]any{"userName": "user", "password": "pass"}, nil)))
@@ -199,36 +198,13 @@ func TestOperationsVstatsQueryAndStream(t *testing.T) {
 	if response.Header.Get("Content-Type") != "application/vnd.vmware.vapi.stream.json" {
 		t.Fatal("wrong streaming content type")
 	}
-	reader := bufio.NewReader(response.Body)
-	for i := 0; i < 2; i++ {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			t.Fatal(err)
-		}
-		size, err := strconv.ParseInt(strings.TrimSpace(line), 16, 32)
-		if err != nil || size < 1 || size > 1<<20 {
-			t.Fatal("invalid vAPI frame length")
-		}
-		frame := make([]byte, size)
-		if _, err := io.ReadFull(reader, frame); err != nil {
-			t.Fatal(err)
-		}
-		if trailer, err := reader.ReadString('\n'); err != nil || trailer != "\r\n" {
-			t.Fatal("invalid frame trailer")
-		}
-		var result struct {
-			Result map[string]any `json:"result"`
-		}
-		if err := json.Unmarshal(frame, &result); err != nil {
-			t.Fatal(err)
-		}
-		sample := structFields(t, requireRPCOutput(t, result.Result), "com.vmware.stats.provider.result")
-		if sample["query"] != qid || sample["timestamp"] == nil || sample["snapshots"] == nil || sample["messages"] == nil {
-			t.Fatal("required stream fields absent")
-		}
-		if _, err := time.Parse(time.RFC3339Nano, sample["timestamp"].(string)); err != nil {
-			t.Fatal("invalid sample timestamp")
-		}
+	// Real GPU-less vCenters do not produce frames for the default GPU query.
+	read := make(chan error, 1)
+	go func() { var b [1]byte; _, err := response.Body.Read(b[:]); read <- err }()
+	select {
+	case err := <-read:
+		t.Fatalf("GPU-less stream emitted or ended early: %v", err)
+	case <-time.After(1100 * time.Millisecond):
 	}
 	cancel()
 	response.Body.Close()
@@ -260,9 +236,7 @@ func TestStatsStreamOnAPIDoesNotBlockCredentialUpdate(t *testing.T) {
 	}
 	defer response.Body.Close()
 	reader := bufio.NewReader(response.Body)
-	if _, err := reader.ReadString('\n'); err != nil {
-		t.Fatal(err)
-	}
+
 	updated := make(chan error, 1)
 	go func() {
 		updated <- e.sim.UpdateCredentials(func() ([]string, error) { return []string{"user"}, nil })
@@ -313,9 +287,7 @@ func TestStatsStreamsEndWhenSimulatorCloses(t *testing.T) {
 			t.Fatalf("%s: stream did not attach", path)
 		}
 		reader := bufio.NewReader(response.Body)
-		if _, err := reader.ReadString('\n'); err != nil {
-			t.Fatal(err)
-		}
+
 		ended := make(chan error, 1)
 		go func() { _, err := io.Copy(io.Discard, reader); ended <- err }()
 		streams = append(streams, attached{path: path, ctx: ctx, ended: ended})

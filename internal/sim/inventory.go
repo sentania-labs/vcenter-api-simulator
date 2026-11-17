@@ -381,6 +381,8 @@ func shapeVM(obj *simulator.VirtualMachine, cl *topology.Cluster, vm *topology.V
 	boot := now().Add(-time.Duration(24+vm.Serial%240) * time.Hour).UTC()
 	obj.Runtime.PowerState = types.VirtualMachinePowerStatePoweredOn
 	obj.Runtime.ConnectionState = types.VirtualMachineConnectionStateConnected
+	obj.Runtime.FaultToleranceState = types.VirtualMachineFaultToleranceStateNotConfigured
+	obj.Runtime.RecordReplayState = types.VirtualMachineRecordReplayStateInactive
 	obj.Runtime.BootTime = &boot
 	obj.Runtime.MaxCpuUsage = 2 * cpuMhz
 	obj.Runtime.MaxMemoryUsage = 4096

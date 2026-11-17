@@ -5,6 +5,80 @@ scenario file controls and what the simulator guarantees, request capture,
 the console's password and certificate, how the checks are run, and the
 details of running it with Docker, Compose, Helm and Argo CD.
 
+## Standard vSphere performance
+
+`QueryPerf`, `QueryPerfComposite`, counter discovery, and host/VM quickStats
+share a workload model. Six VM cohorts range from idle to busy, with a daily
+cycle, a weekly cycle, smooth shorter variation and brief daily contention
+and latency peaks. Values depend on telemetry seed, VM identity and sample
+time, without stored series or random request-time noise. A repeat of the
+same historical query against unchanged inventory returns the same values,
+including after restart.
+
+The inventory reader supplies power state, connection state, maintenance,
+placement, hardware capacity, network interfaces and datastore membership.
+Powered-off VMs have no samples. VMs on unavailable or maintenance hosts
+contribute no load. VM placement changes move the load. Host CPU and memory
+budgets cap usage under overcommit; host values sum their VMs, clusters sum
+hosts, and datacenters sum clusters. Datastore I/O partitions each VM's load
+among its attached datastores. Unused datastores have zero I/O. No VM lifecycle
+operations, GPU devices, guest agents or alarms are invented.
+
+History is a replay of the synthetic workload at the requested times using
+**current inventory state and placement**. Past power transitions or migrations
+are not retained or reconstructed. This is a model of that inventory's workload,
+not an audit history of inventory changes.
+
+| Interval | Retention | Providers |
+|---|---|---|
+| 20 seconds | 1 hour | VM, host, resource pool |
+| 300 seconds | 1 day | VM, host, pool, cluster, datastore, datacenter |
+| 1,800 seconds | 1 week | Same historical providers |
+| 7,200 seconds | 30 days | Same historical providers |
+| 86,400 seconds | 1 year | Same historical providers |
+
+Samples are ascending on UTC interval boundaries, strictly after `startTime`
+and at or before `endTime`. Future samples are excluded. `maxSample` selects
+the latest samples in the requested window. Historical average, minimum,
+maximum and summation counters roll up the underlying 20-second values;
+latest counters take the endpoint. Independent integer averages can differ
+from the sum of child averages by less than one native unit per child.
+Percent counters use hundredths of a percent, CPU rates MHz, memory KiB,
+throughput KiB/s, ready/wait time milliseconds over the interval, and latency
+the counter's advertised unit. Normal XML preserves zero positions; CSV uses
+the same samples. Wildcards expand into the aggregate empty instance and
+inventory-backed CPU, NIC, virtual-disk or datastore instances. Unknown or
+unsupported metrics are omitted. The published catalog includes inherited
+vSphere metadata beyond the available synthetic subset; availability discovery
+is the supported-entity/instance contract.
+
+Requests are bounded to two million returned values and one hundred million
+inventory-node/sample evaluations, plus thirty million counter evaluations.
+Requests exceeding these limits return
+`InvalidArgument`; split broad history into smaller windows. The evaluator
+builds each shared timestamp once per request and discards it after use.
+It retains no cross-request cache or background telemetry series.
+
+Operations 9.1.1 uses CSV queries, 20-second VM/host samples and configured
+historical container intervals (normally 300 seconds), including wildcard
+instances. Its datacenter CPU wait, contention, usage and storage throughput
+come from host/VM aggregation in `LWManagedObject` and `LWDatacenter`; the
+adapter's container counter configuration directly requests VM-operation
+counters. Cluster resource metrics can also be queried through this service.
+Both paths therefore use the same underlying load. The adapter's
+`QueryPerfCounterInt` discovery receives 28 enabled guest counters, with
+names and units checked through a read-only vCenter 9.1.1 metadata query.
+These counters use stable simulator-owned IDs starting at 20001.
+
+The default vStats specification in the 9.1.1 adapter requests only GPU and
+vGPU metrics. The three GPU-less real-vCenter adapter logs contain `/stats`
+read timeouts, without the simulator's "Empty snapshots from VC stats registry"
+message. The simulator now keeps these streams open without emitting empty
+frames. Query creation, attachment, deletion and cancellation still work;
+there are no fabricated GPU snapshots. ESX-direct collection remains outside
+this simulator. API decoding is checked with the adapter's own VLSI and vAPI
+classes; chart ingestion in Operations must still be checked after deployment.
+
 ## The simulator, its flags and what a scenario controls
 
 The simulator is a Go service on [govmomi vcsim](https://github.com/vmware/govmomi/tree/main/vcsim)
