@@ -278,6 +278,8 @@ func expirationProperties(ends, now time.Time) []licProperty {
 }
 
 // licenseAssets lists the vCenter and then every host, each in evaluation.
+// LicenseInfo.restrictions and LicenseProductRestriction.capability are required
+// by the cis.license client, including on the assigned evaluation license.
 //
 // The vCenter's asset is put together from parts a real vCenter was seen to
 // send: the evaluation block every vCenter asset carries, and the license of
@@ -309,7 +311,7 @@ func (h *handler) licenseAssets(host string, now time.Time) []licAsset {
 			InstanceID: topo.InstanceUUID, ScopeID: topo.NodeID, Name: name, Version: topo.VCenterVersion.APIVersion,
 			Product: vcEval, EvalInfo: &evalInfo,
 			CostUnitUsage: []licCostUnit{{Unit: licUnit{ID: "server"}, Value: 1}},
-			License:       license, InEvaluation: true,
+			License:       evalInfo, InEvaluation: true,
 		},
 	}}
 	for _, refs := range h.sim.Clusters {
@@ -322,16 +324,22 @@ func (h *handler) licenseAssets(host string, now time.Time) []licAsset {
 			// hardware summary has it
 			packages, cores := int64(1), int64(max(th.Threads/2, 1))
 			esx := th.Version.LicenseVersion()
+			hostProduct := licProduct{ID: familyESX + esx + "esxEvalcpuPackage", Name: "Evaluation Mode", EditionKey: "esxEval", Family: licFamily{Name: familyESX, Version: esx}}
+			hostLicense := license
+			hostLicense.Info.Restrictions = []licRestriction{{
+				Product:    hostProduct,
+				Capability: &licCapability{Version: th.Version.APIVersion, Properties: props},
+			}}
 			assets = append(assets, licAsset{
 				ID: assetIDPrefix + ref.Value + "-" + topo.NodeID,
 				Info: licAssetInfo{
 					InstanceID: ref.Value, ScopeID: topo.NodeID, Name: th.Name, Version: th.Version.APIVersion,
-					Product: licProduct{ID: familyESX + esx + "esxEvalcpuPackage", Name: "Evaluation Mode", EditionKey: "esxEval", Family: licFamily{Name: familyESX, Version: esx}},
+					Product: hostProduct,
 					CostUnitUsage: []licCostUnit{
 						{Unit: licUnit{ID: "cpuPackage"}, Value: packages},
 						{Unit: licUnit{ID: "cpuCore"}, Value: cores},
 					},
-					License: license, InEvaluation: true,
+					License: hostLicense, InEvaluation: true,
 				},
 			})
 		}

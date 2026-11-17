@@ -11,9 +11,10 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/signon"
 )
 
-// The sign-on admin service answers three reads without a sign-in, the three
+// The sign-on admin service answers reads without a sign-in, the reads
 // a tool makes before it asks for a token: the service content, the name of
-// the system domain, and the certificate tokens are signed with.
+// the system domain, the SSL certificate manager reference, and the certificate
+// tokens are signed with.
 
 type ssoRef struct {
 	Type  string `xml:"type,attr"`
@@ -51,12 +52,19 @@ type ssoDomainName struct {
 	Returnval string   `xml:"returnval"`
 }
 
+// The manager reference is required while the real AdminClient constructs its
+// identity-source management wrapper, even when no certificate read follows.
+type ssoSSLCertificateManager struct {
+	XMLName   xml.Name `xml:"urn:sso IdS_getSslCertificateManagerResponse"`
+	Returnval ssoRef   `xml:"returnval"`
+}
+
 type ssoIssuersCertificates struct {
 	XMLName   xml.Name `xml:"urn:sso GetIssuersCertificatesResponse"`
 	Returnval []string `xml:"returnval"`
 }
 
-// serveSSOAdmin answers the three reads on the sign-on admin address. Any
+// serveSSOAdmin answers the reads on the sign-on admin address. Any
 // other operation, and any other domain's address, stays unanswered and is
 // captured.
 func (h *handler) serveSSOAdmin(w http.ResponseWriter, r *http.Request) bool {
@@ -75,6 +83,18 @@ func (h *handler) serveSSOAdmin(w http.ResponseWriter, r *http.Request) bool {
 	case "IdS_getSystemDomainName":
 		anonymousCookie(w)
 		encodeSOAP(w, http.StatusOK, ssoDomainName{Returnval: signon.SystemDomain})
+	case "IdS_getSslCertificateManager":
+		var req struct {
+			This thisRef `xml:"_this"`
+		}
+		if decodeOperation(body, &req) != nil || req.This.Type != "SsoAdminIdentitySourceManagementService" || req.This.Value != "identitySourceManagementService" {
+			rewind(r, body)
+			return false
+		}
+		anonymousCookie(w)
+		encodeSOAP(w, http.StatusOK, ssoSSLCertificateManager{
+			Returnval: ssoRef{"SsoAdminCertificateManager", "simulatorSslCertificateManager"},
+		})
 	case "GetIssuersCertificates":
 		material, err := h.issuer.Material()
 		if err != nil {

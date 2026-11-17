@@ -191,7 +191,8 @@ What the scenario controls, and what the simulator guarantees:
     license service; the vCenter registration's service id is
     `about.instanceUuid`.
   - `/sso-adminserver/sdk/vsphere.local`: `SsoAdminServiceInstance`,
-    `IdS_getSystemDomainName` and `GetIssuersCertificates`, without a
+    `IdS_getSystemDomainName`, `IdS_getSslCertificateManager` and
+    `GetIssuersCertificates`, without a
     sign-in.
   - `/sts/STSService/vsphere.local`: a WS-Trust `Issue` for a bearer token
     with a username token, checked against the same accounts as `/sdk`. The
