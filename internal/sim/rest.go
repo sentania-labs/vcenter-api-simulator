@@ -15,6 +15,9 @@ import (
 	"github.com/vmware/govmomi/simulator"
 )
 
+// legacySessionPath is the CIS REST spelling used by the Operations collector.
+const legacySessionPath = "/rest/com/vmware/cis/session"
+
 // saltPath is the appliance salt minion configuration, answered with made-up values.
 const saltPath = "/api/appliance/salt/minion/configuration"
 
@@ -27,8 +30,14 @@ type restSession struct {
 type restSessions struct {
 	mu          sync.Mutex
 	tokens      map[string]restSession
+	stats       map[string]*statsQuery
+	statsClosed bool
+	issued      map[string]issuedBearer
 	credentials map[string]string
 	check       func(string, string) bool
+	bearer      func(string) (string, bool)
+	exchange    func(string, map[string]any) (any, string)
+	access      *sync.RWMutex
 	timeout     *atomic.Int64
 	registry    *simulator.Registry
 	catalog     *catalog.Catalog
@@ -70,22 +79,38 @@ func (s *restSessions) valid(token string) bool {
 }
 
 func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
+	legacy := r.URL.Path == legacySessionPath
+	fail := func(status int, kind string) {
+		if legacy {
+			legacyError(w, status, kind)
+		} else {
+			restError(w, status, kind)
+		}
+	}
+	if legacy {
+		r = r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/api/session"
+		r.URL = &u
+	}
+	if r.URL.Path == "/stats" {
+		return s.serveRPC(w, r)
+	}
 	if r.URL.Path != "/api" && !strings.HasPrefix(r.URL.Path, "/api/") {
 		return false
 	}
 	if r.URL.Path == "/api" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return true
+		return s.serveRPC(w, r)
 	}
 	if r.URL.Path == "/api/session" && r.Method == http.MethodPost {
 		user, password, ok := r.BasicAuth()
 		if !ok || !s.authorized(user, password) {
-			w.WriteHeader(http.StatusUnauthorized)
+			fail(http.StatusUnauthorized, "UNAUTHENTICATED")
 			return true
 		}
 		var b [32]byte
 		if _, err := rand.Read(b[:]); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
+			fail(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR")
 			return true
 		}
 		token := hex.EncodeToString(b[:])
@@ -93,8 +118,13 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		s.tokens[token] = restSession{user: user, last: time.Now()}
 		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(token)
+		if legacy {
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"value": token})
+		} else {
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(token)
+		}
 		return true
 	}
 	token := r.Header.Get("vmware-api-session-id")
@@ -121,15 +151,20 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 			_, _ = w.Write([]byte(`{"error_type":"UNAUTHENTICATED","messages":[{"args":[],"default_message":"Authentication required.","id":"com.vmware.vapi.endpoint.method.authentication.required"}]}`))
 			return true
 		}
-		w.WriteHeader(http.StatusUnauthorized)
+		fail(http.StatusUnauthorized, "UNAUTHENTICATED")
 		return true
 	}
 	if r.URL.Path == "/api/session" && r.Method == http.MethodDelete {
-		w.WriteHeader(http.StatusNoContent)
+		if legacy {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"value": nil})
+		} else {
+			w.WriteHeader(http.StatusNoContent)
+		}
 		return true
 	}
 	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		fail(http.StatusMethodNotAllowed, "NOT_ALLOWED_IN_CURRENT_STATE")
 		return true
 	}
 	path := r.URL.Path
@@ -166,6 +201,9 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		_ = json.NewEncoder(w).Encode(map[string]any{"summary": summary, "product": "VMware vCenter Server", "build": v.Build, "name": release, "type": "vCenter Server with an embedded Platform Services Controller", "version": release})
 		return true
 	}
+	if s.appliance(w, r) {
+		return true
+	}
 	if s.inventory(w, r) {
 		return true
 	}
@@ -179,9 +217,7 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		status = http.StatusBadRequest
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if status == http.StatusForbidden {
-		_, _ = w.Write([]byte(`{"error_type":"UNAUTHORIZED","messages":[{"id":"com.vmware.vapi.authorization.permission.denied","default_message":"Permission denied"}]}`))
-	}
+	kind := map[int]string{400: "INVALID_ARGUMENT", 403: "UNAUTHORIZED", 404: "NOT_FOUND", 500: "INTERNAL_SERVER_ERROR"}[status]
+	fail(status, kind)
 	return true
 }

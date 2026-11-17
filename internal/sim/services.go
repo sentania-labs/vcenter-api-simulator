@@ -18,6 +18,7 @@ import (
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/soap"
+	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/govmomi/vim25/xml"
 )
 
@@ -536,4 +537,40 @@ func (h *handler) caPEM() string {
 		return ""
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Leaf.Raw}))
+}
+
+// datastoreFetch keeps direct property reads consistent with collector reads.
+func (h *handler) datastoreFetch(w http.ResponseWriter, r *http.Request, body []byte) bool {
+	req := decodeSOAPRequest(body)
+	if req.operation != "Fetch" || req.targetType != "Datastore" || len(req.texts) != 1 || (req.texts[0] != "info" && req.texts[0] != "info.url") {
+		return false
+	}
+	cookie, err := r.Cookie(soap.SessionCookieName)
+	if err != nil || !h.liveSOAPSession(cookie.Value) {
+		return false
+	}
+	ref := types.ManagedObjectReference{Type: "Datastore", Value: req.this}
+	ds, ok := h.registry.Get(ref).(*simulator.Datastore)
+	if !ok {
+		return false
+	}
+	var value any
+	h.registry.WithLock(&simulator.Context{}, ds, func() {
+		if req.texts[0] == "info.url" {
+			value = ds.Summary.Url
+			return
+		}
+		if info, ok := ds.Info.(*types.VsanDatastoreInfo); ok {
+			clone := *info
+			clone.Url = ds.Summary.Url
+			value = &clone
+		} else {
+			value = ds.Info
+		}
+	})
+	encodeSOAP(w, http.StatusOK, struct {
+		XMLName   xml.Name      `xml:"urn:vim25 FetchResponse"`
+		Returnval types.AnyType `xml:"returnval,typeattr"`
+	}{Returnval: value})
+	return true
 }

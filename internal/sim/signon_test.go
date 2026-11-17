@@ -765,7 +765,7 @@ func TestTokenServiceIssuesSignedToken(t *testing.T) {
 	}
 
 	subject := a.child("Subject")
-	if id := subject.child("NameID"); id.attr("Format") != "http://schemas.xmlsoap.org/claims/UPN" || strings.TrimSpace(id.Text) != "operator" {
+	if id := subject.child("NameID"); id.attr("Format") != "http://schemas.xmlsoap.org/claims/UPN" || strings.TrimSpace(id.Text) != "operator@vsphere.local" {
 		t.Errorf("name id %q format %q", id.Text, id.attr("Format"))
 	}
 	conf := subject.child("SubjectConfirmation")
