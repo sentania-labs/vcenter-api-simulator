@@ -76,7 +76,7 @@ type stsRequest struct {
 // service's address. Any other request there stays unanswered and is
 // captured.
 func (h *handler) serveSTS(w http.ResponseWriter, r *http.Request) bool {
-	if r.URL.Path != stsPath || r.Method != http.MethodPost {
+	if (r.URL.Path != stsPath && r.URL.Path != "/sts/STSService") || r.Method != http.MethodPost {
 		return false
 	}
 	body, err := readBody(r, maxLocalSOAPBody)
@@ -109,10 +109,14 @@ func (h *handler) serveSTS(w http.ResponseWriter, r *http.Request) bool {
 	}
 	now := h.sim.Env.Now().UTC()
 	from, until := tokenWindow(rst.Lifetime.Created, rst.Lifetime.Expires, now)
+	subject := token.Username
+	if !strings.Contains(subject, "@") {
+		subject += "@" + signon.SystemDomain
+	}
 	a := assertion{
 		ID:      "_" + uuid.NewString(),
 		Issuer:  "https://" + clientHost(r) + "/websso/SAML2/Metadata/" + signon.SystemDomain,
-		Subject: token.Username,
+		Subject: subject,
 		Issued:  now,
 		From:    from,
 		Until:   until,
@@ -123,6 +127,7 @@ func (h *handler) serveSTS(w http.ResponseWriter, r *http.Request) bool {
 		http.Error(w, "the token could not be signed", http.StatusInternalServerError)
 		return true
 	}
+	h.rest.rememberBearer(a.ID, token.Username, a.Subject, a.Until, now)
 	var out strings.Builder
 	out.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	out.WriteString(`<soapenv:Envelope xmlns:soapenv="` + nsSOAP + `"><soapenv:Body>`)

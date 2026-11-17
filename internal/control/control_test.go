@@ -1444,7 +1444,7 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 	v := c.Requests()
 	want := map[string]string{
 		"Which license this vCenter has":                                  "unknown",
-		"The list of measurements vCenter can report":                     "unknown",
+		"The list of measurements vCenter can report":                     "ok",
 		"Whether Kubernetes is turned on for any cluster":                 "unknown",
 		"The file that describes how to talk to vCenter":                  "unknown",
 		"Sign-in with a wrong password, from 127.0.0.1":                   "denied",
@@ -1463,25 +1463,25 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 			t.Errorf("%q is %q, want %q (all: %v)", title, got[title], st, got)
 		}
 	}
-	if v.Counts["unknown"] != 4 || v.Counts["denied"] != 1 || v.Counts["fault"] != 0 {
+	if v.Counts["unknown"] != 3 || v.Counts["denied"] != 1 || v.Counts["fault"] != 0 {
 		t.Errorf("counts %v", v.Counts)
 	}
 	if v.Asks[0].St != "unknown" {
 		t.Error("problems are not listed first")
 	}
-	if v.Verdict.Tone != "bad" || v.Verdict.Big != "4 kinds of request are not being answered." || !strings.Contains(v.Verdict.Line, `The tool at 127.0.0.1 ("collector/2.0") is connected. It carried on collecting without them.`) {
+	if v.Verdict.Tone != "bad" || v.Verdict.Big != "3 kinds of request are not being answered." || !strings.Contains(v.Verdict.Line, `The tool at 127.0.0.1 ("collector/2.0") is connected. It carried on collecting without them.`) {
 		t.Errorf("verdict %+v", v.Verdict)
 	}
 	wantContains(t, askOf(t, c, "Which license").Short, "The tool carried on. VCF Operations' own adapter would stop")
 	wantContains(t, askOf(t, c, "cache disks").Short, `The answer was "there are none"`)
 	wantContains(t, askOf(t, c, "also refuses").Short, `as on a real vCenter`)
 
-	// capture holds only the four the simulator has no answer for
-	if cv := v.Capture; cv.Kept != 4 || cv.Kinds != 4 || !cv.Unanswered {
+	// capture holds only the three the simulator has no answer for
+	if cv := v.Capture; cv.Kept != 3 || cv.Kinds != 3 || !cv.Unanswered {
 		t.Errorf("capture %+v", cv)
 	}
 	home := c.Home()
-	if home.Unanswered != 4 {
+	if home.Unanswered != 3 {
 		t.Errorf("Home counts %d unanswered", home.Unanswered)
 	}
 	var titles []string
@@ -1489,10 +1489,10 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 		titles = append(titles, a.T+" / "+a.D)
 	}
 	all := strings.Join(titles, "\n")
-	wantContains(t, all, "4 kinds of request are not being answered")
+	wantContains(t, all, "3 kinds of request are not being answered")
 	wantContains(t, all, "One is the license, which would stop a different tool")
 	wantContains(t, all, "Someone else tried a wrong password 1 time")
-	if len(home.Tools) != 1 || home.Tools[0].Unknown != 4 || !home.Tools[0].Carried {
+	if len(home.Tools) != 1 || home.Tools[0].Unknown != 3 || !home.Tools[0].Carried {
 		t.Errorf("tools %+v", home.Tools)
 	}
 
@@ -1502,8 +1502,8 @@ func TestRequestsSayWhyEachWasAnsweredAsItWas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantContains(t, text, "The 4 already captured are kept")
-	if c.Requests().Capture.Kept != 4 {
+	wantContains(t, text, "The 3 already captured are kept")
+	if c.Requests().Capture.Kept != 3 {
 		t.Error("turning capture off threw the captured requests away")
 	}
 	if _, err := c.ClearCapture(); err != nil {

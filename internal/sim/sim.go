@@ -182,6 +182,9 @@ func New(opts Options) (*Simulator, error) {
 			creds[n] = p
 		}
 	}
+	collector := &propertyCollector{}
+	collector.Self = m.ServiceContent.PropertyCollector
+	m.Service.Context.Map.Put(collector)
 	ownSettings(m)
 	installAuth(m, creds, opts.Authenticate, 0)
 	am := m.Service.Context.Map.Get(*m.ServiceContent.AuthorizationManager).(*simulator.AuthorizationManager)
@@ -190,6 +193,7 @@ func New(opts Options) (*Simulator, error) {
 		s.Close()
 		return nil, err
 	}
+	m.Service.Context.Map.Put(&resourceModel{ManagedObjectReference: types.ManagedObjectReference{Type: "DataProviderResourceModel", Value: "ResourceModel"}})
 	s.server = m.Service.NewServer()
 	signOnSettings(m, opts.PublicAddress)
 	vsanhealth.Install(m.Service, s.Env)
@@ -201,6 +205,8 @@ func New(opts Options) (*Simulator, error) {
 	if h.issuer = opts.Issuer; h.issuer == nil {
 		h.issuer = signon.Open("", topo.Seed)
 	}
+	h.rest.bearer = h.bearerUser
+	h.rest.exchange = h.exchangeToken
 	s.Handler = h
 	s.SetLicensing(opts.Licensing)
 	return s, nil
@@ -540,6 +546,8 @@ func (s *Simulator) createCluster(ctx *simulator.Context, refs *ClusterRefs) err
 		VsanEsaEnabled: types.NewBool(cl.Spec.Architecture != "osa"),
 	}
 	shapeClusterConfig(cfg, cl)
+	obj.Configuration.DasConfig = cfg.DasConfig
+	obj.Configuration.DrsConfig = cfg.DrsConfig
 	s.Env.RegisterCluster(refs.Ref, cl)
 
 	ds, err := s.createDatastore(ctx, dc, cl.Datastore, vsanDatastoreInfo(cl), string(types.HostFileSystemVolumeFileSystemTypeVsan))
@@ -654,6 +662,9 @@ func (s *Simulator) createHost(ctx *simulator.Context, refs *ClusterRefs, h *top
 		MountInfo:      []types.HostFileSystemMountInfo{vsanMount(cl)},
 	}
 
+	if err := installHostManagers(ctx, hs); err != nil {
+		return err
+	}
 	s.hosts[h] = hs
 	refs.Hosts = append(refs.Hosts, ref)
 	s.Env.RegisterHost(ref, cl, h)
@@ -880,6 +891,17 @@ func (s *Simulator) UpdateCredentials(update func() ([]string, error)) error {
 			delete(h.rest.tokens, token)
 		}
 	}
+	for id, bearer := range h.rest.issued {
+		if affected["*"] || affected[bearer.user] {
+			delete(h.rest.issued, id)
+		}
+	}
+	for id, query := range h.rest.stats {
+		if affected["*"] || affected[query.user] {
+			close(query.done)
+			delete(h.rest.stats, id)
+		}
+	}
 	h.rest.mu.Unlock()
 	h.license.revoke(func(user string) bool { return affected["*"] || affected[user] })
 	return nil
@@ -946,7 +968,7 @@ var otherLogins = regexp.MustCompile(`<(?:[A-Za-z0-9_]+:)?(LoginByToken|LoginByS
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Serialize session creation with credential changes, without making a
 	// slow inventory or performance query delay an administrative update.
-	if r.URL.Path == "/api/session" && r.Method == http.MethodPost {
+	if (r.URL.Path == "/api/session" || r.URL.Path == legacySessionPath || r.URL.Path == "/api") && r.Method == http.MethodPost {
 		h.accessMu.RLock()
 		defer h.accessMu.RUnlock()
 	}
@@ -965,6 +987,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			fmt.Fprint(w, `<!doctype html><html><head><title>VMware vSphere</title></head><body><h1>VMware vSphere</h1><p>vCenter API Simulator</p></body></html>`)
+			return
 		case "/sdk", "/sdk/":
 			http.NotFound(w, r)
 			return
@@ -998,6 +1024,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if h.readOnlyRequest(r, body) {
 				noPermission(w)
+				return
+			}
+			if h.datastoreFetch(w, r, body) {
 				return
 			}
 			if h.currentSessionNull(w, r, body) {
@@ -1081,7 +1110,7 @@ func (h *handler) readOnlyRequest(r *http.Request, body []byte) bool {
 		}
 	}
 	switch op {
-	case "Login", "LoginByToken", "Logout", "CurrentTime", "SessionIsActive", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates", "CreateFilter", "CreatePropertyCollector", "DestroyPropertyFilter", "DestroyPropertyCollector", "CreateCollectorForEvents", "CreateCollectorForTasks", "ReadNextEvents", "ReadNextTasks", "ReadPreviousEvents", "ReadPreviousTasks", "DestroyCollector", "ResetCollector", "RewindCollector", "SetCollectorPageSize":
+	case "DataProviderQuery", "Login", "LoginByToken", "Logout", "CurrentTime", "SessionIsActive", "ContinueRetrievePropertiesEx", "CancelRetrievePropertiesEx", "CreateContainerView", "DestroyView", "WaitForUpdates", "WaitForUpdatesEx", "CancelWaitForUpdates", "CreateFilter", "CreatePropertyCollector", "DestroyPropertyFilter", "DestroyPropertyCollector", "CreateCollectorForEvents", "CreateCollectorForTasks", "ReadNextEvents", "ReadNextTasks", "ReadPreviousEvents", "ReadPreviousTasks", "DestroyCollector", "ResetCollector", "RewindCollector", "SetCollectorPageSize":
 		return false
 	}
 	return true

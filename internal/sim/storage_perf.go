@@ -100,7 +100,26 @@ func storageCounterValue(ds *simulator.Datastore, id int32) int64 {
 }
 
 func (p *storagePerformance) QueryPerf(ctx *simulator.Context, req *types.QueryPerf) soap.HasFault {
-	response := p.PerformanceManager.QueryPerf(ctx, req)
+	// Datacenter VM operation counters are aggregate counters. vcsim echoes
+	// the requested wildcard as an instance, which the Operations client rejects.
+	clone := *req
+	clone.QuerySpec = append([]types.PerfQuerySpec(nil), req.QuerySpec...)
+	for i := range clone.QuerySpec {
+		spec := &clone.QuerySpec[i]
+		if spec.Entity.Type != "Datacenter" {
+			continue
+		}
+		spec.MetricId = append([]types.PerfMetricId(nil), spec.MetricId...)
+		for j := range spec.MetricId {
+			for _, counter := range p.PerfCounter {
+				if counter.Key == spec.MetricId[j].CounterId && counter.GroupInfo.GetElementDescription().Key == "vmop" {
+					spec.MetricId[j].Instance = ""
+					break
+				}
+			}
+		}
+	}
+	response := p.PerformanceManager.QueryPerf(ctx, &clone)
 	body, ok := response.(*methods.QueryPerfBody)
 	if !ok || body.Fault_ != nil || body.Res == nil {
 		return response
@@ -120,6 +139,9 @@ func (p *storagePerformance) QueryPerf(ctx *simulator.Context, req *types.QueryP
 			}
 		}
 		ref := entry.GetPerfEntityMetricBase().Entity
+		if ref.Type == "Datacenter" {
+			needsWire = true
+		}
 		if !p.stores[ref] {
 			continue
 		}
@@ -177,9 +199,6 @@ func (p *storagePerformance) QueryPerf(ctx *simulator.Context, req *types.QueryP
 }
 
 func (s *Simulator) installStoragePerformance(refs map[string]*simulator.Datastore) {
-	if len(refs) == 0 {
-		return
-	}
 	ctx := s.model.Service.Context
 	ref := *s.model.ServiceContent.PerfManager
 	base, ok := ctx.Map.Get(ref).(*simulator.PerformanceManager)

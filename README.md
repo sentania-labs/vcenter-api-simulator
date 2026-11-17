@@ -17,12 +17,16 @@ below. Use it in a lab, with made-up credentials.
 
 | A tool asks for | The simulator |
 |---|---|
-| Signing in and out, on SOAP (`/sdk`) and REST (`/api/session`) | Answers, for the users you set up. Checked against a real vCenter 9.1.1. |
+| Signing in and out, on SOAP (`/sdk`) and REST (`/api/session`, `/rest/com/vmware/cis/session`) | Answers, for the users you set up. Checked against a real vCenter 9.1.1. |
 | Lists of datacenters, clusters, hosts, VMs, datastores and networks, on SOAP | Answers. Built on [govmomi vcsim](https://github.com/vmware/govmomi/tree/main/vcsim). |
 | The same lists on REST (`/api/vcenter/...`), the vCenter version, and since v0.3.2 the appliance's Salt minion settings | Answers. Some details of VMs are missing. |
 | vSAN performance data (`/vsanHealth`), for ESA and OSA clusters | Answers all 69 kinds. The values are made up, the same every time for the same moment, and inside the range a real vCenter showed. |
 | vSAN settings, disk lists and the health summary | Answers. Some detailed health checks are missing. |
 | Where vCenter's other services are (the lookup service, `/lookupservice/sdk`), how its sign-on is set up (`/sso-adminserver`), and a signed sign-on token for an account (`/sts`) | Answers, in the shapes a real vCenter 9.1.1 uses. The key that signs the token is the simulator's own. |
+| Operations' host-to-datacenter query and performance counter discovery (`/sdk`) | Answers. Internal guest counters are empty; GPU counter levels can be changed. |
+| Tag collection through vAPI JSON (`POST /api`) | Answers sign-in, an empty tag list, and sign-out. |
+| Operations' GPU vStats query and live stream (`/api`, `/stats`) | Answers with empty snapshots because the topology has no GPUs. Tokens use only the simulator's signing key. Direct connections to separate ESX endpoints are not simulated. |
+| Appliance settings, backup lists, topology and supervisor discovery (`/api`) | Answers with invented appliance settings, no backups, no storage policies and no supervisors. |
 | Licensing (the license service, `/ls/sdk`) | Answers that vCenter and its hosts are **in evaluation**, or that the evaluation has run out. It cannot say vCenter is licensed. |
 | Which VCF Operations manages vCenter's license | Answers "none", or the one you name, or the one that registered itself. |
 | The root certificate (`/rest/vcenter/certificate-authority/get-root`) | Answers. |
@@ -89,8 +93,8 @@ to tools") and in the [scenario file](docs/SCENARIO.md#licensing).
 **Behind a proxy that ends TLS** (an ingress), give the simulator that
 proxy's certificate with `-lookup-trust-cert` (the chart's
 `simulator.lookupTrustSecret`), and route `/lookupservice`,
-`/sso-adminserver`, `/sts` and `/ls` to it as well as `/sdk`. The lookup
-service tells a tool which certificate to trust at the sign-on addresses, and
+`/sso-adminserver`, `/sts`, `/ls`, `/api`, `/rest` and `/stats` to it as well
+as `/sdk`. The lookup service tells a tool which certificate to trust at the sign-on addresses, and
 behind a proxy that is the proxy's, not the simulator's.
 
 **Not built:** a licensed vCenter (see above), assigning a license to the

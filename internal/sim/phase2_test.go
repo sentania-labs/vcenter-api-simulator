@@ -1155,7 +1155,7 @@ func TestRestCapturedFailuresRequireSession(t *testing.T) {
 	if res.StatusCode != 201 || token == "" {
 		t.Fatalf("session: %d", res.StatusCode)
 	}
-	for path, want := range map[string]int{"/api/content/library": 403, "/api/esx/settings/hosts/host-1/software": 403, "/api/vcenter/storage/policies": 500, "/api/vcenter/vm/vm-1/storage/policy": 500, "/api/vcenter/inventory/datastore": 400, "/api/vcenter/host/host-1": 404} {
+	for path, want := range map[string]int{"/api/content/library": 403, "/api/esx/settings/hosts/host-1/software": 403, "/api/vcenter/storage/policies": 200, "/api/vcenter/vm/vm-1/storage/policy": 500, "/api/vcenter/inventory/datastore": 400, "/api/vcenter/host/host-1": 404} {
 		req, _ = http.NewRequest(http.MethodGet, e.srv.URL+path, nil)
 		req.Header.Set("vmware-api-session-id", token)
 		res, err = client.Do(req)
