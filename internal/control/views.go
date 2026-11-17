@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sentania/vcenter-api-simulator/internal/life"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 )
 
@@ -481,6 +482,7 @@ type HostRow struct {
 	Version string `json:"version"`
 	VMs     int    `json:"vms"`
 	Disks   string `json:"disks"`
+	State   string `json:"state"`
 	// ID is the internal id tools use for the host.
 	ID string `json:"id"`
 }
@@ -513,6 +515,16 @@ type ClusterDetail struct {
 	CanGrow   bool `json:"canGrow"`
 }
 
+func hostState(h life.Host) string {
+	switch {
+	case h.Down:
+		return "Not responding"
+	case h.Maintenance:
+		return "In maintenance mode"
+	}
+	return "Connected"
+}
+
 // Cluster returns one cluster's page.
 func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 	c.mu.Lock()
@@ -536,9 +548,13 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 			refs = append(refs, h.Value)
 		}
 	}
-	vmsOn := map[int]int{}
-	for _, vm := range cl.LiveVMs() {
-		vmsOn[vm.Host]++
+	live := map[string]life.Host{}
+	for _, lc := range r.sim.Life().Clusters() {
+		if lc.Key == key {
+			for _, h := range lc.Hosts {
+				live[h.Name] = h
+			}
+		}
 	}
 	for _, h := range cl.Hosts {
 		claimed, local := 0, 0
@@ -549,7 +565,7 @@ func (c *Controller) Cluster(key string) (*ClusterDetail, error) {
 				local++
 			}
 		}
-		row := HostRow{Name: shortHost(h.Name), Version: "ESX " + scenario.VersionLabel(h.Version), VMs: vmsOn[h.Index], Disks: fmt.Sprintf("%d vSAN, %d local", claimed, local)}
+		row := HostRow{Name: shortHost(h.Name), Version: "ESX " + scenario.VersionLabel(h.Version), VMs: live[h.Name].VMs, Disks: fmt.Sprintf("%d vSAN, %d local", claimed, local), State: hostState(live[h.Name])}
 		if h.Index < len(refs) {
 			row.ID = refs[h.Index]
 		}
