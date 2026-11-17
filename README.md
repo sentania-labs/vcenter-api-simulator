@@ -23,7 +23,7 @@ below. Use it in a lab, with made-up credentials.
 | vSAN performance data (`/vsanHealth`), for ESA and OSA clusters | Answers all 69 kinds. The values are made up, the same every time for the same moment, and inside the range a real vCenter showed. |
 | vSAN settings, disk lists and the health summary | Answers. Some detailed health checks are missing. |
 | Where vCenter's other services are (the lookup service, `/lookupservice/sdk`), how its sign-on is set up (`/sso-adminserver`), and a signed sign-on token for an account (`/sts`) | Answers, in the shapes a real vCenter 9.1.1 uses. The key that signs the token is the simulator's own. |
-| Operations' host-to-datacenter query and performance counter discovery (`/sdk`) | Answers, including 28 internal guest counters; GPU counter levels can be changed. |
+| Operations' inventory-relationship query (hosts, datacenters, clusters) and performance counter discovery (`/sdk`) | Answers, including 28 internal guest counters; GPU counter levels can be changed. |
 | Tag collection through vAPI JSON (`POST /api`) | Answers sign-in, an empty tag list, and sign-out. |
 | Standard vSphere performance (`/sdk`) and host/VM quickStats | Changing CPU, memory, storage and network values, with VM-to-host-to-cluster totals, realtime samples and historical rollups. [Semantics](docs/REFERENCE.md#standard-vsphere-performance). |
 | Operations' GPU vStats query and live stream (`/api`, `/stats`) | Accepts the query and leaves the stream idle, matching GPU-less lab vCenters. Tokens use only the simulator's signing key. Direct connections to separate ESX endpoints are not simulated. |

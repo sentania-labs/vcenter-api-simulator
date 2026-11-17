@@ -431,6 +431,14 @@ func surfaceOf(path string) string {
 	return activity.SurfaceOther
 }
 
+// Probe serves the running simulator directly, below the pause, activity and
+// capture layers, for the process's own liveness check.
+func (c *Controller) Probe() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c.cur.Load().sim.Handler.ServeHTTP(w, r)
+	})
+}
+
 // ServeHTTP is the API listeners' handler: it routes to the running vCenter,
 // records each request with the reason it was answered as it was, keeps the
 // list of connected tools, and refuses every connection while paused.

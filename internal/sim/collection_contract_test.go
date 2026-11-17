@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	stdxml "encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
+	"github.com/sentania/vcenter-api-simulator/internal/serve"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/view"
@@ -387,5 +390,101 @@ func TestOperationsDatastoreUpdateProperties(t *testing.T) {
 	}
 	if found != 2 {
 		t.Fatal("required datastore changes absent")
+	}
+}
+
+// Oracle: Operations 9.1.1 AssetPropertiesFetcher queries hostClusterName,
+// Datacenter.name and ClusterComputeResource.dcName. Return the actual parent
+// names in the requested positions, selecting only references in the In filter.
+func TestOperationsLicenseTopologyQueries(t *testing.T) {
+	e := start(t, "ops-license-topology")
+	ctx := context.Background()
+	host := e.cl().Hosts[0]
+	var hm mo.HostSystem
+	if err := property.DefaultCollector(e.client).RetrieveOne(ctx, host, []string{"parent"}, &hm); err != nil {
+		t.Fatal(err)
+	}
+	cluster := *hm.Parent
+	var cm mo.ClusterComputeResource
+	if err := property.DefaultCollector(e.client).RetrieveOne(ctx, cluster, []string{"name", "parent"}, &cm); err != nil {
+		t.Fatal(err)
+	}
+	var folder mo.Folder
+	if err := property.DefaultCollector(e.client).RetrieveOne(ctx, *cm.Parent, []string{"parent"}, &folder); err != nil {
+		t.Fatal(err)
+	}
+	dc := *folder.Parent
+	var dm mo.Datacenter
+	if err := property.DefaultCollector(e.client).RetrieveOne(ctx, dc, []string{"name"}, &dm); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		ref        types.ManagedObjectReference
+		prop, want string
+	}{
+		{host, "hostClusterName", cm.Name}, {dc, "name", dm.Name}, {cluster, "dcName", dm.Name},
+	} {
+		t.Run(tc.ref.Type+"."+tc.prop, func(t *testing.T) {
+			body := fmt.Sprintf(`<DataProviderQuery xmlns="urn:vim25" xmlns:vim25="urn:vim25"><_this type="DataProviderResourceModel">ResourceModel</_this><querySpec><properties>%s</properties><properties>@modelKey</properties><resourceModel>%s</resourceModel><filter><criteria><property>@modelKey</property><operator>In</operator><comparableList xsi:type="vim25:ManagedObjectReference" type="%s">%s</comparableList></criteria></filter><returnTotalCount>true</returnTotalCount></querySpec></DataProviderQuery>`, tc.prop, tc.ref.Type, tc.ref.Type, tc.ref.Value)
+			status, out := postTo(t, e.srv, "/sdk", `"urn:vim25/6.0"`, soapEnvelope(body), &http.Cookie{Name: "vmware_soap_session", Value: e.cookie})
+			if status.StatusCode != 200 {
+				t.Fatalf("query failed: %s", out)
+			}
+			var response struct {
+				Body struct {
+					Response struct {
+						Result struct {
+							Properties []string `xml:"properties"`
+							Items      []struct {
+								Values []struct {
+									Value string `xml:"value"`
+								} `xml:"propertyValues"`
+							} `xml:"items"`
+							Total int64 `xml:"totalCount"`
+						} `xml:"returnval"`
+					} `xml:"DataProviderQueryResponse"`
+				} `xml:"Body"`
+			}
+			if err := stdxml.Unmarshal(out, &response); err != nil {
+				t.Fatal(err)
+			}
+			result := response.Body.Response.Result
+			if result.Total != 1 || len(result.Items) != 1 || len(result.Items[0].Values) != 2 {
+				t.Fatalf("unexpected rows: %s", out)
+			}
+			if result.Items[0].Values[0].Value != tc.want || result.Items[0].Values[1].Value != tc.ref.Value {
+				t.Fatalf("incorrect relationship: %s", out)
+			}
+		})
+	}
+}
+
+func TestHealthProbeUsesSimulatorSOAP(t *testing.T) {
+	e := start(t, "health-soap")
+	health := &serve.Health{}
+	completed := make(chan *httptest.ResponseRecorder, 1)
+	probe := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actual := httptest.NewRecorder()
+		e.sim.Handler.ServeHTTP(actual, r)
+		for key, values := range actual.Header() {
+			w.Header()[key] = values
+		}
+		w.WriteHeader(actual.Code)
+		_, _ = w.Write(actual.Body.Bytes())
+		completed <- actual
+	})
+	health.Install(probe, probe)
+	w := httptest.NewRecorder()
+	health.ServeHTTP(w, httptest.NewRequest("GET", "/healthz", nil))
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	select {
+	case actual := <-completed:
+		if actual.Code != 200 || !strings.Contains(actual.Body.String(), "RetrieveServiceContentResponse") {
+			t.Fatalf("SOAP liveness probe failed: %s", actual.Body.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SOAP probe stalled")
 	}
 }

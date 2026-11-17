@@ -299,6 +299,22 @@ What the scenario controls, and what the simulator guarantees:
     `RegisterExtension`, `UpdateExtension` and `UnregisterExtension` of it
     are saved, so that a claim by an Operations outlives a restart.
 
+  Operations 9.1.1 license usage collection reads the host evaluation block
+  (`evalInfo`) as well as the assigned evaluation license. Resource-model queries
+  supply host datacenter references, datacenter names and host cluster names
+  (plus cluster datacenter names). License search remains empty in evaluation;
+  no entitlement is manufactured. Local validation uses the adapter's own
+  `AssetPropertiesFetcher` and usage payload builders against these responses.
+
+  The captured adapter logs for all three real lab vCenters also contain
+  `No ESX health reports found` per host. That warning is normal for this lab
+  baseline. `EsxSdkClientManager` schedules the data SDK's ESX health collector;
+  `EsxAuthentication` exchanges a vCenter token scoped to `HostSystem:<id>,Host.Stats.Query`
+  and connects to each host's IP/FQDN for its ESX vAPI reports. Serving those
+  reports would require reachable host addresses with ESX authentication and
+  observability APIs. The simulator does not build host endpoints or invent
+  reports to suppress this normal warning.
+
   An anonymous or logged-out
   `SessionManager.currentSession` read answers an empty `FetchResponse`.
   `/rest/vcenter/certificate-authority/get-root` and its `/api` and numbered

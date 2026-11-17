@@ -122,7 +122,13 @@ without claiming a limit. Home is unchanged.
 ## Probes
 
 The public HTTPS listener now binds before inventory construction.
-`/healthz` answers immediately; `/readyz` returns 503 until the inventory and
+`/healthz` answers immediately. Once the handler is installed, it probes SOAP
+`RetrieveServiceContent` asynchronously at most every ten seconds, with only one request
+outstanding. It returns 503 after two minutes without a successful SOAP response,
+then recovers when the handler responds. This grace tolerates short load spikes
+without waiting on an inventory-wide property collection. Before installation,
+liveness remains healthy while startup/readiness covers inventory construction.
+`/readyz` returns 503 until the inventory and
 capture handler have been installed. SDK discovery at
 `/sdk/vimServiceVersions.xml` also answers during construction. Existing
 inventory remains available while a replacement builds.
