@@ -22,7 +22,16 @@ func (c *Controller) toolViews() []ToolView {
 	return c.tools.list(c.now(), c.paused.Load(), c.pausedAt)
 }
 
-var containerID = regexp.MustCompile(`(?i)^[0-9a-f]{12,64}$`)
+var containerID = regexp.MustCompile(`(?i)^([0-9a-f]{12}|[0-9a-f]{64})$`)
+
+// shownAddress is Address for display: empty when it would only name the
+// container, which no tool outside Docker can use.
+func (c *Controller) shownAddress() string {
+	if c.opts.PublicURL == "" && containerID.MatchString(c.opts.Endpoint) {
+		return ""
+	}
+	return c.Address()
+}
 
 // Address is the address tools should use, as one string.
 func (c *Controller) Address() string {
@@ -30,9 +39,6 @@ func (c *Controller) Address() string {
 		return strings.TrimRight(c.opts.PublicURL, "/")
 	}
 	host := c.opts.Endpoint
-	if containerID.MatchString(host) {
-		return ""
-	}
 	if host == "" {
 		host = "localhost"
 	}
@@ -142,7 +148,7 @@ func (c *Controller) Home() *HomeView {
 	c.sweep()
 	r := c.applied()
 	now := c.now()
-	v := &HomeView{Now: now, Running: !c.paused.Load(), Address: c.Address(), VCenter: scenario.VersionLabel(r.topo.VCenterVersion),
+	v := &HomeView{Now: now, Running: !c.paused.Load(), Address: c.shownAddress(), VCenter: scenario.VersionLabel(r.topo.VCenterVersion),
 		Tools: []HomeTool{}, Attention: []Attention{}, Scheduled: c.scheduledViews(), Failure: c.failure, AccountNeeded: c.AccountNeeded(),
 		Build: BuildView{Version: c.opts.Version, Commit: c.opts.Commit, VCenter: scenario.VersionLabel(r.topo.VCenterVersion)}, Stats: c.Stats()}
 	if !v.Running {

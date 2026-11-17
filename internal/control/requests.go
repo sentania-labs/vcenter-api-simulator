@@ -9,7 +9,6 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/activity"
 	"github.com/sentania/vcenter-api-simulator/internal/querylog"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
-	"github.com/sentania/vcenter-api-simulator/internal/sim"
 )
 
 // Requests: what tools asked for in the last hour, grouped into kinds of
@@ -603,10 +602,6 @@ type SupportRow struct {
 // simulated vCenter reports.
 func (c *Controller) Supported() (rows []SupportRow, vcenter string) {
 	kinds := len(c.cat.Families)
-	supervisor := SupportRow{"Kubernetes (Supervisor) information", "no", "Supervisor lists are not answered."}
-	if sim.HasEmptyRESTRead("/api/vcenter/namespace-management/clusters") {
-		supervisor.State, supervisor.Notes = "part", "Tools can check whether Kubernetes is enabled and read empty lists."
-	}
 	return []SupportRow{
 		{"Signing in, staying signed in, signing out", "full", "Checked against a real vCenter."},
 		{"Lists of datacenters, clusters, hosts, VMs, datastores and networks", "full", "Checked against a real vCenter."},
@@ -620,7 +615,7 @@ func (c *Controller) Supported() (rows []SupportRow, vcenter string) {
 		{"Sign-on tokens, and where vCenter's other services are", "part", "A tool can find the sign-on service and get a signed token for an account. Built from what a real vCenter answers."},
 		{"Licensing", "part", "Tools are told vCenter and its hosts are in evaluation, and which VCF Operations manages the license if one does (see Security). A licensed vCenter is not simulated."},
 		{"vSphere performance counters and values", "full", "Tools can read the counter list and changing values."},
-		supervisor,
+		{"Kubernetes (Supervisor) information", "part", "Tools can check whether Kubernetes is enabled and read empty lists."},
 		{"Fibre Channel storage, and vSAN itself acting as a file server or an iSCSI server", "part", "Tools are told there are none. This does not affect the iSCSI and NFS datastores above."},
 	}, scenario.VersionLabel(c.applied().topo.VCenterVersion)
 }

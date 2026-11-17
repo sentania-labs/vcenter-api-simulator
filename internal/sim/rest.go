@@ -27,9 +27,6 @@ var emptyRESTReads = map[string]bool{
 	"/api/vcenter/namespaces/instances/v2": true,
 }
 
-// HasEmptyRESTRead reports whether the empty collection route is registered.
-func HasEmptyRESTRead(path string) bool { return emptyRESTReads[path] }
-
 // saltPath is the appliance salt minion configuration, answered with made-up values.
 const saltPath = "/api/appliance/salt/minion/configuration"
 
@@ -95,7 +92,7 @@ func (s *restSessions) valid(token string) bool {
 
 func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	// The older API returns the same reads inside a value envelope.
-	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/rest/") {
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/rest/") && r.URL.Path != legacySessionPath {
 		path := strings.TrimPrefix(r.URL.Path, "/rest/")
 		if strings.HasPrefix(path, "com/vmware/cis/tagging/") {
 			path = strings.TrimPrefix(path, "com/vmware/")
@@ -105,7 +102,7 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		u.Path = "/api/" + path
 		clone.URL = &u
 		rec := httptest.NewRecorder()
-		if s.serve(rec, clone) {
+		if s.serveAPI(rec, clone, true) {
 			for k, values := range rec.Header() {
 				w.Header()[k] = values
 			}
@@ -124,18 +121,23 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return serveWCP(w, r)
 	}
 	legacy := r.URL.Path == legacySessionPath
+	if legacy {
+		r = r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/api/session"
+		r.URL = &u
+	}
+	return s.serveAPI(w, r, legacy)
+}
+
+// serveAPI answers /stats and /api; legacy selects the older error and value shapes.
+func (s *restSessions) serveAPI(w http.ResponseWriter, r *http.Request, legacy bool) bool {
 	fail := func(status int, kind string) {
 		if legacy {
 			legacyError(w, status, kind)
 		} else {
 			restError(w, status, kind)
 		}
-	}
-	if legacy {
-		r = r.Clone(r.Context())
-		u := *r.URL
-		u.Path = "/api/session"
-		r.URL = &u
 	}
 	if r.URL.Path == "/stats" {
 		return s.serveRPC(w, r)
@@ -212,7 +214,7 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	path := r.URL.Path
-	if HasEmptyRESTRead(path) {
+	if emptyRESTReads[path] {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[]"))
 		return true

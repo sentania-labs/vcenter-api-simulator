@@ -25,7 +25,7 @@ function main(q) {
     title: 'Requests', tab: 'requests', poll: true,
     load: () => api('/requests'),
     render(ctx, d) {
-      const v = d.verdict, cap = d.capture, cnt = d.counts, u = cnt.unknown, address = ctx.home ? ctx.home.address : '';
+      const v = d.verdict, cap = d.capture, cnt = d.counts, u = cnt.unknown, address = ctx.home && ctx.home.address || window.location.origin;
       const tone = v.tone === 'none' ? 'info' : v.tone;
       const verdict = html`<div class="lat-banner lat-banner--${tone} m-verdict"><div><div class="big">${v.big}</div>${v.tone === 'none' ? html`Point a tool at <code>${address}</code> and what it asks for will appear here within a few seconds.` : v.line}</div>
         ${v.tone === 'bad' && show !== 'unknown' ? html`<div class="m-row">${lbtn('Show the ones not answered', '/requests?show=unknown')}</div>` : ''}</div>`;

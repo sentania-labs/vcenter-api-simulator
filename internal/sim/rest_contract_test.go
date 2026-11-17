@@ -296,4 +296,23 @@ func TestLegacyReadEnvelopes(t *testing.T) {
 			t.Fatalf("%s: %d %v %v", path, res.StatusCode, v, err)
 		}
 	}
+	for _, c := range []struct {
+		path, token string
+		status      int
+	}{{"/rest/vcenter/no-such-thing", token, 404}, {"/rest/vcenter/", "", 401}, {"/rest/com/vmware/cis/session", token, 404}} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+c.path, nil)
+		if c.token != "" {
+			req.Header.Set("vmware-api-session-id", c.token)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v map[string]any
+		err = json.NewDecoder(res.Body).Decode(&v)
+		res.Body.Close()
+		if err != nil || res.StatusCode != c.status || v["majorErrorCode"] == nil {
+			t.Fatalf("%s: %d %v %v, want %d in the legacy error shape", c.path, res.StatusCode, v, err, c.status)
+		}
+	}
 }
