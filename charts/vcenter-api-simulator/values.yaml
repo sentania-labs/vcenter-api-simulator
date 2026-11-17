@@ -125,7 +125,7 @@ persistence:
   storageClass: ""
   accessModes:
     - ReadWriteOnce
-  size: 100Mi
+  size: 1Gi
   annotations: {}
 
 service:
@@ -163,26 +163,30 @@ ingress:
     secretName: ""
 
 probes:
-  # The service version document the SDK fetches first; HTTPS without
-  # verification, as kubelet does.
-  path: /sdk/vimServiceVersions.xml
+  # Startup/readiness wait for inventory; liveness remains available during builds.
+  # path overrides all probe paths for backwards compatibility when nonempty.
+  path: ""
   startup:
     enabled: true
+    path: /readyz
     periodSeconds: 2
-    failureThreshold: 30
+    timeoutSeconds: 5
+    failureThreshold: 150
   readiness:
     enabled: true
+    path: /readyz
     periodSeconds: 10
     timeoutSeconds: 3
   liveness:
     enabled: true
+    path: /healthz
     periodSeconds: 30
     timeoutSeconds: 5
     failureThreshold: 3
 
 resources:
   requests:
-    cpu: 100m
+    cpu: 250m
     memory: 128Mi
   limits:
     cpu: "1"

@@ -78,7 +78,12 @@ func (w *taskWaiter) wait(ctx *simulator.Context, ref types.ManagedObjectReferen
 	w.mu.Unlock()
 	t := ctx.Map.Get(ref).(*simulator.Task)
 	var info types.TaskInfo
-	ctx.Map.WithLock(&simulator.Context{}, t, func() { info = t.Info })
+	ctx.Map.WithLock(&simulator.Context{}, t, func() {
+		info = t.Info
+		// Construction tasks retain their runner and its complete input spec.
+		// Once complete, only the result and task history are needed.
+		t.Execute = nil
+	})
 	if info.State == types.TaskInfoStateError {
 		if info.Error != nil && info.Error.Fault != nil {
 			return nil, fmt.Errorf("%s: %T: %s", info.Name, info.Error.Fault, info.Error.LocalizedMessage)

@@ -230,7 +230,8 @@ func planAddCluster(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error)
 			p.Sum = append(p.Sum, say("Its hosts also connect to %s, which every cluster in %s shares.", listAnd(shared), dcName))
 		}
 	}
-	p.Sum = append(p.Sum, keepNote, loadLine(Project(c.cat, old.topo), c.projectOf(next, false)))
+	after := c.projectOf(next, false)
+	p.Sum = append(p.Sum, keepNote, loadLine(Project(c.cat, old.topo), after), memoryLine(after, memoryLimit()))
 
 	doneWhat := names[0]
 	if count > 1 {
@@ -388,6 +389,7 @@ func planReplace(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error) {
 	}
 
 	before, after := Project(c.cat, old.topo), c.projectOf(next, true)
+	p.Sum = append(p.Sum, memoryLine(after, memoryLimit()))
 	stores := 0
 	for _, dc := range sc.Datacenters {
 		stores += len(dc.NFS)
@@ -493,9 +495,10 @@ func planAddHosts(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error) {
 		}
 		called = fmt.Sprintf("The new hosts are called %s %s %s and each get %s.", names[0], join, names[n-1], plural(perHost, "VM"))
 	}
+	after := c.projectOf(next, false)
 	p.Sum = []Item{
 		say("%s goes from %d to %s.", cl.Name, cur, bold(plural(cur+n, "host"))),
-		say("%s", called), keepNote, loadLine(Project(c.cat, old.topo), c.projectOf(next, false))}
+		say("%s", called), keepNote, loadLine(Project(c.cat, old.topo), after), memoryLine(after, memoryLimit())}
 	p.text = fmt.Sprintf("Add %s to %s", plural(n, "host"), clusterLabel(old.sc, cl.Key))
 	p.apply = func() (*Outcome, error) {
 		if _, err := c.applyScenario(next, false); err != nil {

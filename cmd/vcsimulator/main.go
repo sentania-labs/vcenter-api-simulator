@@ -43,6 +43,8 @@ import (
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
 	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/serve"
+	"github.com/sentania/vcenter-api-simulator/internal/sim"
+	"github.com/sentania/vcenter-api-simulator/internal/storage"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
 
@@ -174,6 +176,18 @@ func main() {
 		extra[*username] = *password
 	}
 
+	// Serve health and discovery before the potentially large inventory build.
+	vc, err := sc.VCenterVersion()
+	if err != nil {
+		log.Fatal(err)
+	}
+	versions := sim.VimVersions(catalog.MustLoad().VimServiceVersions, vc.APIVersion)
+	health := &serve.Health{Versions: versions}
+	ls, err := serve.Listen(listen, health, cert)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ls.Close()
 	start := time.Now()
 	ctl, err := control.New(control.Options{
 		Scenario: sc, SourceHash: sourceHash(*scenarioPath, sc), DataDir: *dataDir, Regenerate: *regenerate,
@@ -187,16 +201,17 @@ func main() {
 	defer ctl.Close()
 
 	capture, err := querylog.NewCapture(*dataDir, *queryLog, querylog.Settings{Full: *queryLog != "", Unanswered: true, Stdout: *unansweredStdout, Debug: *debugCapture}, os.Stdout)
-	if err != nil {
+	if err != nil && !storage.Full(err) {
 		log.Fatal(err)
 	}
-	ctl.Capture = capture
-	var handler http.Handler = capture.Wrap(ctl)
-	ls, err := serve.Listen(listen, handler, cert)
+	var handler http.Handler = ctl
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("startup: data volume full; continuing to serve without query capture; free space or enlarge the volume and restart to restore capture: %v", err)
+	} else {
+		ctl.Capture = capture
+		handler = capture.Wrap(ctl)
 	}
-	defer ls.Close()
+	health.Install(handler)
 
 	var adminSrv *http.Server
 	if *adminAddr != "" {

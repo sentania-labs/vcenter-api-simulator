@@ -248,10 +248,6 @@ func New(opts Options) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.reg.Save(); err != nil {
-		r.sim.Close()
-		return nil, err
-	}
 	c.cur.Store(r)
 	c.syncConditions(r)
 	cl, h, v, _ := r.topo.Counts()

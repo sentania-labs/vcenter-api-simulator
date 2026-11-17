@@ -16,6 +16,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/sentania/vcenter-api-simulator/internal/control"
+
+	"github.com/sentania/vcenter-api-simulator/internal/storage"
 )
 
 var errClaimed = errors.New("console already claimed")
@@ -38,12 +40,13 @@ type consoleSession struct{ started, active time.Time }
 // consoleAuth keeps sessions in memory so a restart invalidates them. The
 // password file is linked atomically to make even simultaneous claims safe.
 type consoleAuth struct {
-	mu       sync.Mutex
-	path     string
-	sessions map[string]consoleSession
-	managed  bool
-	failures []time.Time
-	now      func() time.Time
+	mu           sync.Mutex
+	path         string
+	sessions     map[string]consoleSession
+	managed      bool
+	volatileHash []byte
+	failures     []time.Time
+	now          func() time.Time
 	// accountNeeded reports whether first-run set-up still has a second
 	// step: choosing the password tools sign in with.
 	accountNeeded func() bool
@@ -60,12 +63,16 @@ func newConsoleAuth(dir, seed string) (*consoleAuth, error) {
 			}
 			if bcrypt.CompareHashAndPassword(stored, []byte(seed)) != nil {
 				if err := a.replace(seed); err != nil {
-					return nil, err
+					if err := a.unsavedSeed(seed, err); err != nil {
+						return nil, err
+					}
 				}
 				log.Print("console password set from the deployment")
 			}
 		} else if err != nil {
-			return nil, err
+			if err := a.unsavedSeed(seed, err); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return a, nil
@@ -114,7 +121,7 @@ func (a *consoleAuth) change(current, next, keep string) error {
 	if len(recent) >= 5 {
 		return errRateLimited
 	}
-	hash, err := os.ReadFile(a.path)
+	hash, err := a.readHash()
 	if err != nil {
 		return err
 	}
@@ -133,7 +140,28 @@ func (a *consoleAuth) change(current, next, keep string) error {
 	return nil
 }
 
+func (a *consoleAuth) readHash() ([]byte, error) {
+	if a.volatileHash != nil {
+		return a.volatileHash, nil
+	}
+	return os.ReadFile(a.path)
+}
+func (a *consoleAuth) unsavedSeed(seed string, err error) error {
+	if !storage.Full(err) {
+		return err
+	}
+	hash, hashErr := bcrypt.GenerateFromPassword([]byte(seed), bcrypt.DefaultCost)
+	if hashErr != nil {
+		return hashErr
+	}
+	a.volatileHash = hash
+	log.Printf("console: data volume full; deployment password kept in memory; continuing to serve; free space or enlarge the volume: %v", err)
+	return nil
+}
 func (a *consoleAuth) claimed() (bool, error) {
+	if a.volatileHash != nil {
+		return true, nil
+	}
 	_, err := os.Stat(a.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -186,7 +214,7 @@ func (a *consoleAuth) login(password string) (string, error) {
 	if len(recent) >= 5 {
 		return "", errRateLimited
 	}
-	hash, err := os.ReadFile(a.path)
+	hash, err := a.readHash()
 	if err != nil {
 		return "", err
 	}

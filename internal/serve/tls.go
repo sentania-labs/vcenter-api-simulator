@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/sentania/vcenter-api-simulator/internal/storage"
 )
 
 // Certificate is the key pair served from a directory. It notices when the
@@ -64,18 +66,41 @@ func LoadOrCreateCertificate(dir string, names []string) (*Certificate, error) {
 	if certErr == nil || keyErr == nil {
 		return nil, fmt.Errorf("tls: %s has only one of cert.pem and key.pem; restore the other or remove both", dir)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
-	}
 	certPEM, keyPEM, err := selfSigned(names)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(c.keyFile, keyPEM, 0o600); err != nil {
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(c.certFile, certPEM, 0o644); err != nil {
+	pair.Leaf, err = x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
 		return nil, err
+	}
+	c.current = &pair
+	persist := func() error {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(c.keyFile, keyPEM, 0600); err != nil {
+			return err
+		}
+		if err := os.WriteFile(c.certFile, certPEM, 0644); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := persist(); err != nil {
+		if !storage.Full(err) {
+			return nil, err
+		}
+		// No pair existed at entry. Remove only this failed first creation, so a
+		// later restart never mistakes a partial write for a persisted identity.
+		_ = os.Remove(c.keyFile)
+		_ = os.Remove(c.certFile)
+		log.Printf("tls: data volume full; serving with an unsaved certificate that will change on restart; free space or enlarge the volume: %v", err)
+		return c, nil
 	}
 	if err := c.load(); err != nil {
 		return nil, fmt.Errorf("tls: load %s: %w", dir, err)
