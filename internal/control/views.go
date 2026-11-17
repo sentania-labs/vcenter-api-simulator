@@ -121,6 +121,9 @@ type HomeView struct {
 	Capturing  bool `json:"capturing"`
 	// AccountNeeded: first-run set-up has not chosen the tools' password.
 	AccountNeeded bool `json:"accountNeeded"`
+	// Build says which simulator is running; Stats how busy it has been.
+	Build BuildView `json:"build"`
+	Stats StatsView `json:"stats"`
 }
 
 // Home assembles Home.
@@ -131,7 +134,8 @@ func (c *Controller) Home() *HomeView {
 	r := c.applied()
 	now := c.now()
 	v := &HomeView{Now: now, Running: !c.paused.Load(), Address: c.Address(), VCenter: scenario.VersionLabel(r.topo.VCenterVersion),
-		Tools: []HomeTool{}, Attention: []Attention{}, Scheduled: c.scheduledViews(), Failure: c.failure, AccountNeeded: c.AccountNeeded()}
+		Tools: []HomeTool{}, Attention: []Attention{}, Scheduled: c.scheduledViews(), Failure: c.failure, AccountNeeded: c.AccountNeeded(),
+		Build: BuildView{Version: c.opts.Version, Commit: c.opts.Commit, VCenter: scenario.VersionLabel(r.topo.VCenterVersion)}, Stats: c.Stats()}
 	if !v.Running {
 		at := c.pausedAt
 		v.PausedAt = &at

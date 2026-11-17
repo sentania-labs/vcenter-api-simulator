@@ -27,6 +27,7 @@ On every screen:
 |---|---|---|
 | A change failed | | [red bar with Try again](40-a-change-failed.png) |
 | Paused | [pause confirm](before/30-pause-confirm.png) | [paused bar](41-paused.png) |
+| Which build is running, and how busy it has been | [Home](before/36-home-before-stats.png) | [Home, last hour](50-home-stats.png), [since it started](50b-home-stats-since-start.png), [phone](50c-phone-home-stats.png) |
 | Dark theme | | [Home](42-home-dark.png), [Requests](43-requests-dark.png), [add a cluster](44-add-cluster-dark.png) |
 | Phone | [overview](before/32-phone-overview.png), [settings](before/33-phone-settings.png), [topology](before/34-phone-topology.png) | [Home](45-phone-home.png), [menu](46-phone-menu.png), [Clusters](47-phone-clusters.png), [add a cluster](48-phone-add-cluster.png), [Requests](49-phone-requests.png) |
 

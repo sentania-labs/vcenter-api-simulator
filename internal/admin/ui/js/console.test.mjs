@@ -9,7 +9,9 @@ globalThis.document = { title: '' };
 
 const { html, rich, plain, laterMarks, ago, timeText, newPassword, pager, pageOf } = await import('./lib.js');
 const { taskScreen } = await import('./task.js');
-const home = (await import('./home.js')).default;
+const homeMod = await import('./home.js');
+const home = homeMod.default;
+const { uptimeText } = homeMod;
 const clusters = (await import('./clusters.js')).default;
 const storage = (await import('./storage.js')).default;
 const versions = (await import('./versions.js')).default;
@@ -38,6 +40,15 @@ const homeView = {
   recent: [{ at: now, text: 'cluster-11 added to dc-01 with 4 hosts and 32 VMs.' }], historyCount: 5,
   connect: { username: 'administrator@vsphere.local', anyLogin: false, password: 'setup', cert: 'made', issuer: 'vcenter-api-simulator' },
   unanswered: 4, faults: 1, capturing: false, accountNeeded: false,
+  build: { version: 'v0.4.1', commit: 'e586e74f00d1c2b3a4958677889900aabbccddee', vcenter: '9.1.1' },
+  stats: {
+    startedAt: now, uptimeSec: 3 * 3600 + 25 * 60,
+    total: { requests: 1500, answered: 1400, turnedAway: 20, noAnswer: 70, failed: 10, medianMs: 10, slowMs: 250, services: [
+      { key: 'vsphere', name: 'vSphere API', requests: 1000, answered: 950, turnedAway: 20, noAnswer: 30, failed: 0 },
+      { key: 'vsan', name: 'vSAN', requests: 500, answered: 450, turnedAway: 0, noAnswer: 40, failed: 10 }] },
+    lastHour: { requests: 300, answered: 290, turnedAway: 0, noAnswer: 10, failed: 0, medianMs: 25, slowMs: 1000, services: [
+      { key: 'vsan', name: 'vSAN', requests: 300, answered: 290, turnedAway: 0, noAnswer: 10, failed: 0 }] },
+  },
 };
 
 test('sentences from the simulator are escaped, then marked up', () => {
@@ -290,4 +301,22 @@ test('turning full capture off asks first, and deletes nothing until confirmed',
   assert.equal(sent.length, 1);
   await run(true, { ...on, full: false });
   assert.equal(asked.length, 0, 'turning it on needs no confirmation');
+});
+
+test('Home says which build is running, how long, and how busy it has been', () => {
+  const ctx = ctxOf(homeView);
+  const hour = text(home.screen(['home']).render(ctx));
+  assert.match(hour, /Simulator v0\.4\.1 \(e586e74\) , presenting vCenter 9\.1\.1\. Up for 3 hours 25 minutes/);
+  assert.match(hour, /300 requests in the last hour\. Typical answer: under 25 ms \. The slowest 1 in 20 took up to 1 s/);
+  assert.ok(!hour.includes('1,500 requests'));
+  ctx.F.statsAll = true;
+  const all = text(home.screen(['home']).render(ctx));
+  assert.match(all, /1,500 requests since it started\. Typical answer: under 10 ms \. The slowest 1 in 20 took up to 250 ms/);
+  assert.match(all, /vSphere API/);
+  assert.match(all, /Failed on purpose/);
+  clean(home.screen(['home']).render(ctx), 'Home with stats');
+  const quiet = text(home.screen(['home']).render(ctxOf({ ...homeView, stats: { ...homeView.stats, lastHour: { ...homeView.stats.lastHour, requests: 0, services: [] } } })));
+  assert.match(quiet, /Nothing has asked for anything in the last hour/);
+  assert.equal(uptimeText(30), 'under a minute');
+  assert.equal(uptimeText(26 * 3600), '1 day 2 hours');
 });

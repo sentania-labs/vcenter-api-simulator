@@ -1,7 +1,7 @@
 // Home: what is running, what needs attention, who is connected and how to
 // connect a tool. Everything on it comes from /api/home, which the shell
 // already holds, so Home and the header cannot disagree.
-import { api, html, raw, badge, btn, link, lbtn, card, dot, rich, plural, num, timeText, ago, pager, pageOf } from './lib.js';
+import { api, html, raw, badge, btn, link, lbtn, card, dot, rich, plural, num, timeText, ago, pager, pageOf, table } from './lib.js';
 
 const toolState = (t) => {
   const at = t.since ? timeText(t.since) : '';
@@ -28,6 +28,33 @@ function toolItem(t) {
     <div class="m-row" style="margin-top:8px">${lbtn('See what it asks for', '/requests')}</div></div></li>`;
 }
 
+// How long the simulator has been up, in the two largest units that matter.
+export function uptimeText(sec) {
+  const m = Math.floor(sec / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d) return `${plural(d, 'day')} ${plural(h % 24, 'hour')}`;
+  if (h) return `${plural(h, 'hour')} ${plural(m % 60, 'minute')}`;
+  if (m) return plural(m, 'minute');
+  return 'under a minute';
+}
+// Response times are bucket edges, so they are said as "under".
+export const msText = (ms) => (ms >= 1000 ? `${num(ms / 1000)} s` : `${num(ms)} ms`);
+
+function statsCard(ctx) {
+  const st = ctx.home.stats, F = ctx.F;
+  if (!st) return '';
+  const all = F.statsAll, b = all ? st.total : st.lastHour;
+  const pick = html`<span class="m-row">${btn('Last hour', 'statsHour', all ? 'lat-btn--ghost' : 'lat-btn--primary', { 'aria-pressed': String(!all) })}${btn('Since it started', 'statsAll', all ? 'lat-btn--primary' : 'lat-btn--ghost', { 'aria-pressed': String(!!all) })}</span>`;
+  if (!b.requests) {
+    return card('How busy it has been', html`<div class="m-empty"><h3>${all ? 'Nothing has asked for anything since it started' : 'Nothing has asked for anything in the last hour'}</h3><p>${link('See all requests', '/requests')}</p></div>`, pick);
+  }
+  const tiles = [['Answered', b.answered], ['Turned away', b.turnedAway], ['Not answered', b.noAnswer], ['Failed on purpose', b.failed]];
+  const rows = b.services.map((x) => ({ n: x.name, r: num(x.requests), a: num(x.answered), t: num(x.turnedAway), u: num(x.noAnswer), f: num(x.failed) }));
+  return card('How busy it has been', html`<p style="margin-bottom:10px"><b>${plural(b.requests, 'request')}</b> ${all ? 'since it started' : 'in the last hour'}. Typical answer: under <b>${msText(b.medianMs)}</b>. The slowest 1 in 20 took up to <b>${msText(b.slowMs)}</b>.</p>
+    <div class="m-stats">${tiles.map(([l, n]) => html`<div class="m-stat"><div class="n">${num(n)}</div><div class="l">${l}</div></div>`)}</div>
+    <div style="margin-top:12px">${table([{ h: 'Asked of', k: 'n' }, { h: 'Requests', k: 'r' }, { h: 'Answered', k: 'a' }, { h: 'Turned away', k: 't' }, { h: 'Not answered', k: 'u' }, { h: 'Failed on purpose', k: 'f' }], rows)}</div>
+    <p class="m-small" style="margin-top:8px">Turned away: not signed in, a wrong password, or the simulator was paused. Not answered: something the simulator cannot answer yet. ${link('See which', '/requests')}</p>`, pick);
+}
+
 const main = {
   title: 'Home', tab: 'home',
   render(ctx) {
@@ -43,7 +70,8 @@ const main = {
           : `No tool is connected right now.${until ? ` One was until ${timeText(until)}.` : ''}`;
     const con = h.connect;
     const hero = html`<section class="lat-card"><div class="m-head"><div><h1>${paused ? 'The simulator is paused' : 'The simulator is running'}</h1>
-      <p class="sub">It is pretending to be <b>vCenter ${h.vcenter}</b> with <b>${plural(c.clusters, 'cluster')}</b>, <b>${plural(c.hosts, 'host')}</b> and <b>${plural(c.vms, 'VM')}</b>. ${toolLine}${a.length ? html` <b style="color:var(--bad-ink)">${plural(a.length, 'thing needs', 'things need')} your attention.</b>` : ''}</p></div></div>
+      <p class="sub">It is pretending to be <b>vCenter ${h.vcenter}</b> with <b>${plural(c.clusters, 'cluster')}</b>, <b>${plural(c.hosts, 'host')}</b> and <b>${plural(c.vms, 'VM')}</b>. ${toolLine}${a.length ? html` <b style="color:var(--bad-ink)">${plural(a.length, 'thing needs', 'things need')} your attention.</b>` : ''}</p>
+      ${h.build ? html`<p class="m-small" style="margin-top:4px">Simulator <b>${h.build.version}</b> <span title="${h.build.commit}">(${h.build.commit.slice(0, 7)})</span>, presenting vCenter ${h.build.vcenter}. Up for ${uptimeText(h.stats.uptimeSec)}, since ${timeText(h.stats.startedAt)}.</p>` : ''}</div></div>
       ${fresh ? html`<div class="m-steps" style="margin-top:12px">
         <div class="m-step done"><span class="k">1</span><div><b>The simulator is running</b><div class="m-small">It started by itself. This step is done.</div></div></div>
         <div class="m-step now"><span class="k">2</span><div><b>Point your tool at it</b><div class="m-small">Add it to your tool the way you would add a real vCenter, using the address and username under "Connect a tool" below and ${con.password === 'setup' ? 'the password you chose for that account in step 2 of setup (not the console password)' : con.password === 'any' ? 'any password' : 'the password for that account'}.</div></div></div>
@@ -88,10 +116,13 @@ const main = {
     const recent = html`<ul class="m-list">${h.recent.map((x) => html`<li><span class="m-small" style="width:64px;flex:none">${timeText(x.at)}</span><div class="grow t">${rich(x.text)}</div></li>`)}</ul>`;
     const top = fresh ? html`${connect}${who}${att}` : html`${att}${who}${connect}`;
     return html`<div class="m-page">${hero}<div class="m-grid m-g3">${top}</div>
+      ${statsCard(ctx)}
       <div class="m-grid m-g3">${contains}${card('Scheduled changes', sched, s.length ? plural(s.length, 'change') : '')}${card('Recent changes', recent, html`Local time · ${link(`See all ${h.historyCount}`, '/home/history')}`)}</div></div>`;
   },
   actions: {
     allAtt(ctx) { ctx.F.allAtt = true; ctx.rerender(); },
+    statsHour(ctx) { ctx.F.statsAll = false; ctx.rerender(); },
+    statsAll(ctx) { ctx.F.statsAll = true; ctx.rerender(); },
     async checkAddr(ctx) {
       ctx.F.checking = true; ctx.rerender();
       try { ctx.F.checked = await api('/check-address', { method: 'POST' }); }
