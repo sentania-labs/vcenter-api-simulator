@@ -192,12 +192,21 @@ func (p *propertyCollector) WaitForUpdates(ctx *simulator.Context, req *types.Wa
 }
 
 func (p *propertyCollector) WaitForUpdatesEx(ctx *simulator.Context, req *types.WaitForUpdatesEx) soap.HasFault {
-	p.waitMu.Lock()
-	defer p.waitMu.Unlock()
 	if req.Version == "" {
+		// A resync must not queue behind an orphaned incremental long poll.
+		// Serialize delegate replacement, cancel its old wait, and retain the
+		// selected delegate without holding this lock across a blocking call.
+		p.waitMu.Lock()
+		p.CancelWaitForUpdates(&types.CancelWaitForUpdates{This: req.This})
 		p.restartSnapshot(ctx)
 	}
-	response := p.delegate().WaitForUpdatesEx(ctx, req)
+	p.stateMu.RLock()
+	delegate := p.delegate()
+	p.stateMu.RUnlock()
+	if req.Version == "" {
+		p.waitMu.Unlock()
+	}
+	response := delegate.WaitForUpdatesEx(ctx, req)
 	if body, ok := response.(*methods.WaitForUpdatesExBody); ok && body.Res != nil {
 		shapeUpdates(ctx, body.Res.Returnval)
 	}

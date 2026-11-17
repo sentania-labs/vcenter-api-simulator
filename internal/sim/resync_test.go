@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vmware/govmomi/vim25/methods"
+	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
@@ -285,5 +286,87 @@ func TestLargeInventoryResync(t *testing.T) {
 		} else if !reflect.DeepEqual(baseline, seen) {
 			t.Fatal("resync would remove objects")
 		}
+	}
+}
+
+// A full sync must not wait behind an earlier incremental long poll. The old
+// request has no server timeout, as on a disconnected/orphaned adapter call.
+func TestSnapshotInterruptsIncrementalWait(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "WaitForUpdatesEx", true: "WaitForUpdates"}[legacy], func(t *testing.T) {
+			e := start(t, "resync-interrupt")
+			ctx := context.Background()
+			pc := e.client.ServiceContent.PropertyCollector
+			f, err := methods.CreateFilter(ctx, e.client, &types.CreateFilter{This: pc, Spec: types.PropertyFilterSpec{PropSet: []types.PropertySpec{{Type: "ClusterComputeResource", PathSet: []string{"name", "configuration"}}}, ObjectSet: []types.ObjectSpec{{Obj: e.cl().Ref}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			read := func(ctx context.Context, version string) (*types.UpdateSet, error) {
+				if legacy {
+					r, err := methods.WaitForUpdates(ctx, e.client, &types.WaitForUpdates{This: pc, Version: version})
+					if err != nil {
+						return nil, err
+					}
+					return &r.Returnval, nil
+				}
+				r, err := methods.WaitForUpdatesEx(ctx, e.client, &types.WaitForUpdatesEx{This: pc, Version: version})
+				if err != nil {
+					return nil, err
+				}
+				return r.Returnval, nil
+			}
+			first, err := read(ctx, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldDone := make(chan error, 1)
+			go func() { _, err := read(ctx, first.Version); oldDone <- err }()
+			// Always release the no-timeout server wait, including on the pre-fix
+			// failure path, so a failed assertion cannot wedge server cleanup.
+			defer func() { _, _ = methods.CancelWaitForUpdates(ctx, e.client, &types.CancelWaitForUpdates{This: pc}) }()
+			// Allow the HTTP request to enter its long poll; it must remain blocked
+			// until the new full-sync request interrupts it.
+			time.Sleep(100 * time.Millisecond)
+			select {
+			case err := <-oldDone:
+				t.Fatalf("incremental wait returned early: %v", err)
+			default:
+			}
+			type result struct {
+				update *types.UpdateSet
+				err    error
+			}
+			snapshotDone := make(chan result, 1)
+			resyncCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			go func() { u, err := read(resyncCtx, ""); snapshotDone <- result{u, err} }()
+			select {
+			case snapshot := <-snapshotDone:
+				if snapshot.err != nil {
+					t.Fatal(snapshot.err)
+				}
+				u := snapshot.update
+				if u == nil || len(u.FilterSet) != 1 || u.FilterSet[0].Filter != f.Returnval || len(u.FilterSet[0].ObjectSet) != 1 {
+					t.Fatalf("incomplete restarted snapshot: %+v", u)
+				}
+				object := u.FilterSet[0].ObjectSet[0]
+				if object.Obj != e.cl().Ref || object.Kind != types.ObjectUpdateKindEnter || len(object.ChangeSet) != 2 {
+					t.Fatalf("incomplete enter: %+v", object)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("empty-version resync blocked behind an in-flight incremental wait")
+			}
+			select {
+			case err := <-oldDone:
+				if !soap.IsSoapFault(err) {
+					t.Fatalf("old wait was not canceled: %v", err)
+				}
+				if _, ok := soap.ToSoapFault(err).VimFault().(types.RequestCanceled); !ok {
+					t.Fatalf("wrong old-wait fault: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("old incremental wait was not canceled")
+			}
+		})
 	}
 }
