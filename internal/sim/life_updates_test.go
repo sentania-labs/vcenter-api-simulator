@@ -63,17 +63,18 @@ func TestActivityMaintenanceUpdates(t *testing.T) {
 func TestActivityReadAndUpdateAgreement(t *testing.T) {
 	e := activityUpdateEnv(t)
 	ctx := context.Background()
-	vmView, err := view.NewManager(e.client).CreateContainerView(ctx, e.client.ServiceContent.RootFolder, []string{"HostSystem", "VirtualMachine", "Datastore", "ResourcePool", "Folder", "Network", "ClusterComputeResource"}, true)
+	vmView, err := view.NewManager(e.client).CreateContainerView(ctx, e.client.ServiceContent.RootFolder, []string{"HostSystem", "VirtualMachine", "Datastore", "ResourcePool", "Folder", "Network", "ClusterComputeResource", "Datacenter"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer vmView.Destroy(ctx)
 	spec := types.PropertyFilterSpec{PropSet: []types.PropertySpec{
-		{Type: "HostSystem", PathSet: []string{"runtime.inMaintenanceMode", "runtime.connectionState", "runtime.powerState", "summary.runtime.inMaintenanceMode", "vm"}},
-		{Type: "VirtualMachine", PathSet: []string{"name", "runtime.host", "runtime.powerState", "runtime.connectionState", "runtime.faultToleranceState", "runtime.maxCpuUsage", "runtime.bootTime", "summary.runtime.powerState", "summary.runtime.host", "resourcePool", "datastore", "snapshot", "guest", "summary.config", "summary.guest", "summary.quickStats.overallCpuUsage", "summary.quickStats.hostMemoryUsage"}},
+		{Type: "HostSystem", PathSet: []string{"runtime.inMaintenanceMode", "runtime.connectionState", "runtime.powerState", "summary.runtime.inMaintenanceMode", "summary.runtime.connectionState", "summary.runtime.powerState", "runtime.bootTime", "summary.runtime.bootTime", "summary.quickStats.overallCpuUsage", "summary.quickStats.overallMemoryUsage", "config.product.build", "config.product.patchLevel", "config.product.fullName", "summary.config.product.build", "summary.config.product.patchLevel", "summary.config.product.fullName", "triggeredAlarmState", "overallStatus", "vm"}},
+		{Type: "VirtualMachine", PathSet: []string{"name", "runtime.host", "runtime.powerState", "runtime.connectionState", "runtime.faultToleranceState", "runtime.maxCpuUsage", "runtime.bootTime", "summary.runtime.powerState", "summary.runtime.connectionState", "summary.runtime.host", "resourcePool", "datastore", "snapshot", "snapshot.currentSnapshot", "snapshot.rootSnapshotList", "rootSnapshot", "layoutEx.file", "layoutEx.snapshot", "layoutEx.disk", "layoutEx.timestamp", "guest", "summary.config", "summary.guest", "summary.quickStats.overallCpuUsage", "summary.quickStats.hostMemoryUsage"}},
 		{Type: "Datastore", PathSet: []string{"summary", "summary.capacity", "summary.freeSpace", "summary.uncommitted", "info", "info.freeSpace", "vm"}},
-		{Type: "ResourcePool", PathSet: []string{"vm"}}, {Type: "Folder", PathSet: []string{"childEntity"}},
-		{Type: "Network", PathSet: []string{"vm"}}, {Type: "ClusterComputeResource", PathSet: []string{"host", "resourcePool", "summary"}},
+		{Type: "ResourcePool", PathSet: []string{"vm"}}, {Type: "Folder", PathSet: []string{"childEntity", "triggeredAlarmState", "overallStatus"}},
+		{Type: "Network", PathSet: []string{"vm"}}, {Type: "ClusterComputeResource", PathSet: []string{"host", "resourcePool", "summary", "triggeredAlarmState", "overallStatus"}},
+		{Type: "Datacenter", PathSet: []string{"triggeredAlarmState", "overallStatus"}},
 	}, ObjectSet: []types.ObjectSpec{{Obj: vmView.Reference(), Skip: types.NewBool(true), SelectSet: []types.BaseSelectionSpec{&types.TraversalSpec{Type: "ContainerView", Path: "view"}}}}}
 	events, err := methods.CreateCollectorForEvents(ctx, e.client, &types.CreateCollectorForEvents{This: *e.client.ServiceContent.EventManager})
 	if err != nil {
@@ -173,6 +174,8 @@ func TestActivityReadAndUpdateAgreement(t *testing.T) {
 	key := e.cl().Cluster.Key
 	host := e.cl().Cluster.Hosts[0].Name
 	var off string
+	var crashed []string
+	var backupVM string
 	for _, tc := range []struct {
 		name string
 		do   func()
@@ -189,7 +192,7 @@ func TestActivityReadAndUpdateAgreement(t *testing.T) {
 			}
 		}},
 		{"power-on", func() {
-			if !l.PowerOn(key, off) {
+			if err := l.PowerOn(key, off); err != nil {
 				t.Fatal("no power on")
 			}
 		}},
@@ -213,6 +216,57 @@ func TestActivityReadAndUpdateAgreement(t *testing.T) {
 		{"disk-shrink", func() { l.Fill(key, -0.005) }},
 		{"cpu", func() { l.SetLoad(key, 2, 1) }},
 		{"memory", func() { l.SetLoad(key, 2, 2) }},
+		{"backup-create", func() {
+			backupVM = l.VMNames(key)[0]
+			if err := l.SnapshotVM(key, backupVM); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"backup-remove", func() {
+			if err := l.RemoveBackup(key, backupVM); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"host-crash", func() {
+			var err error
+			crashed, err = l.CrashHost(key, host)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(crashed) == 0 {
+				t.Fatal("crash affected no VMs")
+			}
+		}},
+		{"HA-restart", func() {
+			moves, err := l.RestartVMs(key, host, crashed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(moves) != len(crashed) {
+				t.Fatal("HA did not restart all VMs")
+			}
+		}},
+		{"host-recover", func() {
+			if err := l.RecoverHost(key, host); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"patch-evacuate", func() {
+			if _, err := l.EnterMaintenance(key, host); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"patch-reboot", func() {
+			if err := l.PatchHost(key, host); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"patch-return", func() {
+			if err := l.FinishReboot(key, host); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"patch-exit", func() { l.ExitMaintenance(key, host, 1) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := read()
@@ -228,7 +282,7 @@ func TestActivityReadAndUpdateAgreement(t *testing.T) {
 					changed++
 				}
 				for name, value := range props {
-					if strings.HasPrefix(name, "summary.quickStats.") && tc.name != "cpu" && tc.name != "memory" {
+					if strings.HasPrefix(name, "summary.quickStats.") && tc.name != "cpu" && tc.name != "memory" && tc.name != "host-crash" && tc.name != "HA-restart" && tc.name != "host-recover" {
 						continue
 					}
 					if reflect.DeepEqual(before[ref][name], value) {

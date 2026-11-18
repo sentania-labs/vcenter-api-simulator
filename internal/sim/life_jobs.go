@@ -19,12 +19,13 @@ func (l *Life) VMNames(cluster string) []string { return l.names(cluster, nil) }
 
 const backupName = "Activity nightly backup"
 
-func (l *Life) restoreBackup(vm *simulator.VirtualMachine, at time.Time) {
+func (l *Life) restoreBackup(ctx *simulator.Context, vm *simulator.VirtualMachine, at time.Time) {
 	snap := &simulator.VirtualMachineSnapshot{}
 	snap.Vm = vm.Self
 	l.reg.Put(snap)
 	vm.Snapshot = &types.VirtualMachineSnapshotInfo{CurrentSnapshot: &snap.Self, RootSnapshotList: []types.VirtualMachineSnapshotTree{{Snapshot: snap.Self, Vm: vm.Self, Name: backupName, Description: "Temporary snapshot for the simulated nightly backup", Id: 1, CreateTime: at, State: types.VirtualMachinePowerStatePoweredOff}}}
 	vm.RootSnapshot = []types.ManagedObjectReference{snap.Self}
+	updateLife(ctx, vm, []types.PropertyChange{{Name: "snapshot", Val: vm.Snapshot}, {Name: "rootSnapshot", Val: vm.RootSnapshot}})
 }
 
 // SnapshotVM uses the actual snapshot implementation, including the managed
@@ -72,7 +73,16 @@ func (l *Life) SnapshotVM(cluster, name string) error {
 	if task.Info.Error != nil {
 		return fmt.Errorf("snapshot failed: %s", task.Info.Error.LocalizedMessage)
 	}
+	ctx.WithLock(obj, func() { l.publishBackup(ctx, obj) })
 	return nil
+}
+
+func (l *Life) publishBackup(ctx *simulator.Context, vm *simulator.VirtualMachine) {
+	changes := []types.PropertyChange{{Name: "snapshot", Val: vm.Snapshot}, {Name: "rootSnapshot", Val: vm.RootSnapshot}}
+	if vm.LayoutEx != nil {
+		changes = append(changes, types.PropertyChange{Name: "layoutEx", Val: vm.LayoutEx})
+	}
+	updateLife(ctx, vm, changes)
 }
 
 func findBackup(vm *simulator.VirtualMachine) *types.ManagedObjectReference {
@@ -152,8 +162,8 @@ func (l *Life) RemoveBackup(cluster, name string) error {
 				}
 			}
 			obj.LayoutEx.File = kept
-			ctx.Update(obj, []types.PropertyChange{{Name: "layoutEx", Val: obj.LayoutEx}})
 		}
+		l.publishBackup(ctx, obj)
 	})
 	return nil
 }
@@ -185,7 +195,7 @@ func (l *Life) connection(ctx *simulator.Context, hs *simulator.HostSystem, down
 			hs.Summary.QuickStats.OverallCpuUsage = 0
 			hs.Summary.QuickStats.OverallMemoryUsage = 0
 		}
-		ctx.Update(hs, []types.PropertyChange{{Name: "runtime", Val: hs.Runtime}, {Name: "summary", Val: hs.Summary}})
+		updateLife(ctx, hs, []types.PropertyChange{{Name: "runtime", Val: hs.Runtime}, {Name: "summary", Val: hs.Summary}})
 	})
 }
 
@@ -211,12 +221,13 @@ func (l *Life) PatchHost(cluster, host string) error {
 			{
 				hs.Summary.Config.Product = p
 			}
-			ctx.Update(hs, []types.PropertyChange{{Name: "config.product", Val: p}, {Name: "summary.config", Val: hs.Summary.Config}})
+			updateLife(ctx, hs, []types.PropertyChange{{Name: "config.product", Val: p}, {Name: "summary.config", Val: hs.Summary.Config}})
 		}
 	})
 	chain := l.begin(ctx, l.where(refs, hs.Self), hs.Self, hs.Name, "RebootHost_Task", "HostSystem.reboot", byUser())
 	l.post(ctx, chain, &types.HostShutdownEvent{HostEvent: types.HostEvent{Event: l.where(refs, hs.Self)}})
 	l.connection(ctx, hs, true)
+	l.publishLoad(ctx, refs)
 	return nil
 }
 
@@ -233,7 +244,7 @@ func (l *Life) FinishReboot(cluster, host string) error {
 		if hs.Summary.Runtime != nil {
 			hs.Summary.Runtime.BootTime = &now
 		}
-		ctx.Update(hs, []types.PropertyChange{{Name: "runtime", Val: hs.Runtime}, {Name: "summary.runtime", Val: hs.Summary.Runtime}})
+		updateLife(ctx, hs, []types.PropertyChange{{Name: "runtime", Val: hs.Runtime}, {Name: "summary.runtime", Val: hs.Summary.Runtime}})
 	})
 	l.post(ctx, 0, &types.HostConnectedEvent{HostEvent: types.HostEvent{Event: l.where(refs, hs.Self)}})
 	return nil
@@ -273,7 +284,7 @@ func (l *Life) CrashHost(cluster, host string) ([]string, error) {
 		}
 		obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
 		ctx.WithLock(obj, func() {
-			ctx.Update(obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateDisconnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateDisconnected}})
+			updateLife(ctx, obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateDisconnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateDisconnected}})
 		})
 		if !l.off[cluster][name] {
 			vms = append(vms, name)
@@ -285,6 +296,7 @@ func (l *Life) CrashHost(cluster, host string) ([]string, error) {
 	l.hostAlarm(refs, hs, "Host connection and power state", true, true)
 	l.haEvent(refs, hs, "com.vmware.vc.HA.DasHostFailedEvent")
 	l.hostAlarm(refs, hs, "vSphere HA host status", true, true)
+	l.publishLoad(ctx, refs)
 	return vms, nil
 }
 
@@ -310,9 +322,9 @@ func (l *Life) RestartVMs(cluster, host string, names []string) ([]life.Move, er
 			continue
 		}
 		chain := l.begin(ctx, l.vmEvent(refs, vm, to.ref).Event, vm.ref, name, "", "VirtualMachine.powerOn", bySystem())
-		relocateVM(ctx, vm.ref, to.ref)
+		l.placeVM(ctx, vm.ref, to.ref)
 		ctx.WithLock(obj, func() {
-			ctx.Update(obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}})
+			updateLife(ctx, obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}})
 		})
 		l.setPower(ctx, obj, vm.vm, true)
 		delete(l.off[cluster], name)
@@ -323,6 +335,7 @@ func (l *Life) RestartVMs(cluster, host string, names []string) ([]life.Move, er
 		moves = append(moves, life.Move{VM: name, From: host, To: l.host(to.ref).Name})
 	}
 	l.counts(ctx, refs)
+	l.publishLoad(ctx, refs)
 	return moves, nil
 }
 
@@ -337,7 +350,7 @@ func (l *Life) RecoverHost(cluster, host string) error {
 		if l.hostOf(ctx, vm) == hs.Self {
 			obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
 			ctx.WithLock(obj, func() {
-				ctx.Update(obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}})
+				updateLife(ctx, obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateConnected}})
 			})
 		}
 	}
@@ -345,6 +358,7 @@ func (l *Life) RecoverHost(cluster, host string) error {
 	l.hostAlarm(refs, hs, "Host connection and power state", false, true)
 	l.haEvent(refs, hs, "com.vmware.vc.HA.HostDasAgentHealthyEvent")
 	l.hostAlarm(refs, hs, "vSphere HA host status", false, true)
+	l.publishLoad(ctx, refs)
 	return nil
 }
 
@@ -392,7 +406,7 @@ func (l *Life) hostAlarm(refs *ClusterRefs, hs *simulator.HostSystem, name strin
 					break
 				}
 			}
-			ctx.Update(obj, []types.PropertyChange{{Name: "triggeredAlarmState", Val: keep}, {Name: "overallStatus", Val: me.OverallStatus}})
+			updateLife(ctx, obj, []types.PropertyChange{{Name: "triggeredAlarmState", Val: keep}, {Name: "overallStatus", Val: me.OverallStatus}})
 		})
 		if parent == nil {
 			break

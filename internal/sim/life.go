@@ -1146,7 +1146,10 @@ func (l *Life) SetLoad(cluster string, cpu, memory float64) {
 	if old == next[refs.Ref] {
 		return
 	}
-	ctx := l.as("")
+	l.publishLoad(l.as(""), refs)
+}
+
+func (l *Life) publishLoad(ctx *simulator.Context, refs *ClusterRefs) {
 	for _, ref := range append(append([]types.ManagedObjectReference(nil), refs.Hosts...), refs.VMs...) {
 		obj := l.reg.Get(ref)
 		switch o := obj.(type) {
@@ -1253,8 +1256,11 @@ func (l *Life) Restore(live Live) {
 			byName[h.Name] = refs.Hosts[i]
 			hs := l.host(refs.Hosts[i])
 			if p, ok := live.Products[h.Key]; ok && hs.Config != nil && p.Version == hs.Config.Product.Version {
-				hs.Config.Product = p
-				hs.Summary.Config.Product = &hs.Config.Product
+				ctx.WithLock(hs, func() {
+					hs.Config.Product = p
+					hs.Summary.Config.Product = &hs.Config.Product
+					updateLife(ctx, hs, []types.PropertyChange{{Name: "config.product", Val: &hs.Config.Product}, {Name: "summary.config", Val: hs.Summary.Config}})
+				})
 			}
 			if live.Down[h.Key] {
 				l.connection(ctx, hs, true)
@@ -1283,14 +1289,15 @@ func (l *Life) Restore(live Live) {
 					to = free.ref
 				}
 			}
-			relocateVM(ctx, vm.ref, to)
+			l.placeVM(ctx, vm.ref, to)
 			obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
 			if hs := l.host(to); hs != nil && hs.Runtime.ConnectionState != types.HostSystemConnectionStateConnected {
-				obj.Runtime.ConnectionState = types.VirtualMachineConnectionStateDisconnected
-				obj.Summary.Runtime.ConnectionState = obj.Runtime.ConnectionState
+				ctx.WithLock(obj, func() {
+					updateLife(ctx, obj, []types.PropertyChange{{Name: "runtime.connectionState", Val: types.VirtualMachineConnectionStateDisconnected}, {Name: "summary.runtime.connectionState", Val: types.VirtualMachineConnectionStateDisconnected}})
+				})
 			}
 			if at, ok := live.Backups[vm.vm.Key]; ok {
-				l.restoreBackup(obj, at)
+				ctx.WithLock(obj, func() { l.restoreBackup(ctx, obj, at) })
 			}
 			if off[vm.vm.Key] {
 				if obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine); ok {
