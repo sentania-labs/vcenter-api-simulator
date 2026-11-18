@@ -1,6 +1,7 @@
 package life
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -60,6 +61,7 @@ type MaintHost struct {
 // State is what the engine has to remember between steps and across a
 // restart. Minutes are Unix minutes.
 type State struct {
+	Jobs   Jobs               `json:"jobs,omitempty"`
 	At     int64              `json:"at"`               // the last minute stepped
 	Acc    map[string]float64 `json:"acc,omitempty"`    // how far each cluster's behaviour is towards its next occurrence
 	K      map[string]uint64  `json:"k,omitempty"`      // how many occurrences each has had, which numbers its picks
@@ -112,10 +114,28 @@ func (e *Engine) Step(now time.Time, w World) {
 
 // Skip moves the engine's clock to now without playing anything, for the
 // time the simulator spent paused.
-func (e *Engine) Skip(now time.Time) { e.State.At = now.Unix() / 60 }
+func (e *Engine) Skip(now time.Time) {
+	m := now.Unix() / 60
+	if d := m - e.State.At; e.State.At != 0 && d > 0 {
+		if p := e.State.Jobs.Patch; p != nil && p.Host != "" {
+			p.Due += d
+		}
+		for i := range e.State.Jobs.Crashes {
+			e.State.Jobs.Crashes[i].Restart += d
+			e.State.Jobs.Crashes[i].Return += d
+		}
+		for i := range e.State.Jobs.Snapshots {
+			e.State.Jobs.Snapshots[i].Until += d
+		}
+	}
+	e.State.At = m
+}
 
 func (e *Engine) minute(t int64, w World) {
 	if !e.Settings.Running {
+		if e.JobsPending() {
+			e.stopJobs(t, w)
+		}
 		return
 	}
 	cs := clusters(w)
@@ -126,11 +146,15 @@ func (e *Engine) minute(t int64, w World) {
 			still = append(still, o)
 			continue
 		}
-		if w.PowerOn(o.Cluster, o.VM) {
+		switch err := w.PowerOn(o.Cluster, o.VM); {
+		case err == nil:
 			e.add(t, Entry{Kind: KindOn, Cluster: o.Cluster, Why: Power, Text: fmt.Sprintf("%s was powered on again.", o.VM), Counts: map[string]int{"on": 1}})
+		case errors.Is(err, ErrHostUnavailable):
+			still = append(still, o)
 		}
 	}
 	e.State.Off = still
+	e.jobs(t, w)
 	e.limits(t, cs)
 	for _, b := range Counted {
 		if e.State.Held[b] != 0 {
@@ -286,6 +310,9 @@ func (e *Engine) next(cluster, b string) uint64 {
 
 // fire makes one occurrence of a counted behaviour happen in a cluster.
 func (e *Engine) fire(t int64, w World, c Cluster, b string) bool {
+	if b == Patching || b == Backups || b == Crash {
+		return e.startJob(t, w, c, b)
+	}
 	p := e.next(c.Key, b)
 	switch b {
 	case Moves:
@@ -694,8 +721,9 @@ func (e *Engine) Stop(now time.Time, w World) {
 			Counts: map[string]int{"mout": 1, "move": len(moves)}, Details: moveLines(moves)})
 	}
 	e.State.Maint = nil
+	e.stopJobs(t, w)
 	for _, o := range e.State.Off {
-		if w.PowerOn(o.Cluster, o.VM) {
+		if w.PowerOn(o.Cluster, o.VM) == nil {
 			e.add(t, Entry{Kind: KindOn, Cluster: o.Cluster, Why: Power, Text: fmt.Sprintf("%s was powered on again, early, because activity was stopped.", o.VM), Counts: map[string]int{"on": 1}})
 		}
 	}
@@ -709,6 +737,22 @@ func (e *Engine) Stop(now time.Time, w World) {
 func (e *Engine) Apply(now time.Time, s Settings, w World) {
 	e.you = true
 	defer func() { e.you = false }()
+	for _, c := range clusters(w) {
+		for _, b := range []string{Patching, Backups} {
+			old, _ := e.Settings.Dial(c.Key, b)
+			next, _ := s.Dial(c.Key, b)
+			was, want := PeriodDays(b, old), PeriodDays(b, next)
+			if was == want {
+				continue
+			}
+			key := c.Key + "|" + b
+			if was == 0 || want == 0 {
+				delete(e.State.Jobs.Next, key)
+			} else if due, ok := e.State.Jobs.Next[key]; ok {
+				e.State.Jobs.Next[key] = time.Unix(due*60, 0).In(e.Loc).AddDate(0, 0, want-was).Unix() / 60
+			}
+		}
+	}
 	e.Settings = s
 	if s.Running {
 		e.maintenance(now.Unix()/60, w, 8)
@@ -745,6 +789,7 @@ func (e *Engine) Note(now time.Time, text string) {
 // Reconcile drops what the engine remembers about hosts and VMs that are
 // no longer there, after the inventory was rebuilt.
 func (e *Engine) Reconcile(w World) {
+	e.reconcileJobs(w)
 	hosts := map[string]bool{}
 	known := map[string]bool{}
 	for _, c := range clusters(w) {
@@ -791,7 +836,7 @@ func (e *Engine) add(t int64, en Entry) {
 var Names = map[string]string{
 	Moves: "Load balancing (DRS)", Power: "VMs powered off and on", Adds: "New VMs", Removes: "VMs removed",
 	Maintenance: "Hosts in maintenance mode", DiskGrowth: "Datastores filling", DiskShrink: "Datastore cleanup",
-	CPU: "CPU load", Memory: "Memory load",
+	CPU: "CPU load", Memory: "Memory load", Patching: "Rolling patching", Backups: "Nightly backups", Crash: "A host crash",
 }
 
 func moveLines(moves []Move) []string {

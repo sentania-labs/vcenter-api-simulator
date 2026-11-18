@@ -17,6 +17,7 @@
 package life
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -25,6 +26,9 @@ import (
 
 // The behaviours. Each has one dial.
 const (
+	Patching    = "patching"
+	Backups     = "backups"
+	Crash       = "crash"
 	Moves       = "moves"       // load balancing: VMs move between hosts of a cluster
 	Power       = "power"       // VMs are powered off, and on again a little later
 	Adds        = "adds"        // new VMs
@@ -37,7 +41,7 @@ const (
 )
 
 // Order lists the behaviours as the console shows them.
-var Order = []string{Moves, Power, Adds, Removes, Maintenance, DiskGrowth, DiskShrink, CPU, Memory}
+var Order = []string{Moves, Power, Adds, Removes, Maintenance, Patching, Backups, Crash, DiskGrowth, DiskShrink, CPU, Memory}
 
 // Counted are the behaviours whose baseline is a number of things per 100
 // VMs a day.
@@ -85,8 +89,9 @@ type Exact struct {
 // Dial is one behaviour's setting: a level around the baseline, or an
 // exact number.
 type Dial struct {
-	Level float64 `json:"level"`
-	Exact *Exact  `json:"exact,omitempty"`
+	RecoveryMinutes int     `json:"recoveryMinutes,omitempty"`
+	Level           float64 `json:"level"`
+	Exact           *Exact  `json:"exact,omitempty"`
 }
 
 // Settings are everything the owner chose.
@@ -112,6 +117,7 @@ func Defaults(vms int) Settings {
 	for _, k := range Order {
 		s.Global[k] = Dial{Level: 1}
 	}
+	s.Global[Crash] = Dial{}
 	s.MinVMs, s.MaxVMs = Bounds(vms)
 	return s
 }
@@ -132,6 +138,9 @@ func (s *Settings) Dial(cluster, behaviour string) (Dial, bool) {
 	if d, ok := s.Global[behaviour]; ok {
 		return d, false
 	}
+	if behaviour == Crash {
+		return Dial{}, false
+	}
 	return Dial{Level: 1}, false
 }
 
@@ -144,7 +153,9 @@ func ExactUnits(behaviour string) []string {
 	switch behaviour {
 	case Moves:
 		return []string{UnitPerDay}
-	case Power, Adds, Removes:
+	case Patching, Backups:
+		return []string{UnitDays}
+	case Power, Adds, Removes, Crash:
 		return []string{UnitMinutes, UnitHours, UnitDays}
 	case Maintenance, DiskGrowth, DiskShrink:
 		return []string{UnitPercent}
@@ -154,6 +165,12 @@ func ExactUnits(behaviour string) []string {
 
 // Check says what is wrong with a dial for a behaviour, or nothing.
 func (d Dial) Check(behaviour string) error {
+	if d.RecoveryMinutes < 0 || d.RecoveryMinutes > 1440 {
+		return fmt.Errorf("host recovery must be 1 to 1440 minutes")
+	}
+	if behaviour != Crash && d.RecoveryMinutes != 0 {
+		return fmt.Errorf("recovery time belongs to host crashes")
+	}
 	if d.Exact == nil {
 		lo, hi := 0.0, 4.0
 		if IsLoad(behaviour) {
@@ -173,14 +190,16 @@ func (d Dial) Check(behaviour string) error {
 	}
 	n := d.Exact.N
 	switch {
-	case math.IsNaN(n) || n <= 0:
+	case math.IsNaN(n) || math.IsInf(n, 0) || n <= 0:
 		return fmt.Errorf("type a number above 0")
 	case d.Exact.Unit == UnitPercent && behaviour == Maintenance && n > 25:
 		return fmt.Errorf("at most 25: more than a quarter of the hosts would leave VMs nowhere to run")
 	case d.Exact.Unit == UnitPercent && behaviour != Maintenance && n > 10:
 		return fmt.Errorf("at most 10 percent of capacity a day")
-	case d.Exact.Unit == UnitDays && n > 30:
+	case d.Exact.Unit == UnitDays && behaviour != Patching && n > 30:
 		return fmt.Errorf("the longest is every 30 days")
+	case d.Exact.Unit == UnitDays && n > 120:
+		return fmt.Errorf("the longest is every 120 days")
 	case d.Exact.Unit == UnitPerDay && n > 100000:
 		return fmt.Errorf("at most 100,000 a day")
 	case (d.Exact.Unit == UnitMinutes || d.Exact.Unit == UnitHours || d.Exact.Unit == UnitDays) && n != math.Trunc(n):
@@ -231,6 +250,11 @@ type Store struct {
 	UsedPercent int   // how full it is now
 }
 
+// ErrHostUnavailable says a VM cannot be acted on now because its host is
+// down or in maintenance mode. It passes, so the work is tried again later
+// and is not counted as a failure.
+var ErrHostUnavailable = errors.New("VM host is not available")
+
 // World is the inventory the engine acts on. Every method changes the
 // running vCenter in place, with the events and tasks a real one records,
 // and reports what it did. A pick is a number the engine drew; a World uses
@@ -243,8 +267,10 @@ type World interface {
 	Balance(cluster string, n int, pick uint64) []Move
 	// PowerOff powers one running VM off and names it; "" when none can be.
 	PowerOff(cluster string, pick uint64) string
-	// PowerOn powers a VM on again; false when it is no longer there.
-	PowerOn(cluster, vm string) bool
+	// PowerOn powers a VM on again. ErrHostUnavailable means its host is
+	// down or in maintenance mode and the VM should be tried again later;
+	// any other error means it is no longer there.
+	PowerOn(cluster, vm string) error
 	AddVM(cluster string, pick uint64) (vm, host string, err error)
 	RemoveVM(cluster string, pick uint64) (vm string, err error)
 	// EnterMaintenance moves every VM off a host and puts it in maintenance

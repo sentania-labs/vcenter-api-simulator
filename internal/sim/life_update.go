@@ -40,14 +40,46 @@ func updateLife(ctx *simulator.Context, obj mo.Reference, changes []types.Proper
 		add(path+".uptimeSeconds", q.UptimeSeconds)
 	}
 
+	product := func(path string, p *types.AboutInfo) {
+		if p != nil {
+			add(path+".version", p.Version)
+			add(path+".build", p.Build)
+			add(path+".patchLevel", p.PatchLevel)
+			add(path+".fullName", p.FullName)
+		}
+	}
+	hostQuick := func(path string, q types.HostListSummaryQuickStats) {
+		add(path+".overallCpuUsage", q.OverallCpuUsage)
+		add(path+".overallMemoryUsage", q.OverallMemoryUsage)
+		add(path+".uptime", q.Uptime)
+	}
 	for _, c := range changes {
 		switch v := c.Val.(type) {
 		case types.HostRuntimeInfo:
 			hostRuntime(c.Name, v)
+		case *types.HostRuntimeInfo:
+			if v != nil {
+				hostRuntime(c.Name, *v)
+			}
 		case types.HostListSummary:
+			add(c.Name+".quickStats", v.QuickStats)
+			hostQuick(c.Name+".quickStats", v.QuickStats)
+			add(c.Name+".config", v.Config)
+			add(c.Name+".config.product", v.Config.Product)
+			product(c.Name+".config.product", v.Config.Product)
 			if v.Runtime != nil {
 				add(c.Name+".runtime", v.Runtime)
 				hostRuntime(c.Name+".runtime", *v.Runtime)
+			}
+		case types.HostConfigSummary:
+			add(c.Name+".product", v.Product)
+			product(c.Name+".product", v.Product)
+		case *types.VirtualMachineFileLayoutEx:
+			if v != nil {
+				add(c.Name+".file", v.File)
+				add(c.Name+".disk", v.Disk)
+				add(c.Name+".snapshot", v.Snapshot)
+				add(c.Name+".timestamp", v.Timestamp)
 			}
 		case types.VirtualMachineRuntimeInfo:
 			vmRuntime(c.Name, v)
@@ -88,9 +120,7 @@ func updateLife(ctx *simulator.Context, obj mo.Reference, changes []types.Proper
 		case types.VirtualMachineQuickStats:
 			vmQuick(c.Name, v)
 		case types.HostListSummaryQuickStats:
-			add(c.Name+".overallCpuUsage", v.OverallCpuUsage)
-			add(c.Name+".overallMemoryUsage", v.OverallMemoryUsage)
-			add(c.Name+".uptime", v.Uptime)
+			hostQuick(c.Name, v)
 		case types.DatastoreSummary:
 			add(c.Name+".capacity", v.Capacity)
 			add(c.Name+".freeSpace", v.FreeSpace)
@@ -102,10 +132,7 @@ func updateLife(ctx *simulator.Context, obj mo.Reference, changes []types.Proper
 				add(c.Name+".timestamp", d.Timestamp)
 			}
 		case *types.AboutInfo:
-			if v != nil {
-				add(c.Name+".version", v.Version)
-				add(c.Name+".build", v.Build)
-			}
+			product(c.Name, v)
 		case *types.VirtualMachineSnapshotInfo:
 			if v != nil {
 				add(c.Name+".currentSnapshot", v.CurrentSnapshot)
@@ -232,4 +259,27 @@ func (l *Life) publishMembership(ctx *simulator.Context, vm *simulator.VirtualMa
 			}
 		})
 	}
+}
+
+// placeVM publishes both sides of an HA placement change, including full host
+// membership lists: indexed removal notifications do not reach vm subscribers.
+func (l *Life) placeVM(ctx *simulator.Context, ref, to types.ManagedObjectReference) {
+	vm := l.reg.Get(ref).(*simulator.VirtualMachine)
+	var from *types.ManagedObjectReference
+	ctx.WithLock(vm, func() { from = vm.Runtime.Host })
+	if from != nil && *from == to {
+		return
+	}
+	if from != nil {
+		if src := l.host(*from); src != nil {
+			ctx.WithLock(src, func() { updateLife(ctx, src, []types.PropertyChange{{Name: "vm", Val: without(src.Vm, ref)}}) })
+		}
+	}
+	dst := l.host(to)
+	ctx.WithLock(dst, func() {
+		updateLife(ctx, dst, []types.PropertyChange{{Name: "vm", Val: append(without(dst.Vm, ref), ref)}})
+	})
+	ctx.WithLock(vm, func() {
+		updateLife(ctx, vm, []types.PropertyChange{{Name: "runtime.host", Val: to}, {Name: "summary.runtime.host", Val: to}})
+	})
 }

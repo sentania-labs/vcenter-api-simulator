@@ -231,6 +231,9 @@ each dial a sentence says what its position means in numbers.
 | New VMs | about 1 a day for every 100 VMs, mostly in working hours. A cluster with fewer VMs than hosts counts as having one for each host | a new VM, powered on, with a number its cluster has not used since Activity was first started |
 | VMs removed | about 1 a day for every 100 VMs | a VM powered off and removed. Its number and identities are not used again |
 | Hosts in maintenance mode | 5% of the hosts, and others take their place about once a week | the host's VMs move off first, then the host says it is in maintenance mode. A host that comes out gets some VMs back |
+| Rolling patching | each cluster every 30 days, from 6 PM, one host at a time | the host's VMs move off, it is in maintenance mode, its product info shows a new build, it reboots and returns half an hour later |
+| Nightly backups | every VM every night, from 10 PM to 4 AM, after any patching | a snapshot task and a managed snapshot on every VM, removed ten minutes later |
+| Host crash | off in the ready-made day; one a day across the vCenter when switched on | the host is `notResponding` with alarms raised, its VMs restart on other hosts within two minutes, and it returns 15 minutes later |
 | Datastores filling | 0.4% of each vSAN datastore's capacity a day, a little every half hour | datastore free space, vSAN used capacity and the datastore's performance numbers |
 | Datastore cleanup | 0.3% of capacity freed at 2 AM | the same numbers falling |
 | CPU load | as the VMs were built (half to double) | CPU usage of VMs, hosts and clusters. Above the baseline, ready time (contention) rises too |
@@ -248,7 +251,7 @@ each dial a sentence says what its position means in numbers.
 - **Limits.** The number of VMs stays between two numbers, 5% below and above the
   number there was before Activity changed anything unless you change them. They
   move with clusters and hosts you add or remove. At a limit, adding or removing
-  waits and says so once a day. At most a quarter of a cluster's hosts are in
+  waits and says so once a day. At most a quarter of a cluster's hosts are down or in
   maintenance mode at once. A vSAN datastore is not filled past 90%, and a cleanup
   frees only what Activity filled.
 - **A tool that is subscribed sees each change as it happens.** What Activity changes
@@ -264,7 +267,8 @@ each dial a sentence says what its position means in numbers.
 - **While the simulator is paused** nothing moves. Start, Stop, "Do it now" and a
   change to the hosts in maintenance mode are refused until you resume.
 - **Stop** leaves the environment still and healthy: hosts come out of maintenance
-  mode and VMs that are off are powered on. VMs that were added or removed stay
+  mode, crashed and patching hosts return, temporary backup snapshots are removed,
+  and VMs that are off are powered on. VMs that were added or removed stay
   that way, and datastores stay as full as they are.
 - **"What has happened"** lists every cause with what it set off as one line, newest
   first, with the detail one click away. It says which lines came from a button you
@@ -303,13 +307,41 @@ recent-task list after ten minutes, as on a real vCenter.
 - A real vCenter also records a `VmMacAssignedEvent` for a new VM, distributed
   switch port events around power and removal, and a vSphere HA state event when
   a host comes out of maintenance mode. The simulator does not.
-- Nothing Activity does raises an alarm. Patching hosts one after another, nightly
-  backups and snapshots, and a host that crashes are not built.
+- Only a crashed host raises an alarm. The five proposed extras (datastore-full
+  alarms, hot VMs, network-link failures, forgotten snapshots, and a permanent
+  powered-off VM share) are not built.
 - An event collector created with a filter on one chain id does not receive that
   chain's later events as they happen, though a query made afterwards finds them.
   A tool streaming events at the instant one is posted can see it with its own key
   as chain id (for a new VM, about a millisecond). A tool that reads events in pages
   afterwards, as VCF Operations does, sees the finished chain.
+
+**Patching, backups and host crashes.** Rolling patching starts from 6 PM, with each
+cluster due every 30 days at the baseline. Clusters and hosts take turns. A host
+evacuates its VMs, enters maintenance, receives a simulated build and patch-level
+increment in its product info, reboots, and returns after half an hour. The
+quarter-of-hosts limit counts both maintenance and failed hosts. Activity's own
+maintenance rotation yields to patching so a host need not wait a week to be patched.
+
+Nightly backups start between 10 PM and 4 AM, after patching, one cluster at a
+time. Real snapshot tasks create managed snapshot objects on every VM; each
+snapshot is removed ten minutes later. Half-hour history entries group the work.
+The backup dial changes the number of nights between runs, with at most one run per
+night. Patching and backups also accept an exact number of days.
+
+Host crashes are off in the ready-made day. The baseline is one crash a day across
+the vCenter, with independent cluster overrides. A failed host reports
+`notResponding`; its running VMs become unavailable, then restart on other hosts
+within two minutes. The host returns after 15 minutes by default, configurable from
+1 to 1,440 minutes in its exact-number dialog. `Host connection and power state` and
+`vSphere HA host status` raise and clear using the default names and expressions
+read from lab vCenter 9.1.1. HA uses the current `EventEx` event IDs. Performance
+reads exclude down or maintenance hosts and reflect the VMs' new placement. Existing
+saved setups leave the three new dials off on upgrade.
+
+Patching, backups and host crashes have global and cluster dials, exact numbers and a
+cluster's **Do it now** button like the rest. Their products, failed hosts, snapshots
+and job progress survive a rebuild or restart.
 
 ## Licensing and sign-on
 

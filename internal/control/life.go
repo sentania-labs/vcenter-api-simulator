@@ -57,6 +57,14 @@ func (c *Controller) initLife(r *running) {
 			log.Printf("control: %s could not be read, so activity starts with nothing set up: %v", c.lifePath(), err)
 		} else {
 			c.life.Settings, c.life.State, c.life.Log = saved.Engine.Settings, saved.Engine.State, saved.Engine.Log
+			if c.life.Settings.Global == nil {
+				c.life.Settings.Global = map[string]life.Dial{}
+			}
+			for _, b := range []string{life.Patching, life.Backups, life.Crash} {
+				if _, ok := c.life.Settings.Global[b]; !ok {
+					c.life.Settings.Global[b] = life.Dial{}
+				}
+			}
 			c.lifeSetUp = saved.SetUp
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -81,7 +89,14 @@ func (c *Controller) initLife(r *running) {
 	}
 	c.wireLife(r, saved.Live)
 	// nothing is caught up for the time the simulator was off
-	c.life.Skip(c.now())
+	// Restart does not advance a backlog. Outstanding recovery deadlines can
+	// complete on the first step; pause uses Skip to preserve their durations.
+	c.life.State.At = c.now().Unix() / 60
+	beforeRecovery := c.life.State.Seq
+	c.life.RecoverExpired(c.now(), r.sim.Life())
+	if c.life.State.Seq != beforeRecovery {
+		c.lifeDirty = true
+	}
 	c.lifeSeq = c.life.State.Seq
 	stop := make(chan struct{})
 	c.lifeStop = stop
@@ -272,12 +287,13 @@ type ActLevel struct {
 // ActRow is one behaviour on the Activity screen, for the vCenter or for
 // one cluster.
 type ActRow struct {
-	Key   string      `json:"key"`
-	Name  string      `json:"name"`
-	What  string      `json:"what"`
-	Text  string      `json:"text"`
-	Level float64     `json:"level"`
-	Exact *life.Exact `json:"exact,omitempty"`
+	Key             string      `json:"key"`
+	Name            string      `json:"name"`
+	What            string      `json:"what"`
+	Text            string      `json:"text"`
+	Level           float64     `json:"level"`
+	Exact           *life.Exact `json:"exact,omitempty"`
+	RecoveryMinutes int         `json:"recoveryMinutes,omitempty"`
 	// Own: this cluster has its own setting. Follows: it follows the
 	// vCenter. Neither is set for the vCenter's own row.
 	Own     bool       `json:"own,omitempty"`
@@ -337,6 +353,9 @@ var levelLabels = map[float64]string{0: "Off", 0.25: "Much quieter", 0.5: "Quiet
 var loadLabels = map[float64]string{0.5: "Half", 0.75: "Lighter", 1: "As built", 1.25: "Heavier", 1.5: "Much heavier", 2: "Double"}
 
 var lifeWhat = map[string]string{
+	life.Patching:    "From 6 PM, each cluster is patched host by host: VMs move off, the host gets a new build, reboots and returns after half an hour.",
+	life.Backups:     "Between 10 PM and 4 AM, every VM gets a temporary snapshot. Clusters take turns, after patching finishes.",
+	life.Crash:       "A host stops responding, its alarms turn red, and HA restarts its VMs on other hosts within two minutes. The host returns by itself.",
 	life.Moves:       "As DRS does: when the load shifts, a few VMs move to other hosts by vMotion.",
 	life.Power:       "People shut VMs down and start them again, mostly while they are at work.",
 	life.Adds:        "New VMs are provisioned, mostly while people are at work.",
@@ -394,6 +413,24 @@ func lifeText(b string, d life.Dial, s lifeScope) string {
 	}
 	rhythm := d.Exact != nil && d.Exact.Unit != life.UnitPerDay
 	switch b {
+	case life.Patching, life.Backups:
+		if off {
+			return "Off: " + lowerWord(life.Names[b]) + " does not start by itself."
+		}
+		days := life.PeriodDays(b, d)
+		if b == life.Patching {
+			return fmt.Sprintf("Each cluster is patched every %d days, from 6 PM, one host at a time. Each host takes half an hour, including its reboot.", days)
+		}
+		return fmt.Sprintf("Every VM is backed up every %s, from 10 PM to 4 AM, after patching. Snapshots are removed ten minutes later.", plural(days, "night"))
+	case life.Crash:
+		if off {
+			return "Off for a calm day. No host crashes by itself."
+		}
+		pace := fmt.Sprintf("about %s times a day", about(d.Level))
+		if d.Exact != nil {
+			pace = every(d.Exact.N, d.Exact.Unit)
+		}
+		return fmt.Sprintf("A host crashes %s. HA restarts its VMs within two minutes; it returns and its alarms clear after %d minutes.", pace, life.Recovery(d))
 	case life.Moves:
 		if off {
 			return "Off: no VM is moved to balance the load."
@@ -539,6 +576,9 @@ func (c *Controller) Activity(scope string) (*ActivityView, error) {
 			}
 		}
 		row.Level, row.Exact = d.Level, d.Exact
+		if b == life.Crash {
+			row.RecoveryMinutes = life.Recovery(d)
+		}
 		row.Text = lifeText(b, d, rowScope)
 		if row.Exact != nil && rowScope.share != 1 && row.Exact.Unit != life.UnitPerDay {
 			row.Text = "Follows the vCenter's own number: " + lowerWord(lifeText(b, e.Settings.Global[b], all))
@@ -550,7 +590,7 @@ func (c *Controller) Activity(scope string) (*ActivityView, error) {
 		for _, lv := range levels {
 			row.Levels = append(row.Levels, ActLevel{V: lv, Label: labels[lv], Text: lifeText(b, life.Dial{Level: lv}, sc)})
 		}
-		counted := b == life.Moves || b == life.Power || b == life.Adds || b == life.Removes
+		counted := b == life.Moves || b == life.Power || b == life.Adds || b == life.Removes || b == life.Patching || b == life.Backups || b == life.Crash
 		switch {
 		case e.State.Held[b] != 0:
 			row.Held = true
@@ -608,16 +648,22 @@ func lifeLine(en life.Entry) ActLine {
 
 // lifeNow says what is true at the moment because of activity.
 func lifeNow(cs []life.Cluster) string {
-	var maint, off int
+	var maint, off, down int
 	for _, c := range cs {
 		off += c.Off
 		for _, h := range c.Hosts {
+			if h.Down {
+				down++
+			}
 			if h.Maintenance {
 				maint++
 			}
 		}
 	}
 	var a []string
+	if down > 0 {
+		a = append(a, plural(down, "host is", "hosts are")+" not responding")
+	}
 	if maint > 0 {
 		a = append(a, plural(maint, "host is", "hosts are")+" in maintenance mode")
 	}
@@ -683,6 +729,14 @@ func lifeSum(list []life.Entry) string {
 	if n["move"] > 0 {
 		a = append(a, plural(n["move"], "vMotion"))
 	}
+	pair(n["snapshot"], n["snapshotRemoved"], "backup snapshot", "taken", "removed", "removed")
+	if n["patched"] > 0 {
+		a = append(a, plural(n["patched"], "host")+" patched")
+	}
+	if n["restart"] > 0 {
+		a = append(a, plural(n["restart"], "VM")+" restarted by HA")
+	}
+	pair(n["crash"], n["recovered"], "host", "crashed", "recovered", "recovered")
 	pair(n["off"], n["on"], "VM", "powered off", "powered on again", "powered on again")
 	pair(n["add"], n["remove"], "VM", "added", "removed", "removed")
 	pair(n["min"], n["mout"], "host", "into maintenance mode", "out of maintenance mode", "out of it")
@@ -714,7 +768,7 @@ type ActivityLogView struct {
 
 var lifeGroups = map[string][]string{
 	"moves": {life.KindMove}, "power": {life.KindOff, life.KindOn}, "vms": {life.KindAdd, life.KindRemove},
-	"hosts": {life.KindIn, life.KindOut}, "disks": {life.KindDisk}, "other": {life.KindWait, life.KindFail},
+	"hosts": {life.KindIn, life.KindOut, "patch", "crash"}, "backups": {"backup"}, "disks": {life.KindDisk}, "other": {life.KindWait, life.KindFail},
 }
 
 // ActivityLog lists what has happened: in the last hour, today, the last
@@ -885,7 +939,7 @@ func (c *Controller) ActivityStart(confirmed bool) (*ActDone, error) {
 		s := cloneSettings(e.Settings)
 		s.Running = true
 		in, _ := c.maintChange(s)
-		title, lead := "Start activity?", "The environment starts changing by itself, in amounts that fit its size. Every dial starts at its baseline; you can turn each one up or down afterwards, for the whole vCenter or for one cluster."
+		title, lead := "Start activity?", "The environment starts changing by itself, in amounts that fit its size. Host crashes default to off for a calm day. Each dial can be changed for the whole vCenter or for one cluster."
 		if c.lifeSetUp {
 			title, lead = "Start activity again?", "Things start happening by themselves again, with the dials as you left them."
 		}
@@ -918,7 +972,7 @@ func (c *Controller) ActivityStop(confirmed bool) (*ActDone, error) {
 	}
 	r := c.applied()
 	if !confirmed {
-		body := []string{"From the moment you press the button, nothing happens by itself."}
+		body := []string{"From the moment you press the button, nothing happens by itself.", "Crashed hosts return and their alarms clear. Patching stops, its host returns, and temporary backup snapshots are removed."}
 		if n := len(e.State.Maint); n > 0 {
 			body = append(body, fmt.Sprintf("%s out of maintenance mode, and VMs move back onto %s.", plural(n, "host comes", "hosts come"), map[bool]string{true: "it", false: "them"}[n == 1]))
 		}
@@ -938,19 +992,23 @@ func (c *Controller) ActivityStop(confirmed bool) (*ActDone, error) {
 	c.addHistory("Activity stopped.")
 	c.save()
 	c.saveLife(true)
+	if e.JobsPending() {
+		return &ActDone{Done: "**Stopped.** Some recovery work failed and will be retried. See What has happened for the affected host or snapshot.", Tone: "warn"}, nil
+	}
 	return &ActDone{Done: "**Stopped.** Nothing happens by itself now. The environment is still, and the dials are kept as you set them.", Tone: "ok"}, nil
 }
 
 // ActDial is a change to one dial: a level, an exact number, or (for a
 // cluster) back to following the vCenter.
 type ActDial struct {
-	Cluster   string   `json:"cluster"`
-	Behaviour string   `json:"behaviour"`
-	Level     *float64 `json:"level"`
-	N         *float64 `json:"n"`
-	Unit      string   `json:"unit"`
-	Follow    bool     `json:"follow"`
-	Confirmed bool     `json:"confirmed"`
+	RecoveryMinutes *int     `json:"recoveryMinutes,omitempty"`
+	Cluster         string   `json:"cluster"`
+	Behaviour       string   `json:"behaviour"`
+	Level           *float64 `json:"level"`
+	N               *float64 `json:"n"`
+	Unit            string   `json:"unit"`
+	Follow          bool     `json:"follow"`
+	Confirmed       bool     `json:"confirmed"`
 }
 
 // ActivityDial changes one dial. A change that moves hosts into or out of
@@ -994,6 +1052,16 @@ func (c *Controller) ActivityDial(req ActDial) (*ActDone, error) {
 		d = life.Dial{Level: *req.Level}
 	default:
 		return nil, &Invalid{"Choose a level or type a number."}
+	}
+	if b == life.Crash && !req.Follow {
+		old, _ := e.Settings.Dial(req.Cluster, b)
+		d.RecoveryMinutes = old.RecoveryMinutes
+		if req.RecoveryMinutes != nil {
+			if *req.RecoveryMinutes < 1 {
+				return nil, &Invalid{"Host recovery must be at least one minute."}
+			}
+			d.RecoveryMinutes = *req.RecoveryMinutes
+		}
 	}
 	if err := d.Check(b); err != nil {
 		return nil, &Invalid{upper1(err.Error()) + "."}
@@ -1067,7 +1135,7 @@ func (c *Controller) ActivityDoNow(cluster, b string, confirmed bool) (*ActDone,
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r := c.applied()
-	if _, ok := map[string]bool{life.Moves: true, life.Power: true, life.Adds: true, life.Removes: true}[b]; !ok {
+	if _, ok := map[string]bool{life.Moves: true, life.Power: true, life.Adds: true, life.Removes: true, life.Patching: true, life.Backups: true, life.Crash: true}[b]; !ok {
 		return nil, &Invalid{"That cannot be done on its own."}
 	}
 	label := clusterLabel(r.sc, cluster)
@@ -1079,10 +1147,13 @@ func (c *Controller) ActivityDoNow(cluster, b string, confirmed bool) (*ActDone,
 	}
 	if !confirmed {
 		what := map[string][2]string{
-			life.Moves:   {"Move some VMs now?", "DRS balances the load in " + label + " straight away: 2 to 6 of its VMs move by vMotion from its fullest hosts to its emptiest."},
-			life.Power:   {"Power a VM off now?", "One VM in " + label + " is powered off straight away, and powered on again between 5 minutes and 2 hours later."},
-			life.Adds:    {"Add a VM now?", "One new VM is added to " + label + " straight away, on its emptiest host."},
-			life.Removes: {"Remove a VM now?", "One VM in " + label + " is powered off and removed straight away. It is gone for good: its name and identity are never used again."},
+			life.Patching: {"Patch this cluster now?", "Hosts in " + label + " take turns entering maintenance mode, changing build, rebooting and returning. Each takes half an hour. Backups wait."},
+			life.Backups:  {"Back up this cluster now?", "Every VM in " + label + " gets a snapshot, spread over half an hour. Each snapshot is removed ten minutes later. Patching waits."},
+			life.Crash:    {"Crash a host now?", "One available host in " + label + " stops responding. Its alarms turn red, and HA restarts its VMs on other hosts within two minutes. The host returns by itself and its alarms clear."},
+			life.Moves:    {"Move some VMs now?", "DRS balances the load in " + label + " straight away: 2 to 6 of its VMs move by vMotion from its fullest hosts to its emptiest."},
+			life.Power:    {"Power a VM off now?", "One VM in " + label + " is powered off straight away, and powered on again between 5 minutes and 2 hours later."},
+			life.Adds:     {"Add a VM now?", "One new VM is added to " + label + " straight away, on its emptiest host."},
+			life.Removes:  {"Remove a VM now?", "One VM in " + label + " is powered off and removed straight away. It is gone for good: its name and identity are never used again."},
 		}[b]
 		return &ActDone{Confirm: &Confirm{Title: what[0], Body: []string{what[1], "This is once, on top of what happens by itself."}, OK: "Do it now"}}, nil
 	}
