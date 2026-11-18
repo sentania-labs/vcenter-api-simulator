@@ -251,6 +251,12 @@ each dial a sentence says what its position means in numbers.
   waits and says so once a day. At most a quarter of a cluster's hosts are in
   maintenance mode at once. A vSAN datastore is not filled past 90%, and a cleanup
   frees only what Activity filled.
+- **A tool that is subscribed sees each change as it happens.** What Activity changes
+  (a host's maintenance mode, power state, VM placement, VM membership of hosts and
+  datastores, datastore space, load) is sent to property collector subscriptions on
+  the properties themselves, not only on the parent (for example
+  `runtime.inMaintenanceMode` as well as `runtime`). A collection that asks for a leaf
+  property and one that asks for the whole object both get it.
 - **"Do it now"** on a cluster's dial does that thing once, straight away, after
   saying what it will do.
 - **A change that moves hosts asks first.** Starting, stopping, and changing the

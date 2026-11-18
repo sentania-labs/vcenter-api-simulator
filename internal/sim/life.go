@@ -241,11 +241,13 @@ func (l *Life) begin(ctx *simulator.Context, at types.Event, entity types.Manage
 // name a real vCenter gives it and told who started it.
 func (l *Life) own(ctx *simulator.Context, t *simulator.Task, entity types.ManagedObjectReference, chain int32, name string, by types.BaseTaskReason) {
 	ctx.WithLock(t, func() {
-		changes := []types.PropertyChange{{Name: "info.eventChainId", Val: chain}}
+		// Re-announce the final state with its now-complete metadata. vcsim's
+		// TaskHistoryCollector refreshes latestPage only on info.state updates.
+		changes := []types.PropertyChange{{Name: "info.eventChainId", Val: chain}, {Name: "info.state", Val: t.Info.State}}
 		if by != nil {
 			changes = append(changes, types.PropertyChange{Name: "info.name", Val: name}, types.PropertyChange{Name: "info.reason", Val: by})
 		}
-		ctx.Update(t, changes)
+		updateLife(ctx, t, changes)
 	})
 	l.posted["task "+t.Info.DescriptionId]++
 	l.old = append(l.old, oldTask{ref: t.Self, entity: entity, at: l.now()})
@@ -367,12 +369,12 @@ func (l *Life) Sweep(now time.Time) {
 func (l *Life) forget(ctx *simulator.Context, tm *simulator.TaskManager, ref, entity types.ManagedObjectReference) {
 	if tm != nil {
 		ctx.WithLock(tm, func() {
-			ctx.Update(tm, []types.PropertyChange{{Name: "recentTask", Val: without(tm.RecentTask, ref)}})
+			updateLife(ctx, tm, []types.PropertyChange{{Name: "recentTask", Val: without(tm.RecentTask, ref)}})
 		})
 	}
 	if e, ok := l.reg.Get(entity).(mo.Entity); ok {
 		ctx.WithLock(e, func() {
-			ctx.Update(e, []types.PropertyChange{{Name: "recentTask", Val: without(e.Entity().RecentTask, ref)}})
+			updateLife(ctx, e, []types.PropertyChange{{Name: "recentTask", Val: without(e.Entity().RecentTask, ref)}})
 		})
 	}
 	l.reg.Remove(ctx, ref)
@@ -443,12 +445,12 @@ func (l *Life) move(refs *ClusterRefs, vm *lifeVM, to types.ManagedObjectReferen
 	dest := types.HostEventArgument{EntityEventArgument: types.EntityEventArgument{Name: dst.Name}, Host: to}
 	source := types.HostEventArgument{EntityEventArgument: types.EntityEventArgument{Name: src.Name}, Host: from}
 	place := func(ctx *simulator.Context) {
-		ctx.WithLock(src, func() { ctx.Update(src, []types.PropertyChange{{Name: "vm", Val: without(src.Vm, vm.ref)}}) })
+		ctx.WithLock(src, func() { updateLife(ctx, src, []types.PropertyChange{{Name: "vm", Val: without(src.Vm, vm.ref)}}) })
 		ctx.WithLock(dst, func() {
-			ctx.Update(dst, []types.PropertyChange{{Name: "vm", Val: append(without(dst.Vm, vm.ref), vm.ref)}})
+			updateLife(ctx, dst, []types.PropertyChange{{Name: "vm", Val: append(without(dst.Vm, vm.ref), vm.ref)}})
 		})
 		ctx.WithLock(obj, func() {
-			ctx.Update(obj, []types.PropertyChange{{Name: "runtime.host", Val: to}, {Name: "summary.runtime.host", Val: to}})
+			updateLife(ctx, obj, []types.PropertyChange{{Name: "runtime.host", Val: to}, {Name: "summary.runtime.host", Val: to}})
 		})
 	}
 	if !l.off[refs.Cluster.Key][vm.vm.Name] {
@@ -632,7 +634,7 @@ func (l *Life) setPower(ctx *simulator.Context, obj *simulator.VirtualMachine, v
 			obj.Summary.QuickStats = types.VirtualMachineQuickStats{GuestHeartbeatStatus: types.ManagedEntityStatusGray}
 			obj.GuestHeartbeatStatus = types.ManagedEntityStatusGray
 		}
-		ctx.Update(obj, []types.PropertyChange{
+		updateLife(ctx, obj, []types.PropertyChange{
 			{Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}, {Name: "guestHeartbeatStatus", Val: obj.GuestHeartbeatStatus},
 		})
 	})
@@ -705,7 +707,7 @@ func (l *Life) counts(ctx *simulator.Context, refs *ClusterRefs) {
 		sum.UsageSummary.TotalVmCount = int32(len(l.vms[key]))
 		sum.UsageSummary.PoweredOffVmCount = int32(len(l.off[key]))
 		sum.NumVmsPerDrsScoreBucket = []int32{0, 0, 0, 0, int32(len(l.vms[key]) - len(l.off[key]))}
-		ctx.Update(obj, []types.PropertyChange{{Name: "summary", Val: obj.Summary}})
+		updateLife(ctx, obj, []types.PropertyChange{{Name: "summary", Val: obj.Summary}})
 	})
 }
 
@@ -779,9 +781,10 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	l.vms[cluster][vm.Name] = lv
 	cl.SetLiveVMs(append(append([]*topology.VM(nil), cl.LiveVMs()...), vm))
 	obj := l.reg.Get(ref).(*simulator.VirtualMachine)
+	l.publishMembership(ctx, obj, true)
 	// the builder shaped the VM after vcsim announced it; say what it is now
 	ctx.WithLock(obj, func() {
-		ctx.Update(obj, []types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}})
+		updateLife(ctx, obj, []types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}})
 	})
 	var made types.ManagedObjectReference
 	ctx.WithLock(folder, func() {
@@ -873,6 +876,7 @@ func (l *Life) RemoveVM(cluster string, pick uint64) (string, error) {
 		}
 	}
 	l.adopt(ctx, chain, vm.ref)
+	l.publishMembership(ctx, obj, false)
 	delete(l.vms[cluster], name)
 	delete(l.off[cluster], name)
 	cl := refs.Cluster
@@ -920,7 +924,7 @@ func (l *Life) setMaintenance(ctx *simulator.Context, hs *simulator.HostSystem, 
 		if hs.Summary.Runtime != nil {
 			hs.Summary.Runtime.InMaintenanceMode = in
 		}
-		ctx.Update(hs, []types.PropertyChange{{Name: "runtime", Val: hs.Runtime}, {Name: "summary", Val: hs.Summary}})
+		updateLife(ctx, hs, []types.PropertyChange{{Name: "runtime", Val: hs.Runtime}, {Name: "summary", Val: hs.Summary}})
 	})
 }
 
@@ -1053,7 +1057,7 @@ func (l *Life) space(ctx *simulator.Context, refs *ClusterRefs) (used, capacity 
 		ds.Info.GetDatastoreInfo().FreeSpace = ds.Summary.FreeSpace
 		ts := time.Now().UTC()
 		ds.Info.GetDatastoreInfo().Timestamp = &ts
-		ctx.Update(ds, []types.PropertyChange{{Name: "summary", Val: ds.Summary}, {Name: "info", Val: ds.Info}})
+		updateLife(ctx, ds, []types.PropertyChange{{Name: "summary", Val: ds.Summary}, {Name: "info", Val: ds.Info}})
 	})
 	return used, capacity
 }
@@ -1099,8 +1103,29 @@ func (l *Life) SetLoad(cluster string, cpu, memory float64) {
 			next[k] = v
 		}
 	}
+	old, exists := next[refs.Ref]
 	next[refs.Ref] = [2]float64{cpu, memory}
 	load.m.Store(&next)
+	if !exists {
+		old = [2]float64{1, 1}
+	}
+	if old == next[refs.Ref] {
+		return
+	}
+	ctx := l.as("")
+	for _, ref := range append(append([]types.ManagedObjectReference(nil), refs.Hosts...), refs.VMs...) {
+		obj := l.reg.Get(ref)
+		switch o := obj.(type) {
+		case *simulator.HostSystem:
+			ctx.WithLock(o, func() {
+				updateLife(ctx, o, []types.PropertyChange{{Name: "summary.quickStats", Val: o.Summary.QuickStats}})
+			})
+		case *simulator.VirtualMachine:
+			ctx.WithLock(o, func() {
+				updateLife(ctx, o, []types.PropertyChange{{Name: "summary.quickStats", Val: o.Summary.QuickStats}})
+			})
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
