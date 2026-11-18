@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,14 @@ import (
 
 // legacySessionPath is the CIS REST spelling used by the Operations collector.
 const legacySessionPath = "/rest/com/vmware/cis/session"
+
+// emptyRESTReads are the registered reads which report an empty collection.
+var emptyRESTReads = map[string]bool{
+	"/api/cis/tagging/category": true, "/api/cis/tagging/tag": true,
+	"/api/vcenter/namespace-management/clusters": true, "/api/vcenter/namespace-management/clusters/": true,
+	"/api/vcenter/namespaces/instances": true, "/api/vcenter/namespaces/instances/": true,
+	"/api/vcenter/namespaces/instances/v2": true,
+}
 
 // saltPath is the appliance salt minion configuration, answered with made-up values.
 const saltPath = "/api/appliance/salt/minion/configuration"
@@ -82,22 +91,53 @@ func (s *restSessions) valid(token string) bool {
 }
 
 func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
+	// The older API returns the same reads inside a value envelope.
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/rest/") && r.URL.Path != legacySessionPath {
+		path := strings.TrimPrefix(r.URL.Path, "/rest/")
+		if strings.HasPrefix(path, "com/vmware/cis/tagging/") {
+			path = strings.TrimPrefix(path, "com/vmware/")
+		}
+		clone := r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/api/" + path
+		clone.URL = &u
+		rec := httptest.NewRecorder()
+		if s.serveAPI(rec, clone, true) {
+			for k, values := range rec.Header() {
+				w.Header()[k] = values
+			}
+			w.WriteHeader(rec.Code)
+			if rec.Code >= 200 && rec.Code < 300 {
+				_, _ = w.Write([]byte(`{"value":`))
+				_, _ = w.Write(rec.Body.Bytes())
+				_, _ = w.Write([]byte(`}`))
+			} else {
+				_, _ = w.Write(rec.Body.Bytes())
+			}
+			return true
+		}
+	}
 	if r.URL.Path == "/wcp" {
 		return serveWCP(w, r)
 	}
 	legacy := r.URL.Path == legacySessionPath
+	if legacy {
+		r = r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/api/session"
+		r.URL = &u
+	}
+	return s.serveAPI(w, r, legacy)
+}
+
+// serveAPI answers /stats and /api; legacy selects the older error and value shapes.
+func (s *restSessions) serveAPI(w http.ResponseWriter, r *http.Request, legacy bool) bool {
 	fail := func(status int, kind string) {
 		if legacy {
 			legacyError(w, status, kind)
 		} else {
 			restError(w, status, kind)
 		}
-	}
-	if legacy {
-		r = r.Clone(r.Context())
-		u := *r.URL
-		u.Path = "/api/session"
-		r.URL = &u
 	}
 	if r.URL.Path == "/stats" {
 		return s.serveRPC(w, r)
@@ -174,14 +214,15 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	path := r.URL.Path
+	if emptyRESTReads[path] {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+		return true
+	}
 	switch path {
 	case "/api/vcenter/namespace-management/supervisors/summaries":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"items":[]}`))
-		return true
-	case "/api/cis/tagging/category", "/api/cis/tagging/tag", "/api/vcenter/namespace-management/clusters", "/api/vcenter/namespace-management/clusters/", "/api/vcenter/namespaces/instances", "/api/vcenter/namespaces/instances/", "/api/vcenter/namespaces/instances/v2":
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte("[]"))
 		return true
 	case saltPath:
 		w.Header().Set("Content-Type", "application/json")
@@ -214,7 +255,7 @@ func (s *restSessions) serve(w http.ResponseWriter, r *http.Request) bool {
 	if s.appliance(w, r) {
 		return true
 	}
-	if s.inventory(w, r) {
+	if s.inventory(w, r, legacy) {
 		return true
 	}
 	status := http.StatusNotFound

@@ -48,8 +48,9 @@ has already seen.
 
 Things to know before you connect:
 
-- **The address on Home is the container's own name.** Use your machine's name
-  in the tool. To make Home show it too, add `-e VCSIM_PUBLIC_URL=https://<name>:8443`
+- **Home cannot know your machine's name under Docker.** It suggests the address
+  you used for the console, which is the wrong port and scheme for a tool, so use
+  your machine's name in the tool. To make Home show it, add `-e VCSIM_PUBLIC_URL=https://<name>:8443`
   before the image name. If the tool checks names on the certificate, add
   `-tls-names=<name>` after the image name. That takes effect when the
   certificate is first made; to change it later use Security in the console.
@@ -106,7 +107,7 @@ console screen is in [docs/console](docs/console/README.md).
 | A tool asks for | The simulator |
 |---|---|
 | Signing in and out (SOAP `/sdk`, REST `/api/session`) | Answers, for the accounts you set up |
-| Datacenters, clusters, hosts, VMs, datastores, networks (SOAP and REST) | Answers. Some details of VMs on REST are missing |
+| Datacenters, clusters, hosts, VMs, datastores, networks (SOAP and REST) | Answers, including legacy REST reads. Some details of VMs on REST are missing |
 | vSAN performance (`/vsanHealth`), all 69 kinds, ESA and OSA | Answers with made-up values inside the range a real vCenter showed |
 | vSAN settings, disks, health summary, resync summary | Answers. Some detailed health checks are missing. The resync summary says nothing is syncing |
 | vSphere performance counters and values for VMs, hosts, clusters, datastores | Answers with changing values that add up from VM to host to cluster |

@@ -46,7 +46,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "vcsim.imageTag" -}}
-{{- default .Chart.AppVersion .Values.image.tag }}
+{{- default (ternary "main" (printf "v%s" .Chart.AppVersion) (eq .Chart.AppVersion "main")) .Values.image.tag }}
 {{- end }}
 
 {{- define "vcsim.image" -}}

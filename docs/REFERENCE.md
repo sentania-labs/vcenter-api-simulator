@@ -254,6 +254,12 @@ each dial a sentence says what its position means in numbers.
   waits and says so once a day. At most a quarter of a cluster's hosts are down or in
   maintenance mode at once. A vSAN datastore is not filled past 90%, and a cleanup
   frees only what Activity filled.
+- **A tool that is subscribed sees each change as it happens.** What Activity changes
+  (a host's maintenance mode, power state, VM placement, VM membership of hosts and
+  datastores, datastore space, load) is sent to property collector subscriptions on
+  the properties themselves, not only on the parent (for example
+  `runtime.inMaintenanceMode` as well as `runtime`). A collection that asks for a leaf
+  property and one that asks for the whole object both get it.
 - **"Do it now"** on a cluster's dial does that thing once, straight away, after
   saying what it will do.
 - **A change that moves hosts asks first.** Starting, stopping, and changing the
@@ -370,7 +376,8 @@ license. Changing it does not rebuild the vCenter.
 
 Give the simulator the proxy's certificate with `-lookup-trust-cert` (the chart's
 `simulator.lookupTrustSecret`), and route `/lookupservice`, `/sso-adminserver`,
-`/sts`, `/ls`, `/api`, `/rest` and `/stats` to it as well as `/sdk`. The lookup
+`/sts`, `/ls`, `/api`, `/rest`, `/stats`, `/wcp` and `/vsanHealth` to it as well
+as `/sdk`. The chart routes these by default. The lookup
 service tells a tool which certificate to trust at the sign-on addresses, and
 behind a proxy that is the proxy's, not the simulator's. The file is read again
 when it changes.
@@ -420,7 +427,8 @@ gaps be closed from what Operations really sends.
   anonymous `SessionManager.currentSession` read answers an empty result.
 - Datacenters, clusters, hosts, VMs, datastores, networks, resource pools and
   distributed switches on SOAP, built on vcsim.
-- The same lists on REST (`/api/vcenter/...`). List endpoints honour `names`, the
+- The same lists on REST (`/api/vcenter/...`, and `/rest/vcenter/...` with a
+  `value` envelope on the older paths). List endpoints honour `names`, the
   parent and state filters that apply to each kind and the id filter of each kind,
   in the plain and `filter.`-prefixed spellings. Any other parameter returns 400
   `INVALID_ARGUMENT`. REST reads share SOAP identities.
@@ -428,7 +436,8 @@ gaps be closed from what Operations really sends.
   settings, disk lists, health summary and the resync summary (always nothing
   to sync). Values are made up, the same every time for the same moment, and inside
   the range a real vCenter showed. The service-versions document
-  (`/sdk/vsanServiceVersions.xml`) is cut back to the namespaces the selected
+  (`/sdk/vsanServiceVersions.xml` and `/vsanHealth/vsanServiceVersions.xml`) is cut
+  back to the namespaces the selected
   vCenter version speaks.
 - Standard vSphere performance and counter discovery ([below](#standard-vsphere-performance)).
 - The inventory-relationship query Operations uses for hosts, datacenters and

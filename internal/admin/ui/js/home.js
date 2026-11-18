@@ -1,7 +1,7 @@
 // Home: what is running, what needs attention, who is connected and how to
 // connect a tool. Everything on it comes from /api/home, which the shell
 // already holds, so Home and the header cannot disagree.
-import { api, html, raw, badge, btn, link, lbtn, card, dot, rich, plural, num, timeText, ago, pager, pageOf, table } from './lib.js';
+import { api, html, raw, badge, btn, link, lbtn, card, dot, rich, plural, num, timeText, ago, pager, pageOf, table, unknownToolAddress } from './lib.js';
 
 const toolState = (t) => {
   const at = t.since ? timeText(t.since) : '';
@@ -88,11 +88,11 @@ const main = {
       : con.cert === 'managed' ? 'Supplied by whoever installed the simulator. A tool that does not know it will ask whether to trust it.'
         : 'Made by the simulator, so your tool will ask whether to trust it. Say yes.';
     const connect = card('Connect a tool', html`<dl class="m-kv">
-        <dt>Address</dt><dd><code>${h.address}</code> ${btn('Copy', 'copy', 'lat-btn--ghost', { text: h.address, what: 'The address' })}</dd>
+        <dt>Address</dt><dd>${h.address ? html`<code>${h.address}</code> ${btn('Copy', 'copy', 'lat-btn--ghost', { text: h.address, what: 'The address' })}` : unknownToolAddress}</dd>
         <dt>Username</dt><dd>${con.anyLogin ? 'Any username is accepted' : html`<code>${con.username}</code> ${btn('Copy', 'copy', 'lat-btn--ghost', { text: con.username, what: 'The username' })}`}</dd>
         <dt>Password</dt><dd>${pwLine}</dd>
         <dt>Certificate</dt><dd>${certLine} ${link('Details', '/security')}</dd></dl>
-      <div class="m-row" style="margin-top:10px">${btn(F.checking ? 'Checking…' : 'Check the address works', 'checkAddr', '', { disabled: !!F.checking })}${F.checked ? html`<span class="m-small" role="status">${dot(F.checked.ok ? 'ok' : 'warn')} ${F.checked.text}</span>` : html`<span class="m-small">Any other user on the ${link('Users', '/users')} screen works too.</span>`}</div>`);
+      <div class="m-row" style="margin-top:10px">${h.address ? btn(F.checking ? 'Checking…' : 'Check the address works', 'checkAddr', '', { disabled: !!F.checking }) : ''}${h.address && F.checked ? html`<span class="m-small" role="status">${dot(F.checked.ok ? 'ok' : 'warn')} ${F.checked.text}</span>` : html`<span class="m-small">Any other user on the ${link('Users', '/users')} screen works too.</span>`}</div>`);
 
     const who = card(live.length || fresh ? 'Who is connected' : 'Who was connected', h.tools.length ? html`<ul class="m-list">${h.tools.map(toolItem)}</ul>`
       : html`<div class="m-empty"><h3>Nothing has connected yet</h3><p>When a tool signs in (a management pack, a script, anything that talks to vCenter), it appears here with what it asked for.</p></div>`);

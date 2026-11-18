@@ -55,10 +55,11 @@ screen, Home and request capture are all counted from it.
 |---|---|---|
 | Contract and behaviour: captured requests replayed against the simulator, identities across `/sdk` and `/vsanHealth`, scenarios, restart stability, accounts, faults and latency, the console's tasks and screens, Activity, licensing and sign-on, request capture and redaction | `go test ./...` | CI `go` job |
 | A plain vSphere client (govc): connect, refuse a wrong password, list clusters, hosts and VMs, compare counts, restart on the same data and compare every identity | `tools/smoke/smoke.sh` | CI `smoke` job |
-| Chart: `helm lint --strict` with each `charts/vcenter-api-simulator/ci/*-values.yaml`, `helm template`, `kubeconform` | `.github/workflows/package.yml` | CI `chart` job |
+| Chart: `helm lint --strict` with each `charts/vcenter-api-simulator/ci/*-values.yaml`, [`test.sh`](../charts/vcenter-api-simulator/test.sh) (default ingress paths, image tag, install notes), `helm template`, `kubeconform` | `.github/workflows/package.yml` | CI `chart` job |
 | Image: build, label, non-root check, `docker compose` boot, then PowerCLI ([`smoke.ps1`](../tools/smoke/smoke.ps1)): `Connect-VIServer`, `Get-VMHost`, `Get-VM`, wrong password refused | PowerCLI on `pwsh` | CI `image` job |
 | Chart install in a disposable kind cluster: default values, the smoke through the Service, the certificate unchanged across a pod restart, an upgrade to `tls.existingSecret` | [`tools/smoke/helm-kind.sh`](../tools/smoke/helm-kind.sh) | By hand (needs `kind`, `helm`, `kubectl`, `openssl`, Docker, `pwsh`) |
 | A week of Activity at the large size | `VCSIM_LARGE=7 go test ./internal/control -run TestActivityADayAtTheLargeSize -v` | By hand. Builds 5,009 VMs. [Numbers](sizing.md#measurements) |
+| A property collector subscription across the large size, two simulated hours of Activity | `VCSIM_LARGE_UPDATES=1 go test ./internal/control -run TestActivityLargePropertyStream -v` | By hand. Builds 5,009 VMs |
 | The reference pack's collector and `mp-test` against every cluster of a scenario | `tools/mp-harness/harness.py`, `tools/mp-harness/mp_test_run.py` | Manual `mp-acceptance` workflow |
 | The read-only vCenter walk | `tools/probe/test_probe.py` | By hand. See [`tools/probe/README.md`](../tools/probe/README.md) |
 | Scale replay | `tools/bench/bench.py` | By hand. See [`tools/bench/README.md`](../tools/bench/README.md) |

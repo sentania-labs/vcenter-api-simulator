@@ -239,3 +239,109 @@ func TestSaltMinionConfiguration(t *testing.T) {
 		t.Fatalf("shape: %+v", got)
 	}
 }
+
+// Legacy reads have the same data as the current API, wrapped in value.
+func TestLegacyReadEnvelopes(t *testing.T) {
+	sc := tenClusters(t)
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	client := e.srv.Client()
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/session", nil)
+	req.SetBasicAuth("reader", "password")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var token string
+	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	for _, path := range []string{"datacenter", "cluster", "host", "datastore", "network", "vm", "folder", "resource-pool"} {
+		t.Run(path, func(t *testing.T) {
+			read := func(prefix string) any {
+				req, _ := http.NewRequest(http.MethodGet, e.srv.URL+prefix+path, nil)
+				req.Header.Set("vmware-api-session-id", token)
+				res, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer res.Body.Close()
+				if res.StatusCode != 200 {
+					t.Fatalf("%s: %d", prefix, res.StatusCode)
+				}
+				var v any
+				if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
+					t.Fatal(err)
+				}
+				return v
+			}
+			current := read("/api/vcenter/")
+			old := read("/rest/vcenter/").(map[string]any)["value"]
+			if !reflect.DeepEqual(current, old) {
+				t.Fatalf("legacy differs from current")
+			}
+		})
+	}
+	// Every inventory list rejects an unsupported filter using the error
+	// envelope of the API version requested by the client.
+	for _, path := range []string{"datacenter", "cluster", "host", "datastore", "network", "vm", "folder", "resource-pool"} {
+		for _, prefix := range []string{"/rest/vcenter/", "/api/vcenter/"} {
+			t.Run(prefix+path+"/invalid-filter", func(t *testing.T) {
+				req, _ := http.NewRequest(http.MethodGet, e.srv.URL+prefix+path+"?unsupported=value", nil)
+				req.Header.Set("vmware-api-session-id", token)
+				res, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer res.Body.Close()
+				var body map[string]any
+				if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				if res.StatusCode != http.StatusBadRequest {
+					t.Fatalf("status %d: %v", res.StatusCode, body)
+				}
+				if prefix == "/rest/vcenter/" {
+					if body["majorErrorCode"] != float64(400) || body["name"] != "INVALID_ARGUMENT" || body["type"] != "com.vmware.vapi.std.errors.invalid_argument" || body["value"] == nil || body["localizableMessages"] == nil || body["error_type"] != nil {
+						t.Fatalf("legacy error: %v", body)
+					}
+				} else if body["error_type"] != "INVALID_ARGUMENT" || body["messages"] == nil || body["majorErrorCode"] != nil {
+					t.Fatalf("modern error: %v", body)
+				}
+			})
+		}
+	}
+	for _, path := range []string{"tag", "category"} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/rest/com/vmware/cis/tagging/"+path, nil)
+		req.Header.Set("vmware-api-session-id", token)
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v map[string]any
+		err = json.NewDecoder(res.Body).Decode(&v)
+		res.Body.Close()
+		if err != nil || res.StatusCode != 200 || !reflect.DeepEqual(v["value"], []any{}) {
+			t.Fatalf("%s: %d %v %v", path, res.StatusCode, v, err)
+		}
+	}
+	for _, c := range []struct {
+		path, token string
+		status      int
+	}{{"/rest/vcenter/no-such-thing", token, 404}, {"/rest/vcenter/", "", 401}, {"/rest/com/vmware/cis/session", token, 404}} {
+		req, _ := http.NewRequest(http.MethodGet, e.srv.URL+c.path, nil)
+		if c.token != "" {
+			req.Header.Set("vmware-api-session-id", c.token)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v map[string]any
+		err = json.NewDecoder(res.Body).Decode(&v)
+		res.Body.Close()
+		if err != nil || res.StatusCode != c.status || v["majorErrorCode"] == nil {
+			t.Fatalf("%s: %d %v %v, want %d in the legacy error shape", c.path, res.StatusCode, v, err, c.status)
+		}
+	}
+}

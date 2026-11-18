@@ -16,13 +16,11 @@ Service.
 
 ```sh
 helm install vcsim-01 charts/vcenter-api-simulator \
-  --set hostname=vcsim-01.example.test \
-  --set image.tag=latest
+  --set hostname=vcsim-01.example.test
 ```
 
-The chart's default image is the unreleased `main` build. Set `image.tag` to
-a release such as `v0.4.5`, or to `latest`, and pin it in a deployment
-repository.
+The packaged chart defaults to the matching release image; a source checkout
+defaults to `main`. Set `image.tag` to a release or to `latest` when needed.
 
 Then, from your workstation:
 
@@ -50,14 +48,10 @@ to be told: for ingress-nginx add the annotation
 `nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"`. When the Ingress ends
 TLS, tools see the Ingress's certificate, not the simulator's.
 
-For VCF Operations' own vCenter adapter, two more settings are needed behind an
-Ingress:
-
-- Add `/lookupservice`, `/sso-adminserver`, `/sts`, `/ls`, `/api`, `/rest` and
-  `/stats` to `ingress.paths`. The default is `/sdk` and `/vsanHealth` only.
-- Set `simulator.lookupTrustSecret` to the Secret that holds the Ingress's
-  certificate (only its `tls.crt` is used). The lookup service then tells
-  Operations to trust that certificate at the sign-on addresses.
+For VCF Operations' own vCenter adapter behind an Ingress, set
+`simulator.lookupTrustSecret` to the Secret that holds the Ingress's certificate
+(only its `tls.crt` is used). The lookup service then tells Operations to trust
+that certificate at the sign-on addresses.
 
 An example with all of this is in [`ci/ingress-values.yaml`](ci/ingress-values.yaml).
 

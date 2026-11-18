@@ -36,7 +36,11 @@ func (s *restSessions) lock(obj mo.Reference, f func()) {
 	s.registry.WithLock(&simulator.Context{}, obj, f)
 }
 
-func restInvalidArgument(w http.ResponseWriter, param string) {
+func restInvalidArgument(w http.ResponseWriter, param string, legacy bool) {
+	if legacy {
+		legacyError(w, http.StatusBadRequest, "INVALID_ARGUMENT")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error_type": "INVALID_ARGUMENT", "messages": []map[string]any{{"id": "com.vmware.vapi.std.errors.invalid_argument", "default_message": "Unsupported filter parameter: " + param, "args": []string{param}}}})
@@ -45,12 +49,12 @@ func restInvalidArgument(w http.ResponseWriter, param string) {
 // restFilters returns the requested filter values keyed by parameter name.
 // Both the plain and the filter.-prefixed spelling are accepted. A false
 // result means the request has already been answered with an error.
-func restFilters(w http.ResponseWriter, r *http.Request, l restList) (map[string][]string, bool) {
+func restFilters(w http.ResponseWriter, r *http.Request, l restList, legacy bool) (map[string][]string, bool) {
 	filters := map[string][]string{}
 	for key, values := range r.URL.Query() {
 		name := strings.TrimPrefix(key, "filter.")
 		if name != l.idParam && !slices.Contains(l.params, name) {
-			restInvalidArgument(w, key)
+			restInvalidArgument(w, key, legacy)
 			return nil, false
 		}
 		filters[name] = append(filters[name], values...)
@@ -142,7 +146,7 @@ func restMatches(filters, attrs map[string][]string) bool {
 }
 
 // inventory reads the same object registry as the SOAP service.
-func (s *restSessions) inventory(w http.ResponseWriter, r *http.Request) bool {
+func (s *restSessions) inventory(w http.ResponseWriter, r *http.Request, legacy bool) bool {
 	p := strings.TrimPrefix(r.URL.Path, "/api/vcenter/")
 	if p == r.URL.Path {
 		return false
@@ -178,7 +182,7 @@ func (s *restSessions) inventory(w http.ResponseWriter, r *http.Request) bool {
 		_ = json.NewEncoder(w).Encode(row)
 		return true
 	}
-	filters, ok := restFilters(w, r, l)
+	filters, ok := restFilters(w, r, l, legacy)
 	if !ok {
 		return true
 	}

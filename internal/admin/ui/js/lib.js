@@ -3,6 +3,8 @@
 // framework; screens return HTML built with the `html` tag, which escapes
 // every interpolation unless it is `raw()`.
 
+export const unknownToolAddress = "The simulator cannot tell which address your tool should use; set VCSIM_PUBLIC_URL to the API address, for example https://your-host:8443.";
+
 class Safe { constructor(s) { this.s = s; } toString() { return this.s; } }
 export const raw = (s) => new Safe(String(s));
 
