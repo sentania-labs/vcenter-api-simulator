@@ -12,12 +12,12 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY vendor ./vendor
 COPY cmd ./cmd
 COPY internal ./internal
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOFLAGS=-mod=readonly go build -trimpath \
+    CGO_ENABLED=0 GOFLAGS=-mod=vendor go build -trimpath \
       -ldflags "-s -w -buildid= -X main.version=${VERSION} -X main.commit=${COMMIT}" \
       -o /out/vcsimulator ./cmd/vcsimulator
 # The state directory, owned by the runtime user (distroless nonroot, uid

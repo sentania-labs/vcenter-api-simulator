@@ -196,3 +196,28 @@ Changes go through the lab's delivery pipeline: build, independent self-review,
 fix findings, pull request, external review, fix findings, green CI, merge, tag.
 Break large changes into reviewable pull requests and put the evidence in the
 description. Do not describe expected scale as measured scale.
+
+## Patched dependency
+
+Go dependencies are checked into `vendor/` using `go mod vendor`, pinned by
+`go.mod`, `go.sum`, and `vendor/modules.txt`. Normal Go commands and the Docker
+build use this tree. Do not build with `-mod=mod` or `-mod=readonly`: those modes
+bypass the local fix.
+
+The only functional local dependency change is in govmomi v0.56.2's
+`simulator/property_collector.go`, in `retrieveResult.selectSet`: check
+`TraversalSpec.Type` before reading its path, accepting anonymous embedded
+managed-object base types as well as the concrete type. This prevents a
+`ComputeResource.resourcePool` traversal from following a VM's unrelated
+`resourcePool` property. No module-cache files are modified. On a dependency
+upgrade, regenerate the vendor tree, format it with `gofmt -w vendor` (the
+repository formatting check includes vendored sources), reapply this check if
+upstream still needs it, and run `TestTraversalType` and
+`TestTraversalSnapshotValues` along with the normal checks. The snapshot test compares full object membership and decoded
+property values (excluding only `Datastore.info.timestamp`, asserted present
+on both sides because it records read time) with an independent ContainerView
+for both paged retrieval and
+streamed snapshots; it also passes on unpatched v0.56.2.
+
+Whole-filter rescans for each notification, view re-entry, and XML copy reduction
+remain separate follow-ups.
