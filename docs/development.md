@@ -220,4 +220,4 @@ for both paged retrieval and
 streamed snapshots; it also passes on unpatched v0.56.2.
 
 Whole-filter rescans for each notification, view re-entry, and XML copy reduction
-remain separate follow-ups. This change only corrects traversal type matching.
+remain separate follow-ups.
