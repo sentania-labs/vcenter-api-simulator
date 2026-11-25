@@ -451,6 +451,9 @@ func (s *Scenario) Validate() error {
 			return fmt.Errorf("scenario: datacenter %q: clusters must not be negative", dc.Name)
 		}
 	}
+	if err := s.CheckNamesFit(s.DNSDomain()); err != nil {
+		return fmt.Errorf("scenario: domain: %w", err)
+	}
 	s.Defaults = merge(builtin, s.Defaults)
 	if err := s.Defaults.check("defaults"); err != nil {
 		return err
@@ -952,10 +955,14 @@ func (s *Scenario) FamilyFaults() []Fault {
 // scenario names another (an IANA-reserved name that cannot resolve).
 const DefaultDomain = "sim.invalid"
 
-// maxDomainLen leaves room for the host, cluster and datacenter labels that
-// are put in front of the domain within the 253 characters a DNS name may
-// have.
-const maxDomainLen = 190
+// maxDNSName is the longest DNS name there is, in characters.
+const maxDNSName = 253
+
+// maxDomainLen is the longest a domain may be on its own, leaving room for
+// a one-character host label in front of it. How much room the generated
+// names really need is CheckNamesFit's question: it depends on the
+// datacenter names.
+const maxDomainLen = maxDNSName - 2
 
 var domainLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
@@ -968,7 +975,7 @@ func NormalizeDomain(d string) (string, error) {
 	case d == "":
 		return "", errors.New("the DNS domain is empty; type a name such as lab.example.com")
 	case len(d) > maxDomainLen:
-		return "", fmt.Errorf("the DNS domain is %d characters long; keep it to %d or fewer so the host names stay within the 253 a DNS name allows", len(d), maxDomainLen)
+		return "", fmt.Errorf("the DNS domain is %d characters long; keep it to %d or fewer because a DNS name may have at most %d", len(d), maxDomainLen, maxDNSName)
 	}
 	for _, l := range strings.Split(d, ".") {
 		switch {
@@ -981,6 +988,22 @@ func NormalizeDomain(d string) (string, error) {
 		}
 	}
 	return d, nil
+}
+
+// CheckNamesFit refuses a domain that makes the longest host name the
+// datacenters would generate, esx<NNN>.cluster-<NN>.<datacenter>.<domain>,
+// longer than a DNS name may be. The numbers are taken at their widest the
+// scenario can reach: three digits of host and as many digits of cluster
+// as the datacenter has clusters, at least two.
+func (s *Scenario) CheckNamesFit(domain string) error {
+	for _, dc := range s.Datacenters {
+		digits := max(2, len(strconv.Itoa(dc.Clusters)))
+		name := "esx999.cluster-" + strings.Repeat("9", digits) + "." + dc.Name + "." + domain
+		if len(name) > maxDNSName {
+			return fmt.Errorf("with the datacenter %q the longest host name would be %d characters, over the %d a DNS name may have; use a shorter domain or a shorter datacenter name", dc.Name, len(name), maxDNSName)
+		}
+	}
+	return nil
 }
 
 // DNSDomain is the domain generated names live in: the scenario's, or the

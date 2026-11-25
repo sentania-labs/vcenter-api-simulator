@@ -40,6 +40,11 @@ func planDomain(c *Controller, raw json.RawMessage, _ Caller) (*Plan, error) {
 		p.Idle = "Type a DNS domain, for example lab.example.com, and this box will say what happens."
 		return p, nil
 	}
+	if err := old.sc.CheckNamesFit(next); err != nil {
+		p.bad("domain", "%s.", upper1(err.Error()))
+		p.Idle = "Type a shorter DNS domain and this box will say what happens."
+		return p, nil
+	}
 	if next == cur {
 		p.bad("domain", "The DNS domain is already %s. Type a different one, or press Cancel.", cur)
 		p.Idle = "Nothing is different yet. Type another domain and this box will say what happens."

@@ -284,3 +284,25 @@ func TestDomain(t *testing.T) {
 		}
 	}
 }
+
+// A long but valid domain with a long datacenter name would make generated
+// host names longer than a DNS name may be; that is refused, in plain words,
+// and the same datacenter is fine with a shorter domain.
+func TestDomainMustFitGeneratedNames(t *testing.T) {
+	dc := strings.Repeat("d", 63)
+	long := strings.Join([]string{strings.Repeat("a", 63), strings.Repeat("b", 63), strings.Repeat("c", 62)}, ".") // 190 characters
+	doc := func(domain string) string {
+		return "seed: s\ndatacenters: [{name: " + dc + ", clusters: 1}]\ndomain: " + domain + "\n"
+	}
+	_, err := Parse([]byte(doc(long)))
+	if err == nil || !strings.Contains(err.Error(), "longest host name would be") {
+		t.Fatalf("a domain that overflows a DNS name was accepted or refused vaguely: %v", err)
+	}
+	if _, err := Parse([]byte(doc("lab.example.com"))); err != nil {
+		t.Errorf("a short domain was refused: %v", err)
+	}
+	sc, _ := Parse([]byte("seed: s\ndatacenters: [{name: dc, clusters: 1}]\n"))
+	if err := sc.CheckNamesFit(long); err != nil {
+		t.Errorf("the 190-character domain with a short datacenter name: %v", err)
+	}
+}
