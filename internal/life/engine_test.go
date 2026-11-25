@@ -540,3 +540,32 @@ func TestAVMOnAnUnavailableHostIsPoweredOnWhenItIsBack(t *testing.T) {
 		}
 	}
 }
+
+func TestReconcileFollowsAHostRenamedByTheDomain(t *testing.T) {
+	w := newWorld(1, 3, 2)
+	key := w.keys[0]
+	from := w.hosts[key]
+	for i, h := range from {
+		w.hosts[key][i] = strings.TrimSuffix(h, "sim.invalid") + "lab.example.com"
+	}
+	w.maint[key+"/"+w.hosts[key][1]] = true
+	e := New("seed", time.UTC, Defaults(6))
+	e.State.Maint = []MaintHost{{Cluster: key, Host: from[1], Since: 1, Until: 9}}
+	e.State.Rested = map[string]string{key: from[0]}
+	e.State.Jobs.Crashes = []CrashJob{{Cluster: key, Host: from[2], Restart: 3, Return: 9}}
+	e.State.Jobs.Patch = &PatchJob{Cluster: key, Host: from[1], Pending: []string{from[0], from[2]}}
+	e.Reconcile(w)
+	to := w.hosts[key]
+	if len(e.State.Maint) != 1 || e.State.Maint[0].Host != to[1] {
+		t.Errorf("maintenance = %+v, want host %s", e.State.Maint, to[1])
+	}
+	if e.State.Rested[key] != to[0] {
+		t.Errorf("rested = %q, want %q", e.State.Rested[key], to[0])
+	}
+	if c := e.State.Jobs.Crashes; len(c) != 1 || c[0].Host != to[2] {
+		t.Errorf("crashes = %+v, want host %s", c, to[2])
+	}
+	if p := e.State.Jobs.Patch; p == nil || p.Host != to[1] || !reflect.DeepEqual(p.Pending, []string{to[0], to[2]}) {
+		t.Errorf("patch = %+v, want host %s pending %v", p, to[1], []string{to[0], to[2]})
+	}
+}
