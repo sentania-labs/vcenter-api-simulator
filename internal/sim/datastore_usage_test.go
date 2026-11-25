@@ -3,6 +3,7 @@ package sim
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/types"
@@ -236,5 +237,37 @@ func TestDatastoreNamesDistinctAcrossDatacenters(t *testing.T) {
 	}
 	if vsan != 4 || local != 16 || !seen["dc-02-cluster-02-vsanDatastore"] {
 		t.Errorf("%d vSAN and %d local datastores, names %v", vsan, local, seen)
+	}
+}
+
+// A backup snapshot restored from saved state counts toward the VM's storage
+// like one taken live: the same twentieth of its committed space.
+func TestRestoredBackupSnapshotCountsAsUsedSpace(t *testing.T) {
+	s := lifeSim(t, lifeScenario(t), registry.InMemory("ds-snapshot-restore"))
+	l := s.Life()
+	refs := s.Clusters[0]
+	cl := refs.Cluster
+	ds := l.reg.Get(refs.Datastore).(*simulator.Datastore)
+	var name string
+	for n := range l.vms[cl.Key] {
+		name = n
+		break
+	}
+	lv := l.vms[cl.Key][name]
+	obj := l.reg.Get(lv.ref).(*simulator.VirtualMachine)
+	used := func() int64 { return ds.Summary.Capacity - ds.Summary.FreeSpace }
+	before, committed := used(), obj.Storage.PerDatastoreUsage[0].Committed
+
+	ctx := l.as("")
+	ctx.WithLock(obj, func() { l.restoreBackup(ctx, obj, lv.vm, time.Now()) })
+	l.space(ctx, refs)
+
+	// A 596 GiB disk commits 298 GiB; a snapshot takes a twentieth of that.
+	const snapshot = 298 << 30 / 20
+	if got := used() - before; got != snapshot {
+		t.Errorf("restored snapshot added %d to the datastore, want %d", got, snapshot)
+	}
+	if u := obj.Storage.PerDatastoreUsage[0]; u.Committed != committed+snapshot || obj.Summary.Storage.Committed != u.Committed {
+		t.Errorf("VM storage after restore: %+v, summary %+v", u, obj.Summary.Storage)
 	}
 }

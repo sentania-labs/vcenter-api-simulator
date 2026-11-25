@@ -304,6 +304,8 @@ recent-task list after ten minutes, as on a real vCenter.
 **What it does not do.**
 - Datastore filling changes each cluster's vSAN datastore only, not local, NFS or
   iSCSI datastores.
+- Datastore used space follows the VMs the simulator creates, moves and removes
+  itself; a VM destroyed by a client call is not reconciled.
 - A real vCenter also records a `VmMacAssignedEvent` for a new VM, distributed
   switch port events around power and removal, and a vSphere HA state event when
   a host comes out of maintenance mode. The simulator does not.
