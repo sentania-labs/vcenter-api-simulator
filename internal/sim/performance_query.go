@@ -25,6 +25,7 @@ func (s *Simulator) installStoragePerformance(_ map[string]*simulator.Datastore)
 	}
 	p.PerfCounter = append([]types.PerfCounterInfo(nil), base.PerfCounter...)
 	p.PerfCounter = append(p.PerfCounter, guestCounters()...)
+	p.PerfCounter = append(p.PerfCounter, powerCounters(p.PerfCounter)...)
 	p.HistoricalInterval = append([]types.PerfInterval(nil), base.HistoricalInterval...)
 	for i := range p.HistoricalInterval {
 		p.HistoricalInterval[i].Key = int32(i + 1)
