@@ -21,7 +21,7 @@ const listScreen = {
         : html`<div class="m-empty"><h3>${q ? `No cluster is called "${F.q}"` : 'No cluster is in that datacenter'}</h3><p>Check the spelling, or clear the box to see them all.</p></div>`}`);
     return html`<div class="m-page"><div class="m-head"><div><h1>Clusters and hosts</h1><p class="sub">${plural(d.rows.length, 'cluster')}, ${plural(d.hosts, 'host')} and ${plural(d.vms, 'VM')} in ${plural(dcs.length, 'datacenter')}. Open a cluster to see its hosts, or to add and remove hosts.</p></div>
       <div class="acts">${lbtn('Add a cluster', '/clusters/add', 'lat-btn--primary')}</div></div>
-      ${listCard}<p class="m-small">Starting a new test at a different size? ${link('Replace everything with a new environment', '/clusters/build')}. That removes every cluster listed above and builds new ones.</p></div>`;
+      ${listCard}${card('Host names', html`<p class="m-lead">Names are made under <b>${d.domain}</b>, for example <code>esx01.cluster-01.dc-01.${d.domain}</code>.</p><p class="m-small" style="margin-top:6px">Changing the domain renames hosts and VM guest host names. Their ids stay the same, so a tool sees the same objects with new names.</p><div class="m-row" style="margin-top:10px">${lbtn('Change the DNS domain', '/clusters/domain')}</div>`)}<p class="m-small">Starting a new test at a different size? ${link('Replace everything with a new environment', '/clusters/build')}. That removes every cluster listed above and builds new ones.</p></div>`;
   },
   input(ctx, el) { if (el.dataset.f) { ctx.F[el.dataset.f] = el.value; ctx.page.cl = 0; ctx.rerender(); } },
 };
@@ -79,6 +79,7 @@ export default {
   screen(p, q) {
     if (p[0] === 'clusters') {
       if (p[1] === 'add') return taskScreen('add-cluster', q, 'clusters', 'Add a cluster');
+      if (p[1] === 'domain') return taskScreen('domain', q, 'clusters', 'DNS domain');
       if (p[1] === 'build') return taskScreen('replace-everything', q, 'clusters', 'Replace everything');
       return listScreen;
     }

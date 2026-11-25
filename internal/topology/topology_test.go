@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
@@ -389,6 +390,33 @@ func TestStorageFaultHostsFollowVariedTopology(t *testing.T) {
 		s.Datacenters[0].NFS[0].InaccessibleHosts = []string{fmt.Sprintf("dc-01/cluster-01/esx%02d", count+1)}
 		if err := s.Validate(); err == nil {
 			t.Fatalf("seed %d accepted nonexistent host %d", i, count+1)
+		}
+	}
+}
+
+// The domain changes host names and nothing else: every identity is the one
+// the default domain gives.
+func TestDomainRenamesHostsAndKeepsIdentities(t *testing.T) {
+	sc := multi()
+	a := Generate(sc, registry.InMemory("many"))
+	sc.Domain = "lab.example.com"
+	b := Generate(sc, registry.InMemory("many"))
+	ca, cb := a.Clusters(), b.Clusters()
+	if len(ca) == 0 || len(ca) != len(cb) {
+		t.Fatalf("%d clusters became %d", len(ca), len(cb))
+	}
+	for i := range ca {
+		for j, h := range ca[i].Hosts {
+			g := cb[i].Hosts[j]
+			if !strings.HasSuffix(h.Name, ".sim.invalid") || !strings.HasSuffix(g.Name, ".lab.example.com") {
+				t.Fatalf("names %q and %q", h.Name, g.Name)
+			}
+			if strings.TrimSuffix(h.Name, ".sim.invalid") != strings.TrimSuffix(g.Name, ".lab.example.com") {
+				t.Errorf("only the domain may differ: %q %q", h.Name, g.Name)
+			}
+			if h.Key != g.Key || h.Serial != g.Serial || h.HardwareUUID != g.HardwareUUID || h.NodeUUID != g.NodeUUID {
+				t.Errorf("host identity changed: %+v %+v", h, g)
+			}
 		}
 	}
 }

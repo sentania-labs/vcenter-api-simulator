@@ -51,6 +51,7 @@ type Datacenter struct {
 	Name     string
 	Key      string // registry key tail: the name
 	Serial   int
+	Domain   string // DNS domain of generated host and guest names
 	VDS      string
 	VDSUUID  string // the vDS uuid on /sdk (summary.uuid, proxy switch dvsUuid, vmkernel NIC switchUuid)
 	Clusters []*Cluster
@@ -269,9 +270,8 @@ type VDisk struct {
 	CapacityKB int64
 }
 
-// Domain is the DNS domain simulated host names live in (an IANA-reserved
-// name that cannot resolve).
-const Domain = "sim.invalid"
+// Domain is the DNS domain the datacenter's generated names live in.
+func (c *Cluster) Domain() string { return c.Datacenter.Domain }
 
 // Clusters lists every cluster in datacenter order.
 func (t *Topology) Clusters() []*Cluster {
@@ -355,7 +355,7 @@ func Generate(s *scenario.Scenario, r *registry.Registry) *Topology {
 		t.TelemetrySeed = s.Seed
 	}
 	for _, d := range s.Datacenters {
-		dc := &Datacenter{Name: d.Name, Key: d.Name, Serial: r.Serial("datacenter/" + d.Name), VDS: "vds-01"}
+		dc := &Datacenter{Name: d.Name, Key: d.Name, Serial: r.Serial("datacenter/" + d.Name), VDS: "vds-01", Domain: s.DNSDomain()}
 		dc.VDSUUID = vdsUUID(r.Hex("vds", r.Serial("vds/"+d.Name), 32))
 		for n := 1; n <= d.Clusters; n++ {
 			if s.IsRemoved(scenario.ClusterKey(d.Name, n)) {
@@ -481,7 +481,7 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 	key := cl.Key + "/" + short
 	h := &Host{
 		Index:      n - 1,
-		Name:       fmt.Sprintf("%s.%s.%s.%s", short, cl.Name, cl.Datacenter.Name, Domain),
+		Name:       fmt.Sprintf("%s.%s.%s.%s", short, cl.Name, cl.Datacenter.Name, cl.Datacenter.Domain),
 		Key:        key,
 		Serial:     r.Serial("host/" + key),
 		Cluster:    cl,

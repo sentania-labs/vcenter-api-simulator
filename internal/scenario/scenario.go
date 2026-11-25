@@ -38,6 +38,10 @@ type Scenario struct {
 	// TelemetrySeed feeds metric values only; empty means Seed. Changing it
 	// changes every value and no identity.
 	TelemetrySeed string `yaml:"telemetrySeed" json:"telemetrySeed,omitempty"`
+	// Domain is the DNS domain generated host names, the hosts' own DNS
+	// settings and VM guest host names live in. Empty means DefaultDomain.
+	// It changes names only: no object identity is derived from it.
+	Domain string `yaml:"domain,omitempty" json:"domain,omitempty"`
 
 	Datacenters []Datacenter      `yaml:"datacenters" json:"datacenters,omitempty"`
 	Defaults    ClusterSpec       `yaml:"defaults" json:"defaults,omitempty"`
@@ -415,6 +419,11 @@ func StorageNumber(name string) uint32 {
 func (s *Scenario) Validate() error {
 	if err := s.validateVersions(); err != nil {
 		return err
+	}
+	if s.Domain != "" {
+		if _, err := NormalizeDomain(s.Domain); err != nil {
+			return fmt.Errorf("scenario: domain: %w", err)
+		}
 	}
 	if s.Seed == "" {
 		return errors.New("scenario: seed is required")
@@ -937,4 +946,48 @@ func (s *Scenario) FamilyFaults() []Fault {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Family < out[j].Family })
 	return out
+}
+
+// DefaultDomain is the DNS domain simulated host names live in unless the
+// scenario names another (an IANA-reserved name that cannot resolve).
+const DefaultDomain = "sim.invalid"
+
+// maxDomainLen leaves room for the host, cluster and datacenter labels that
+// are put in front of the domain within the 253 characters a DNS name may
+// have.
+const maxDomainLen = 190
+
+var domainLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// NormalizeDomain checks that d is a DNS domain name and returns it in
+// lower case without a trailing dot. The error says what is wrong in words
+// an operator can act on.
+func NormalizeDomain(d string) (string, error) {
+	d = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(d), "."))
+	switch {
+	case d == "":
+		return "", errors.New("the DNS domain is empty; type a name such as lab.example.com")
+	case len(d) > maxDomainLen:
+		return "", fmt.Errorf("the DNS domain is %d characters long; keep it to %d or fewer so the host names stay within the 253 a DNS name allows", len(d), maxDomainLen)
+	}
+	for _, l := range strings.Split(d, ".") {
+		switch {
+		case l == "":
+			return "", fmt.Errorf("%q has an empty part; use single dots between parts, as in lab.example.com", d)
+		case len(l) > 63:
+			return "", fmt.Errorf("the part %q is longer than the 63 characters a DNS name part allows", l)
+		case !domainLabelRe.MatchString(l):
+			return "", fmt.Errorf("the part %q is not valid; use only letters, digits and hyphens, and do not start or end a part with a hyphen", l)
+		}
+	}
+	return d, nil
+}
+
+// DNSDomain is the domain generated names live in: the scenario's, or the
+// default when it names none.
+func (s *Scenario) DNSDomain() string {
+	if d, err := NormalizeDomain(s.Domain); err == nil && s.Domain != "" {
+		return d
+	}
+	return DefaultDomain
 }

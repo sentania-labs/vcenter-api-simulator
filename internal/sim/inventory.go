@@ -139,7 +139,7 @@ func shapeHost(hs *simulator.HostSystem, cl *topology.Cluster, h *topology.Host,
 	hs.Config.DateTimeInfo = &types.HostDateTimeInfo{
 		TimeZone:            types.HostDateTimeSystemTimeZone{Key: "UTC", Name: "UTC", Description: "UTC", GmtOffset: 0},
 		SystemClockProtocol: "ntp",
-		NtpConfig:           &types.HostNtpConfig{Server: []string{"ntp1." + topology.Domain, "ntp2." + topology.Domain}},
+		NtpConfig:           &types.HostNtpConfig{Server: []string{"ntp1." + cl.Domain(), "ntp2." + cl.Domain()}},
 	}
 	hs.Config.HyperThread = &types.HostHyperThreadScheduleInfo{Available: true, Active: true, Config: true}
 	hs.Config.SystemResources = &types.HostSystemResourceInfo{Key: "host"}
@@ -393,7 +393,7 @@ func shapeVM(obj *simulator.VirtualMachine, cl *topology.Cluster, vm *topology.V
 	obj.Guest.ToolsStatus = types.VirtualMachineToolsStatusToolsOk
 	obj.Guest.ToolsRunningStatus = string(types.VirtualMachineToolsRunningStatusGuestToolsRunning)
 	obj.Guest.ToolsVersionStatus2 = string(types.VirtualMachineToolsVersionStatusGuestToolsCurrent)
-	obj.Guest.HostName = vm.Name + "." + topology.Domain
+	obj.Guest.HostName = vm.Name + "." + cl.Domain()
 	obj.Guest.IpAddress = fmt.Sprintf("10.20.%d.%d", (vm.Serial/254)%256, vm.Serial%254+1)
 	obj.Guest.GuestOperationsReady = types.NewBool(true)
 	obj.Summary.Guest.GuestId = obj.Guest.GuestId

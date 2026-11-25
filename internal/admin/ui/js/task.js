@@ -116,6 +116,8 @@ const FIELDS = {
 
   'change-user': (F) => html`<div class="m-field"><span class="lbl">What may this user do?</span>${opts(F, 'role', ROLE_OPTS)}</div>${pwField(F, 'New password (optional)', 'Leave empty to keep the password it has now.')}`,
 
+  domain: (F, O) => field(F, 'DNS domain', text(F, 'domain', 'for example lab.example.com'), `Letters, digits and hyphens, with dots between the parts. Hosts are named like esx01.cluster-01.dc-01.<domain>. It is also the domain the hosts say they belong to and the domain of the VM guest host names. The simulator starts with ${O.default}.`, 'domain'),
+
   idle: (F, O) => html`<div class="m-field ${F._err && F._err.idle ? 'has-err' : ''}"><span class="lbl">Sign a tool out after it has been quiet for</span>${opts(F, 'idle', O.choices.map((v) => [v, v, v === O.current ? 'What it is now.' : v === 'Never' ? 'Tools stay signed in until they sign out themselves.' : '']), true)}${errOf(F, 'idle')}</div>`,
 
   licensing: (F) => html`<div class="m-field ${F._err && F._err.state ? 'has-err' : ''}"><span class="lbl">What should vCenter say about its license?</span>${opts(F, 'state', [['evaluation', 'It is in evaluation', 'With 90 days left. How a vCenter looks before it is given a license.'], ['expired', 'Its evaluation has run out', 'To see what a tool does with a vCenter nobody licensed in time.']])}${errOf(F, 'state')}</div>
