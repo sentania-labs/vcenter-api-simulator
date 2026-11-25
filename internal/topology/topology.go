@@ -197,14 +197,15 @@ func VMStorage(vm *VM) (committed, uncommitted, unshared int64) {
 }
 
 // VsanUsed is the committed space of the cluster's VMs plus what Activity has
-// filled, and VsanUncommitted is the space those VMs may still grow into.
+// filled, never more than the cluster's capacity. VsanUncommitted is the space
+// those VMs may still grow into.
 func VsanUsed(cl *Cluster) int64 {
 	used := cl.UsedDelta()
 	for _, vm := range cl.LiveVMs() {
 		committed, _, _ := VMStorage(vm)
 		used += committed
 	}
-	return max(0, used)
+	return min(max(0, used), VsanCapacity(cl))
 }
 
 func VsanUncommitted(cl *Cluster) int64 {

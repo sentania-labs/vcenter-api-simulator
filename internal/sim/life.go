@@ -641,9 +641,9 @@ func (l *Life) setPower(ctx *simulator.Context, obj *simulator.VirtualMachine, v
 			obj.Summary.QuickStats = types.VirtualMachineQuickStats{GuestHeartbeatStatus: types.ManagedEntityStatusGray}
 			obj.GuestHeartbeatStatus = types.ManagedEntityStatusGray
 		}
-		updateLife(ctx, obj, []types.PropertyChange{
+		updateLife(ctx, obj, append([]types.PropertyChange{
 			{Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}, {Name: "guestHeartbeatStatus", Val: obj.GuestHeartbeatStatus},
-		})
+		}, storageChanges(obj)...))
 	})
 }
 
@@ -805,7 +805,7 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	l.publishMembership(ctx, obj, true)
 	// the builder shaped the VM after vcsim announced it; say what it is now
 	ctx.WithLock(obj, func() {
-		updateLife(ctx, obj, []types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}})
+		updateLife(ctx, obj, append([]types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}}, storageChanges(obj)...))
 	})
 	var made types.ManagedObjectReference
 	ctx.WithLock(folder, func() {

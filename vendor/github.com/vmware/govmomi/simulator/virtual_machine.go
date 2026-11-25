@@ -45,9 +45,9 @@ type VirtualMachine struct {
 	uid uuid.UUID
 	imc *types.CustomizationSpec
 
-	// StorageOverridden tells updateStorage that storage properties are being
-	// modelled from the inventory rather than the dummy backing files. A
-	// client's RefreshStorageInfo then leaves the modelled figures alone.
+	// StorageOverridden tells updateStorage and RefreshStorageInfo that storage
+	// properties and layout file sizes are modelled from the inventory rather
+	// than the dummy backing files, so a client's refresh leaves them alone.
 	StorageOverridden bool
 }
 
@@ -1041,6 +1041,10 @@ func (vm *VirtualMachine) RefreshStorageInfo(ctx *Context, req *types.RefreshSto
 
 	if vm.Runtime.Host == nil {
 		// VM not fully created
+		return body
+	}
+
+	if vm.StorageOverridden {
 		return body
 	}
 

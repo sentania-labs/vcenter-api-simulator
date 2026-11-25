@@ -272,9 +272,9 @@ func (m *PerfManager) VsanPerfQueryPerf(ctx *simulator.Context, req *vsantypes.V
 					case family == "vsan-cluster-capacity" && label == "total":
 						vals[i] = strconv.FormatInt(topology.VsanCapacity(cl), 10)
 					case family == "vsan-cluster-capacity" && label == "used":
-						vals[i] = strconv.FormatInt(min(topology.VsanCapacity(cl), topology.VsanUsed(cl)), 10)
+						vals[i] = strconv.FormatInt(topology.VsanUsed(cl), 10)
 					case family == "vsan-cluster-capacity" && label == "free":
-						vals[i] = strconv.FormatInt(max(0, topology.VsanCapacity(cl)-topology.VsanUsed(cl)), 10)
+						vals[i] = strconv.FormatInt(topology.VsanCapacity(cl)-topology.VsanUsed(cl), 10)
 					default:
 						vals[i] = perf.Value(cl.TelemetrySeed, ref, label, st, ok, unit, b)
 					}

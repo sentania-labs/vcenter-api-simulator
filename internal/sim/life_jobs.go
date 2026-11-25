@@ -85,12 +85,17 @@ func (l *Life) publishBackup(ctx *simulator.Context, obj *simulator.VirtualMachi
 	shapeVMStorage(obj, topo.Cluster, topo, l.s.Env.Now())
 	changes := []types.PropertyChange{
 		{Name: "snapshot", Val: obj.Snapshot}, {Name: "rootSnapshot", Val: obj.RootSnapshot},
-		{Name: "storage", Val: obj.Storage}, {Name: "summary", Val: obj.Summary},
+		{Name: "summary", Val: obj.Summary},
 	}
+	updateLife(ctx, obj, append(changes, storageChanges(obj)...))
+}
+
+func storageChanges(obj *simulator.VirtualMachine) []types.PropertyChange {
+	changes := []types.PropertyChange{{Name: "storage", Val: obj.Storage}}
 	if obj.LayoutEx != nil {
 		changes = append(changes, types.PropertyChange{Name: "layoutEx", Val: obj.LayoutEx})
 	}
-	updateLife(ctx, obj, changes)
+	return changes
 }
 
 func findBackup(vm *simulator.VirtualMachine) *types.ManagedObjectReference {

@@ -351,7 +351,7 @@ func vsanCapacity(cl *topology.Cluster) int64 {
 // the VMs or to what Activity has filled.
 func shapeDatastoreSummary(ds *simulator.Datastore, cl *topology.Cluster) {
 	capacity := vsanCapacity(cl)
-	used := min(capacity, topology.VsanUsed(cl))
+	used := topology.VsanUsed(cl)
 	ds.Summary.Capacity = capacity
 	ds.Summary.FreeSpace = capacity - used
 	ds.Summary.Uncommitted = topology.VsanUncommitted(cl)

@@ -83,7 +83,8 @@ func (s *SpaceReportSystem) VsanQuerySpaceUsage(ctx *simulator.Context, req *vsa
 		return &spaceBody{Fault_: simulator.Fault("cluster not found", &vim.ManagedObjectNotFound{Obj: req.Cluster})}
 	}
 	total, used := topology.VsanCapacity(cl), topology.VsanUsed(cl)
-	summary := spaceSummary{Primary: used, Provision: used, PhysicalUsed: used, Used: used}
+	uncommitted := topology.VsanUncommitted(cl)
+	summary := spaceSummary{Primary: used, Provision: used + uncommitted, PhysicalUsed: used, Used: used}
 	detail := spaceDetail{Items: []spaceSummary{
 		{ObjType: "statsdb"}, {ObjType: "traceobject"},
 		{ObjType: "checksumOverhead"}, {ObjType: "fileSystemOverhead"},
@@ -94,7 +95,7 @@ func (s *SpaceReportSystem) VsanQuerySpaceUsage(ctx *simulator.Context, req *vsa
 		detail.Items[i].ObjTypeExt = &empty
 		detail.Items[i].ObjTypeExtDesc = &empty
 	}
-	return &spaceBody{Res: &spaceResponse{Returnval: spaceUsage{Total: total, Free: total - used, Overview: summary, Detail: detail, Threshold: vsan.VsanHealthThreshold{YellowValue: total / 10 * 7, RedValue: total / 10 * 9}}}}
+	return &spaceBody{Res: &spaceResponse{Returnval: spaceUsage{Total: total, Free: total - used, Overview: summary, Detail: detail, Uncommitted: uncommitted, Threshold: vsan.VsanHealthThreshold{YellowValue: total / 10 * 7, RedValue: total / 10 * 9}}}}
 }
 
 type efficiencyState struct {

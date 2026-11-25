@@ -26,7 +26,7 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 
 	check := func(stage string) {
 		t.Helper()
-		var committed, uncommitted, unshared int64
+		var committed, uncommitted, unshared, forty int64
 		for _, lv := range l.vms[cl.Key] {
 			obj := l.reg.Get(lv.ref).(*simulator.VirtualMachine)
 			if len(obj.Storage.PerDatastoreUsage) != 1 {
@@ -37,6 +37,20 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 			if u.Datastore != refs.Datastore || u.Committed != wantC || u.Uncommitted != wantU || u.Unshared != wantS {
 				t.Errorf("%s: %s perDatastoreUsage %+v, want %d/%d/%d on %s", stage, lv.vm.Name, u, wantC, wantU, wantS, refs.Datastore)
 			}
+			var files int64
+			for _, f := range obj.LayoutEx.File {
+				files += f.Size
+			}
+			if files != u.Committed {
+				t.Errorf("%s: %s layoutEx files add up to %d, committed %d", stage, lv.vm.Name, files, u.Committed)
+			}
+			if len(lv.vm.Disks) == 1 && lv.vm.Disks[0].CapacityKB == 40<<20 {
+				const gib20 = 20 << 30
+				if u.Committed != gib20 || u.Uncommitted != gib20 || u.Unshared != gib20 {
+					t.Errorf("%s: %s with one 40 GiB disk has %+v, want 20 GiB committed, uncommitted and unshared", stage, lv.vm.Name, u)
+				}
+				forty++
+			}
 			sum := obj.Summary.Storage
 			if sum == nil || sum.Committed != u.Committed || sum.Uncommitted != u.Uncommitted || sum.Unshared != u.Unshared {
 				t.Errorf("%s: %s summary.storage %+v, perDatastoreUsage %+v", stage, lv.vm.Name, sum, u)
@@ -44,6 +58,9 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 			committed += u.Committed
 			uncommitted += u.Uncommitted
 			unshared += u.Unshared
+		}
+		if forty == 0 {
+			t.Errorf("%s: no VM with a single 40 GiB disk to check against the fixed figure", stage)
 		}
 		used := ds.Summary.Capacity - ds.Summary.FreeSpace
 		wantUsed := min(ds.Summary.Capacity, committed+max(0, cl.UsedDelta()))
@@ -63,7 +80,7 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 	}
 
 	check("built")
-	// A plain client refresh must recompute the same figures from layoutEx.
+	// A plain client refresh must leave the modelled figures as they are.
 	for _, ref := range refs.VMs {
 		l.reg.Get(ref).(*simulator.VirtualMachine).RefreshStorageInfo(l.as(""), &types.RefreshStorageInfo{This: ref})
 	}
