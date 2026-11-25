@@ -511,7 +511,8 @@ a backup snapshot adds a twentieth of that while it exists, and Activity's fills
 and cleanups move the used figure without changing the VMs' reported storage. A
 cluster's VM disks are sized to provision four fifths of its vSAN capacity, so
 its VMs commit about 40% of it whatever its size. NFS, iSCSI and local VMFS
-datastores hold no VMs; NFS and iSCSI report the used space their scenario gives them and a local VMFS datastore a tenth of its capacity.
+datastores hold no VMs; NFS and iSCSI report the used space their scenario
+gives them and a local VMFS datastore a tenth of its capacity.
 Swap space is not simulated.
 
 History is a replay of the workload at the requested times using the **current**

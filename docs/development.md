@@ -208,8 +208,8 @@ There are two functional local dependency changes in govmomi v0.56.2. The
 second is in `simulator/virtual_machine.go`: a `StorageOverridden` field on
 `VirtualMachine` that makes `updateStorage` and `RefreshStorageInfo` return
 early, so a client's refresh leaves the modelled VM storage figures and layout
-file sizes alone instead of recomputing a few KB from vcsim's dummy files. On an upgrade, reapply it and run
-`TestDatastoreUsageFollowsVMStorage`. The first is in
+file sizes alone instead of recomputing a few KB from vcsim's dummy files. On
+an upgrade, reapply it and run `TestDatastoreUsageFollowsVMStorage`. The first is in
 `simulator/property_collector.go`, in `retrieveResult.selectSet`: check
 `TraversalSpec.Type` before reading its path, accepting anonymous embedded
 managed-object base types as well as the concrete type. This prevents a
