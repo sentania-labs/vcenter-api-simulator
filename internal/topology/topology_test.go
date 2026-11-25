@@ -431,3 +431,46 @@ func TestDatastoreNamesAreUniqueAcrossDatacenters(t *testing.T) {
 		t.Errorf("single-datacenter names %q %q", c.Datastore, c.StoreName)
 	}
 }
+
+// Activity adding and removing VMs is recorded in the scenario, and a rebuild
+// from it must not resize the VMs that were already there.
+func TestDiskSizesIgnoreAddedAndRemovedVMs(t *testing.T) {
+	sc := scenario.Phase1("disks")
+	reg := registry.InMemory("disks")
+	base := Generate(sc, reg).Clusters()[0]
+	if len(base.VMs) < 3 {
+		t.Fatalf("only %d VMs to work with", len(base.VMs))
+	}
+	high := base.VMHigh
+	removed := []int{1}
+	var added []int
+	for i := 1; i <= 8; i++ {
+		added = append(added, high+i)
+	}
+	sc.Clusters = []scenario.ClusterOverride{{Key: base.Key, AddedVMs: added, RemovedVMs: removed}}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	after := Generate(sc, reg).Clusters()[0]
+	if len(after.VMs) == len(base.VMs) {
+		t.Fatalf("the rebuild still has %d VMs", len(after.VMs))
+	}
+	if after.DiskKB != base.DiskKB {
+		t.Errorf("disk capacity went from %d to %d KB", base.DiskKB, after.DiskKB)
+	}
+	byName := map[string]*VM{}
+	for _, v := range after.VMs {
+		byName[v.Name] = v
+	}
+	for _, v := range base.VMs[1:] {
+		w := byName[v.Name]
+		if w == nil {
+			t.Fatalf("%s is gone after the rebuild", v.Name)
+		}
+		c1, u1, s1 := VMStorage(v)
+		c2, u2, s2 := VMStorage(w)
+		if c1 != c2 || u1 != u2 || s1 != s2 {
+			t.Errorf("%s storage %d/%d/%d became %d/%d/%d", v.Name, c1, u1, s1, c2, u2, s2)
+		}
+	}
+}

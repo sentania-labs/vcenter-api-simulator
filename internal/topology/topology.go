@@ -494,7 +494,10 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		cl.Hosts = append(cl.Hosts, host)
 	}
 	numbers, high := s.VMNumbers(key, len(cl.Hosts)*scenario.Int(spec.VMs.PerHost))
-	cl.DiskKB = diskKB(VsanCapacity(cl), len(numbers)*spec.VMs.DisksPerVM)
+	// Size disks from the scenario's own population, not the current one, so
+	// VMs Activity or the console added or removed never resize the survivors
+	// when the inventory is rebuilt.
+	cl.DiskKB = diskKB(VsanCapacity(cl), spec.Hosts*scenario.Int(spec.VMs.PerHost)*spec.VMs.DisksPerVM)
 	for _, vi := range numbers {
 		cl.VMs = append(cl.VMs, generateVM(r, cl, vi))
 	}
