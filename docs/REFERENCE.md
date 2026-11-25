@@ -521,7 +521,13 @@ samples in the window. Historical average, minimum, maximum and summation
 counters roll up the 20-second values, and latest counters take the endpoint.
 Percent counters use hundredths of a percent, CPU rates MHz, memory KiB,
 throughput KiB/s, ready and wait time milliseconds over the interval, and latency
-the counter's own unit. Wildcards expand into the aggregate (empty) instance and
+the counter's own unit. Hosts and VMs also serve power (`power.power`, watts) and
+energy (`power.energy`, joules over the 20-second sample); hosts add the power
+capacity counters. A host's usable power is at least 750 W and grows with host
+size, not with load, and its draw never exceeds it. A host in maintenance mode
+reports a reduced idle draw with no VM power. A host that is not connected or not
+powered on is listed as supporting the counters but answers -1 (no sample) for
+them. Wildcards expand into the aggregate (empty) instance and
 the CPU, NIC, virtual disk or datastore instances. Metrics the simulator does not
 produce are left out. A query may return at most two million values; a wider one
 returns `InvalidArgument`, so split it into smaller time windows.

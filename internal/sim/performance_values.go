@@ -15,6 +15,9 @@ func counterName(c types.PerfCounterInfo) string {
 // Unsupported counters are omitted, never manufactured as zero samples.
 func valueAt(c types.PerfCounterInfo, n *workloadNode, w workload) (int64, bool) {
 	name := counterName(c)
+	if strings.HasPrefix(name, "power.") {
+		return powerValue(name, n, w)
+	}
 	pct := func(v, cap int64) int64 {
 		if cap <= 0 {
 			return 0
