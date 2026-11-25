@@ -1,6 +1,10 @@
 package sim
 
-import "github.com/vmware/govmomi/vim25/types"
+import (
+	"strings"
+
+	"github.com/vmware/govmomi/vim25/types"
+)
 
 // Host and VM power. vcsim's vCenter counter catalog carries six of the nine
 // power counters a vCenter 9 serves (power.power, power.powerCap,
@@ -17,8 +21,28 @@ const (
 	powerSystemWatts      = 12  // hypervisor and vSAN work besides the VMs
 	powerVCPUWatts        = 2   // static share of each running vCPU
 	powerMilliWattsPerMHz = 8   // 8 W per GHz of CPU used
-	powerUsableWatts      = 750 // what the power supplies allow; no cap is enforced
+	powerUsableWatts      = 750 // floor of what the power supplies allow; no cap is enforced
+	// A host in maintenance mode is on and runs no VMs. Its idle floor is
+	// lower than a serving host's, as power management settles an empty host.
+	powerMaintenanceIdleWatts = 100
 )
+
+// powerUnavailable is true for a host that is not connected or not powered on
+// (a crashed host). It has no power or energy samples; query answers -1, the
+// value vSphere uses for a sample it does not have, rather than 0 W.
+func powerUnavailable(name string, n *workloadNode) bool {
+	return strings.HasPrefix(name, "power.") && n.ref.Type == "HostSystem" && n.unreachable
+}
+
+// powerUsable is what the host's supplies allow: the floor, or more for a
+// large host (every thread at full draw, plus the idle floor and system work)
+// and never less than the host draws, so usage cannot exceed it.
+func powerUsable(n *workloadNode, usage int64) int64 {
+	size := powerIdleWatts + powerSystemWatts + n.cpu*powerMilliWattsPerMHz/1000 + powerVCPUWatts*int64(n.cpuInstances)
+	return max(powerUsableWatts, roundUp(size, 50), roundUp(usage, 50))
+}
+
+func roundUp(v, step int64) int64 { return (v + step - 1) / step * step }
 
 // powerCounters returns the power counters the catalog lacks, keyed after
 // its highest key so that no key is shared and every start gives the same.
@@ -78,8 +102,13 @@ func powerValue(name string, n *workloadNode, w workload) (int64, bool) {
 	default:
 		return 0, false
 	}
+	idle := int64(powerIdleWatts)
+	if n.maintenance {
+		idle = powerMaintenanceIdleWatts
+	}
 	system := powerSystemWatts + vm/20
-	usage := powerIdleWatts + system + vm
+	usage := idle + system + vm
+	usable := powerUsable(n, usage)
 	switch name {
 	case "power.power", "power.capacity.usage":
 		return usage, true
@@ -88,11 +117,11 @@ func powerValue(name string, n *workloadNode, w workload) (int64, bool) {
 	case "power.powerCap":
 		return 0, true // 0 W: no power cap is enforced
 	case "power.capacity.usable":
-		return powerUsableWatts, true
+		return usable, true
 	case "power.capacity.usagePct":
-		return min(10000, usage*10000/powerUsableWatts), true // hundredths of a percent
+		return min(10000, usage*10000/usable), true // hundredths of a percent
 	case "power.capacity.usageIdle":
-		return powerIdleWatts, true
+		return idle, true
 	case "power.capacity.usageSystem":
 		return system, true
 	case "power.capacity.usageVm":

@@ -290,6 +290,10 @@ func (p *storagePerformance) query(ctx *simulator.Context, specs []types.PerfQue
 						}
 					}
 				}
+				if powerUnavailable(counterName(m.counter), plan.node) {
+					m.values[task.index] = -1 // no sample, not 0 W or 0 J, whatever the rollup
+					continue
+				}
 				v, _ := valueAt(m.counter, plan.node, measurement)
 				if m.id.Instance != "" && m.count > 0 && !datastoreInstance {
 					if !intensiveCounter(m.counter) {
