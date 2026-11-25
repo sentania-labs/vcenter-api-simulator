@@ -544,7 +544,7 @@ func TestAVMOnAnUnavailableHostIsPoweredOnWhenItIsBack(t *testing.T) {
 func TestReconcileFollowsAHostRenamedByTheDomain(t *testing.T) {
 	w := newWorld(1, 3, 2)
 	key := w.keys[0]
-	from := w.hosts[key]
+	from := append([]string(nil), w.hosts[key]...)
 	for i, h := range from {
 		w.hosts[key][i] = strings.TrimSuffix(h, "sim.invalid") + "lab.example.com"
 	}
