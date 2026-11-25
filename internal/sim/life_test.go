@@ -523,3 +523,41 @@ func TestLifeRestorePutsBackWhatASnapshotRead(t *testing.T) {
 		t.Errorf("Restore recorded %d events; it must record none", n)
 	}
 }
+
+func TestLifeRestoreFollowsHostsRenamedByTheDomain(t *testing.T) {
+	sc := lifeScenario(t)
+	reg := registry.InMemory("life")
+	s := lifeSim(t, sc, reg)
+	l := s.Life()
+	refs := s.Clusters[0]
+	ctx := l.as("")
+	key := refs.Cluster.Key
+	name := l.names(key, nil)[0]
+	vm := l.vms[key][name]
+	home := vm.vm.Host % len(refs.Hosts)
+	away := (home + 1) % len(refs.Hosts)
+	l.placeVM(ctx, vm.ref, refs.Hosts[away])
+	before := placement(t, s)
+	if before[name] != refs.Cluster.Hosts[away].Name {
+		t.Fatalf("%s is on %s, want %s", name, before[name], refs.Cluster.Hosts[away].Name)
+	}
+	live := l.Snapshot()
+
+	sc2 := lifeScenario(t)
+	sc2.Domain = "lab.example.com"
+	if err := sc2.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	again := lifeSim(t, sc2, reg)
+	again.Life().Restore(live)
+	after := placement(t, again)
+	moved := strings.TrimSuffix(before[name], "sim.invalid") + "lab.example.com"
+	if after[name] != moved {
+		t.Errorf("after the domain changed %s is on %q, want %q", name, after[name], moved)
+	}
+	for n, h := range before {
+		if want := strings.TrimSuffix(h, "sim.invalid") + "lab.example.com"; after[n] != want {
+			t.Errorf("%s is on %q, want %q", n, after[n], want)
+		}
+	}
+}
