@@ -150,7 +150,7 @@ func TestGeneratedClustersVaryIndependently(t *testing.T) {
 	if c3.Key != "dc-01/cluster-03" || len(c3.Hosts) != 16 || c3.Dedup {
 		t.Errorf("override lost: %s hosts=%d dedup=%v", c3.Key, len(c3.Hosts), c3.Dedup)
 	}
-	if cls[0].Datastore != "vsanDatastore" || cls[1].Datastore != "vsanDatastore (1)" {
+	if cls[0].Datastore != "cluster-01-vsanDatastore" || cls[1].Datastore != "cluster-02-vsanDatastore" {
 		t.Errorf("datastore names %q %q", cls[0].Datastore, cls[1].Datastore)
 	}
 	// every identity unique across the whole vCenter
@@ -338,8 +338,8 @@ func TestRemovedClustersKeepTheOthersNumbering(t *testing.T) {
 	if reg.Has("cluster/dc-01/cluster-02") {
 		t.Error("a removed cluster minted identities")
 	}
-	// the vSAN datastore keeps the name its number gives it
-	if tp.Clusters()[1].Datastore != "vsanDatastore (2)" {
+	// a removed cluster does not renumber the surviving clusters' datastores
+	if tp.Clusters()[1].Datastore != "cluster-03-vsanDatastore" {
 		t.Errorf("datastore %q", tp.Clusters()[1].Datastore)
 	}
 	// overrides and faults may not name a removed cluster

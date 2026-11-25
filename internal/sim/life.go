@@ -1085,12 +1085,9 @@ func (l *Life) space(ctx *simulator.Context, refs *ClusterRefs) (used, capacity 
 		return 0, 0
 	}
 	ctx.WithLock(ds, func() {
+		shapeDatastoreSummary(ds, refs.Cluster)
 		capacity = ds.Summary.Capacity
-		used = min(capacity, topology.VsanUsed(refs.Cluster))
-		ds.Summary.FreeSpace = capacity - used
-		ds.Info.GetDatastoreInfo().FreeSpace = ds.Summary.FreeSpace
-		ts := time.Now().UTC()
-		ds.Info.GetDatastoreInfo().Timestamp = &ts
+		used = capacity - ds.Summary.FreeSpace
 		updateLife(ctx, ds, []types.PropertyChange{{Name: "summary", Val: ds.Summary}, {Name: "info", Val: ds.Info}})
 	})
 	return used, capacity

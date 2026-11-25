@@ -79,8 +79,10 @@ func valueAt(c types.PerfCounterInfo, n *workloadNode, w workload) (int64, bool)
 		return w.memory * 1024 / 40, true
 	case "mem.swapused", "mem.swapped", "mem.swaptarget", "mem.swapinRate", "mem.swapoutRate", "mem.vmmemctl", "mem.compressed", "mem.compressionRate", "mem.decompressionRate", "mem.capacity.contention", "mem.state":
 		return 0, true
-	case "disk.used", "disk.provisioned", "disk.unshared", "disk.capacity.provisioned", "disk.capacity.usage":
+	case "disk.used", "disk.unshared", "disk.capacity.usage":
 		return n.used, true
+	case "disk.provisioned", "disk.capacity.provisioned":
+		return n.provisioned, true
 	case "disk.capacity":
 		return n.capacity, true
 	case "disk.capacity.contention":

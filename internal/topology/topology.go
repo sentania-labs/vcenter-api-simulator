@@ -169,7 +169,7 @@ func (c *Cluster) UsedDelta() int64 {
 	return c.usedDelta.Load()
 }
 
-// VsanCapacity and VsanUsed are shared by datastore and vSAN capacity reads.
+// VsanCapacity is shared by datastore and vSAN capacity reads.
 func VsanCapacity(cl *Cluster) int64 {
 	var total int64
 	for _, h := range cl.Hosts {
@@ -182,14 +182,38 @@ func VsanCapacity(cl *Cluster) int64 {
 	return total
 }
 
+// VMStorage is the one model of what a VM occupies on its datastore: disks are
+// thin, so half their capacity is committed and the rest is space the VM could
+// grow into. Nothing the simulator makes is shared between VMs. Datastore and
+// VM storage properties, capacity counters and vSAN space reads all use it.
+func VMStorage(vm *VM) (committed, uncommitted, unshared int64) {
+	for _, d := range vm.Disks {
+		half := (d.CapacityKB << 10) / 2
+		committed += half
+		uncommitted += (d.CapacityKB << 10) - half
+		unshared += half
+	}
+	return
+}
+
+// VsanUsed is the committed space of the cluster's VMs plus what Activity has
+// filled, and VsanUncommitted is the space those VMs may still grow into.
 func VsanUsed(cl *Cluster) int64 {
 	used := cl.UsedDelta()
 	for _, vm := range cl.LiveVMs() {
-		for _, d := range vm.Disks {
-			used += d.CapacityKB << 10 / 2
-		}
+		committed, _, _ := VMStorage(vm)
+		used += committed
 	}
-	return used
+	return max(0, used)
+}
+
+func VsanUncommitted(cl *Cluster) int64 {
+	var total int64
+	for _, vm := range cl.LiveVMs() {
+		_, uncommitted, _ := VMStorage(vm)
+		total += uncommitted
+	}
+	return total
 }
 
 // VDS is the datacenter's vDS name; VDSUUID its uuid; Portgroup the VM
@@ -414,13 +438,10 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 	cl.StatsUUID = r.UUID("vsan-stats-object", cl.Serial)
 	cl.PolicyUUID = r.UUID("vsan-default-policy", cl.Serial)
 	cl.ContainerID = r.Hex("vsan-container", cl.Serial, 16) + "-" + r.Hex("vsan-container-tail", cl.Serial, 16)
-	// vCenter names the first vSAN datastore in a datacenter "vsanDatastore"
-	// and the next ones "vsanDatastore (1)", "vsanDatastore (2)", ...
-	if n == 1 {
-		cl.Datastore = "vsanDatastore"
-	} else {
-		cl.Datastore = fmt.Sprintf("vsanDatastore (%d)", n-1)
-	}
+	// Name each cluster's vSAN datastore for its cluster. The old
+	// "vsanDatastore (n)" scheme made Operations show indistinguishable
+	// datastores. The name is derived, so it never minted a new identity.
+	cl.Datastore = name + "-vsanDatastore"
 	removed := s.RemovedHosts(key)
 	for hi := 1; hi <= spec.Hosts; hi++ {
 		if removed[hi] {

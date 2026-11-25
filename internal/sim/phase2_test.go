@@ -969,6 +969,41 @@ func TestOSAPerfSampleShapes(t *testing.T) {
 	}
 }
 
+// ESA capacity counters follow the same topology figures as OSA and the
+// datastore; they are not the captured values in the catalog. A datastore
+// fill must move the used and free series while total stays put.
+func TestESACapacityPerfSeries(t *testing.T) {
+	sc := scenario.Phase1("esa-capacity")
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	cl := e.cl()
+	const capacity, used int64 = 4 * 4000787030016, 4 * 20 << 30
+	check := func(stage string, wantUsed int64) {
+		t.Helper()
+		status, body := e.postPerf(cl.Ref, "vsan-cluster-capacity")
+		if status != 200 {
+			t.Fatalf("%s: %d %s", stage, status, body)
+		}
+		want := map[string]string{
+			"total": fmt.Sprint(capacity), "used": fmt.Sprint(wantUsed), "free": fmt.Sprint(capacity - wantUsed),
+		}
+		for label, value := range want {
+			if series := perfSeries(t, body, label); series != strings.TrimSuffix(strings.Repeat(value+",", 4), ",") {
+				t.Errorf("%s %s = %q, want four samples of %s", stage, label, series, value)
+			}
+		}
+	}
+	check("built", used)
+	e.sim.Life().Fill(cl.Cluster.Key, 0.01)
+	if after := topology.VsanUsed(cl.Cluster); after <= used {
+		t.Fatalf("fill left vSAN used at %d", after)
+	} else {
+		check("filled", after)
+	}
+}
+
 func TestOSAPerfPrimaryStates(t *testing.T) {
 	for _, primary := range []bool{false, true} {
 		t.Run(fmt.Sprintf("primary=%v", primary), func(t *testing.T) {

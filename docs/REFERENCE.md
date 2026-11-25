@@ -502,7 +502,11 @@ have no samples. VMs on unavailable hosts or hosts in maintenance mode contribut
 no load. A VM that moves takes its load with it. Host CPU and memory budgets cap
 usage when the VMs add up to more. Host values sum their VMs, clusters sum hosts,
 and datacenters sum clusters. Datastore I/O is split among each VM's datastores,
-and unused datastores have zero I/O.
+and unused datastores have zero I/O. Datastore capacity, used and provisioned
+counters use the same space as the datastore summary, vSAN capacity reads and each
+VM's `storage.perDatastoreUsage`: a thin disk commits half its capacity at build,
+and Activity's fills and cleanups move the used figure without changing the
+VMs' reported storage.
 
 History is a replay of the workload at the requested times using the **current**
 inventory and placement. Past power changes and moves are not remembered.

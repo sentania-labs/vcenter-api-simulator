@@ -183,6 +183,13 @@ console settings carry over.
 - **From 0.3.x:** the old default password is gone. With no account, every sign-in
   is refused until the console's set-up chooses a password. Existing accounts keep
   theirs.
+- Each cluster's vSAN datastore is now named for the cluster, for example
+  `cluster-05-vsanDatastore`, instead of `vsanDatastore` / `vsanDatastore (1)`.
+  Existing volumes are renamed on the next start. The datastore's MoRef, URL and
+  UUID and the VMs' identities do not change, but any saved tool configuration
+  that names the old datastore must be updated. Datastore used space now follows
+  the VMs placed on it, so both inventory and capacity views show the same
+  figures.
 - **Helm:** see [Upgrading](charts/vcenter-api-simulator/README.md#upgrading) for
   the volume size.
 - A different seed changes every identity, and the simulator will not start with

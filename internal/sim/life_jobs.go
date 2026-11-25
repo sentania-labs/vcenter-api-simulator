@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sentania/vcenter-api-simulator/internal/life"
+	"github.com/sentania/vcenter-api-simulator/internal/topology"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -73,16 +74,23 @@ func (l *Life) SnapshotVM(cluster, name string) error {
 	if task.Info.Error != nil {
 		return fmt.Errorf("snapshot failed: %s", task.Info.Error.LocalizedMessage)
 	}
-	ctx.WithLock(obj, func() { l.publishBackup(ctx, obj) })
+	ctx.WithLock(obj, func() { l.publishBackup(ctx, obj, vm.vm) })
 	return nil
 }
 
-func (l *Life) publishBackup(ctx *simulator.Context, vm *simulator.VirtualMachine) {
-	changes := []types.PropertyChange{{Name: "snapshot", Val: vm.Snapshot}, {Name: "rootSnapshot", Val: vm.RootSnapshot}}
-	if vm.LayoutEx != nil {
-		changes = append(changes, types.PropertyChange{Name: "layoutEx", Val: vm.LayoutEx})
+// publishBackup calls with the VM locked. Snapshot files change layoutEx and
+// vcsim recalculates storage from it, so put the modelled figures back before
+// publishing either.
+func (l *Life) publishBackup(ctx *simulator.Context, obj *simulator.VirtualMachine, topo *topology.VM) {
+	shapeVMStorage(obj, topo.Cluster, topo, l.s.Env.Now())
+	changes := []types.PropertyChange{
+		{Name: "snapshot", Val: obj.Snapshot}, {Name: "rootSnapshot", Val: obj.RootSnapshot},
+		{Name: "storage", Val: obj.Storage}, {Name: "summary", Val: obj.Summary},
 	}
-	updateLife(ctx, vm, changes)
+	if obj.LayoutEx != nil {
+		changes = append(changes, types.PropertyChange{Name: "layoutEx", Val: obj.LayoutEx})
+	}
+	updateLife(ctx, obj, changes)
 }
 
 func findBackup(vm *simulator.VirtualMachine) *types.ManagedObjectReference {
@@ -163,7 +171,7 @@ func (l *Life) RemoveBackup(cluster, name string) error {
 			}
 			obj.LayoutEx.File = kept
 		}
-		l.publishBackup(ctx, obj)
+		l.publishBackup(ctx, obj, vm.vm)
 	})
 	return nil
 }

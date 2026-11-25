@@ -852,7 +852,7 @@ func (s *Simulator) finishCluster(ctx *simulator.Context, refs *ClusterRefs) {
 	shapeClusterSummary(obj, cl, refs)
 	ds := ctx.Map.Get(refs.Datastore).(*simulator.Datastore)
 	ds.Summary.Url = fmt.Sprintf("ds:///vmfs/volumes/vsan:%s/", cl.ContainerID)
-	shapeDatastoreSummary(ds, cl, refs)
+	shapeDatastoreSummary(ds, cl)
 }
 
 // relocateVM moves a VM to its final host: runtime.host and the two hosts'

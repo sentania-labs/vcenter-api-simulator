@@ -346,14 +346,16 @@ func vsanCapacity(cl *topology.Cluster) int64 {
 }
 
 // shapeDatastoreSummary sets capacity from the claimed devices and usage
-// from the VMs placed on the datastore.
-func shapeDatastoreSummary(ds *simulator.Datastore, cl *topology.Cluster, refs *ClusterRefs) {
+// from the VMs placed on the datastore. It is the single model behind both
+// the datastore's summary and its info, and is reused after every change to
+// the VMs or to what Activity has filled.
+func shapeDatastoreSummary(ds *simulator.Datastore, cl *topology.Cluster) {
 	capacity := vsanCapacity(cl)
-	committed := topology.VsanUsed(cl)
+	used := min(capacity, topology.VsanUsed(cl))
 	ds.Summary.Capacity = capacity
-	ds.Summary.FreeSpace = capacity - committed
-	ds.Summary.Uncommitted = committed
-	info := ds.Info.(*types.VsanDatastoreInfo)
+	ds.Summary.FreeSpace = capacity - used
+	ds.Summary.Uncommitted = topology.VsanUncommitted(cl)
+	info := ds.Info.GetDatastoreInfo()
 	info.FreeSpace = ds.Summary.FreeSpace
 	ts := time.Now().UTC()
 	info.Timestamp = &ts
@@ -410,11 +412,40 @@ func shapeVM(obj *simulator.VirtualMachine, cl *topology.Cluster, vm *topology.V
 	obj.Summary.QuickStats.UptimeSeconds = int32(now().Sub(boot) / time.Second)
 	obj.Summary.OverallStatus = types.ManagedEntityStatusGreen
 	obj.GuestHeartbeatStatus = types.ManagedEntityStatusGreen
-	var committed int64
+	shapeVMStorage(obj, cl, vm, now())
+}
+
+// shapeVMStorage makes the VM's storage properties agree with the datastore's
+// used space. vcsim normally recomputes storage from the few KB of dummy
+// backing files on every refresh, so mark these properties as modelled; the
+// layout file sizes are shaped to the same figures for clients that read
+// layoutEx directly.
+func shapeVMStorage(obj *simulator.VirtualMachine, cl *topology.Cluster, vm *topology.VM, at time.Time) {
+	committed, uncommitted, unshared := topology.VMStorage(vm)
+	obj.StorageOverridden = true
+	backings := make(map[string]int64, len(vm.Disks))
 	for _, d := range vm.Disks {
-		committed += d.CapacityKB << 10 / 2
+		backings["["+cl.Datastore+"] "+simulator.VirtualDiskBackingFileName(d.Path)] = (d.CapacityKB << 10) / 2
 	}
-	obj.Summary.Storage.Committed = committed
-	obj.Summary.Storage.Uncommitted = committed
-	obj.Summary.Storage.Unshared = committed
+	if obj.LayoutEx != nil {
+		// vcsim adds up every layout file for committed space. Give the dummy
+		// files no size and put the modelled committed space on the flat
+		// backing file, so a client's RefreshStorageInfo computes the same
+		// figures instead of the few KB the dummy files happen to occupy.
+		for i := range obj.LayoutEx.File {
+			obj.LayoutEx.File[i].Size = backings[obj.LayoutEx.File[i].Name]
+			obj.LayoutEx.File[i].UniqueSize = obj.LayoutEx.File[i].Size
+		}
+	}
+	var ds types.ManagedObjectReference
+	if len(obj.Datastore) > 0 {
+		ds = obj.Datastore[0]
+	}
+	obj.Storage.PerDatastoreUsage = []types.VirtualMachineUsageOnDatastore{{
+		Datastore: ds, Committed: committed, Uncommitted: uncommitted, Unshared: unshared,
+	}}
+	obj.Storage.Timestamp = at
+	obj.Summary.Storage = &types.VirtualMachineStorageSummary{
+		Committed: committed, Uncommitted: uncommitted, Unshared: unshared, Timestamp: at,
+	}
 }
