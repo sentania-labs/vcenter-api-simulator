@@ -15,7 +15,8 @@ import (
 // The model is a 2-socket server: an idle floor, a little hypervisor and
 // vSAN work, and the VMs, each with a static share per running vCPU plus a
 // share that follows the CPU it uses. Host idle + system + VM equals the
-// host's usage, and the VMs' power adds up to the host's VM power.
+// host's usage, and the VMs' power adds up to the host's VM power until the
+// host reaches its usable power: it cannot draw more, so the VM share is cut.
 const (
 	powerIdleWatts        = 150 // a powered-on host with nothing running
 	powerSystemWatts      = 12  // hypervisor and vSAN work besides the VMs
@@ -35,11 +36,11 @@ func powerUnavailable(name string, n *workloadNode) bool {
 }
 
 // powerUsable is what the host's supplies allow: the floor, or more for a
-// large host (every thread at full draw, plus the idle floor and system work)
-// and never less than the host draws, so usage cannot exceed it.
-func powerUsable(n *workloadNode, usage int64) int64 {
+// large host (every thread at full draw, plus the idle floor and system work).
+// It depends on the host's size only, so it does not move with load.
+func powerUsable(n *workloadNode) int64 {
 	size := powerIdleWatts + powerSystemWatts + n.cpu*powerMilliWattsPerMHz/1000 + powerVCPUWatts*int64(n.cpuInstances)
-	return max(powerUsableWatts, roundUp(size, 50), roundUp(usage, 50))
+	return max(powerUsableWatts, roundUp(size, 50))
 }
 
 func roundUp(v, step int64) int64 { return (v + step - 1) / step * step }
@@ -106,9 +107,14 @@ func powerValue(name string, n *workloadNode, w workload) (int64, bool) {
 	if n.maintenance {
 		idle = powerMaintenanceIdleWatts
 	}
+	usable := powerUsable(n)
 	system := powerSystemWatts + vm/20
-	usage := idle + system + vm
-	usable := powerUsable(n, usage)
+	hostVM := vm
+	if idle+system+hostVM > usable {
+		hostVM = (usable - idle - powerSystemWatts) * 20 / 21
+		system = usable - idle - hostVM
+	}
+	usage := idle + system + hostVM
 	switch name {
 	case "power.power", "power.capacity.usage":
 		return usage, true
@@ -125,7 +131,7 @@ func powerValue(name string, n *workloadNode, w workload) (int64, bool) {
 	case "power.capacity.usageSystem":
 		return system, true
 	case "power.capacity.usageVm":
-		return vm, true
+		return hostVM, true
 	}
 	return 0, false
 }

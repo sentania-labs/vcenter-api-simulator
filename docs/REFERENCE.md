@@ -524,7 +524,7 @@ throughput KiB/s, ready and wait time milliseconds over the interval, and latenc
 the counter's own unit. Hosts and VMs also serve power (`power.power`, watts) and
 energy (`power.energy`, joules over the 20-second sample); hosts add the power
 capacity counters, and their usable power is at least 750 W and grows with host
-size. A host in maintenance mode reports a reduced idle draw with no VM power. A
+size, not with load; a host's draw never exceeds it. A host in maintenance mode reports a reduced idle draw with no VM power. A
 host that is not connected or not powered on is listed as supporting the counters
 but answers -1 (no sample) for them. Wildcards expand into the aggregate (empty) instance and
 the CPU, NIC, virtual disk or datastore instances. Metrics the simulator does not
