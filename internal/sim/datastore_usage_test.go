@@ -165,6 +165,24 @@ func TestBackupSnapshotCountsAsUsedSpace(t *testing.T) {
 	}
 }
 
+// A client may destroy a VM that Activity manages. The state saved afterwards
+// must leave that VM out and keep describing the rest, not crash.
+func TestSnapshotSurvivesAClientDestroyingAVM(t *testing.T) {
+	s := lifeSim(t, lifeScenario(t), registry.InMemory("ds-client-destroy"))
+	l := s.Life()
+	cl := s.Clusters[0].Cluster
+	var gone string
+	for n := range l.vms[cl.Key] {
+		gone = n
+		break
+	}
+	l.reg.Remove(l.as(""), l.vms[cl.Key][gone].ref)
+	l.off[cl.Key][gone] = true
+	if snap := l.Snapshot(); len(snap.Off) != 0 {
+		t.Errorf("snapshot after a client destroy lists %v off, want none", snap.Off)
+	}
+}
+
 // Every datastore of a two-datacenter inventory has its own name, so the
 // console never shows an "(n)" suffix: the vSAN and local VMFS datastores
 // carry their datacenter, and the local ones use space like the others.

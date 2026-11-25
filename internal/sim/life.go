@@ -1205,7 +1205,10 @@ func (l *Life) Snapshot() Live {
 			}
 		}
 		for _, vm := range l.vms[cl.Key] {
-			obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+			obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+			if !ok {
+				continue // destroyed by a client outside Activity
+			}
 			ctx.WithLock(obj, func() {
 				if ref := findBackup(obj); ref != nil {
 					out.Backups[vm.vm.Key] = l.now()
