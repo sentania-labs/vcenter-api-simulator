@@ -2,10 +2,11 @@ package sim
 
 import "github.com/vmware/govmomi/vim25/types"
 
-// Host and VM power. govmomi's catalog carries power.power, power.powerCap
-// and power.energy (with level 0); vCenter 8 and 9 also serve the six
-// power.capacity counters below. Names, units, rollups and levels follow the
-// vSphere 9.0 API reference (power counters).
+// Host and VM power. vcsim's vCenter counter catalog carries six of the nine
+// power counters a vCenter 9 serves (power.power, power.powerCap,
+// power.energy and power.capacity.usable, usage and usagePct, at their real
+// levels); powerCounters adds the three it lacks. Names, units, rollups and
+// levels follow the vSphere 9.0 API reference (power counters).
 //
 // The model is a 2-socket server: an idle floor, a little hypervisor and
 // vSAN work, and the VMs, each with a static share per running vCPU plus a
@@ -19,40 +20,38 @@ const (
 	powerUsableWatts      = 750 // what the power supplies allow; no cap is enforced
 )
 
-// powerLevels sets the collection levels of the counters govmomi ships at
-// level 0, which QueryPerfCounterByLevel would otherwise never return.
-var powerLevels = map[string][2]int32{
-	"power.power":    {2, 3},
-	"power.energy":   {3, 3},
-	"power.powerCap": {3, 3},
-}
-
-func powerCounters() []types.PerfCounterInfo {
+// powerCounters returns the power counters the catalog lacks, keyed after
+// its highest key so that no key is shared and every start gives the same.
+func powerCounters(catalog []types.PerfCounterInfo) []types.PerfCounterInfo {
 	desc := func(key, label, summary string) *types.ElementDescription {
 		return &types.ElementDescription{Key: key, Description: types.Description{Label: label, Summary: summary}}
 	}
 	watt := desc("watt", "W", "Watt")
-	percent := desc("percent", "%", "Percentage")
 	specs := []struct {
 		name, label, summary string
-		unit                 *types.ElementDescription
 		level, perDevice     int32
 	}{
-		{"capacity.usable", "Host Power Capacity Usable", "Current maximum allowed power usage.", watt, 4, 4},
-		{"capacity.usage", "Host Power Capacity Usage", "Current power usage.", watt, 4, 4},
-		{"capacity.usagePct", "Host Power Capacity Provisioned", "Current power usage as a percentage of maximum allowed power.", percent, 4, 4},
-		{"capacity.usageIdle", "Host Power Capacity Usage - Idle", "Power usage due to host idleness.", watt, 2, 3},
-		{"capacity.usageSystem", "Host Power Capacity Usage - System", "Power usage due to non-VM activities.", watt, 2, 3},
-		{"capacity.usageVm", "Host Power Capacity Usage - VM", "Power usage due to VM workloads.", watt, 2, 3},
+		{"capacity.usageIdle", "Host Power Capacity Usage - Idle", "Power usage due to host idleness.", 2, 3},
+		{"capacity.usageSystem", "Host Power Capacity Usage - System", "Power usage due to non-VM activities.", 2, 3},
+		{"capacity.usageVm", "Host Power Capacity Usage - VM", "Power usage due to VM workloads.", 2, 3},
 	}
-	out := make([]types.PerfCounterInfo, 0, len(specs))
-	for i, s := range specs {
+	have := map[string]bool{}
+	next := int32(0)
+	for _, c := range catalog {
+		have[counterName(c)] = true
+		next = max(next, c.Key)
+	}
+	var out []types.PerfCounterInfo
+	for _, s := range specs {
+		if have["power."+s.name] {
+			continue
+		}
+		next++
 		out = append(out, types.PerfCounterInfo{
-			// The keys after govmomi's power counters (720896-720898) are free.
-			Key:            int32(720899 + i),
+			Key:            next,
 			NameInfo:       desc(s.name, s.label, s.summary),
 			GroupInfo:      desc("power", "Power", "Power"),
-			UnitInfo:       s.unit,
+			UnitInfo:       watt,
 			RollupType:     types.PerfSummaryTypeAverage,
 			StatsType:      types.PerfStatsTypeAbsolute,
 			Level:          s.level,

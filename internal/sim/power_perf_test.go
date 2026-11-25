@@ -2,6 +2,7 @@ package sim_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/vmware/govmomi/property"
@@ -25,8 +26,19 @@ func TestPowerCountersAddUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := map[string]int32{}
+	byKey := map[int32]string{}
 	for _, c := range perf.PerfCounter {
-		keys[c.GroupInfo.GetElementDescription().Key+"."+c.NameInfo.GetElementDescription().Key] = c.Key
+		name := c.GroupInfo.GetElementDescription().Key + "." + c.NameInfo.GetElementDescription().Key + "." + string(c.RollupType)
+		if other, ok := byKey[c.Key]; ok {
+			t.Fatalf("counter key %d is both %s and %s", c.Key, other, name)
+		}
+		byKey[c.Key] = name
+		short := c.GroupInfo.GetElementDescription().Key + "." + c.NameInfo.GetElementDescription().Key
+		if strings.HasPrefix(short, "power.") && keys[short] != 0 {
+			// a collector looks a counter up by name: one name, one counter
+			t.Fatalf("counter %s is in perfCounter twice (keys %d and %d)", short, keys[short], c.Key)
+		}
+		keys[short] = c.Key
 	}
 	for _, name := range powerCounterNames {
 		if keys[name] == 0 {

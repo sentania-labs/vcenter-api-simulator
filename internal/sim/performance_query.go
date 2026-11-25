@@ -25,12 +25,7 @@ func (s *Simulator) installStoragePerformance(_ map[string]*simulator.Datastore)
 	}
 	p.PerfCounter = append([]types.PerfCounterInfo(nil), base.PerfCounter...)
 	p.PerfCounter = append(p.PerfCounter, guestCounters()...)
-	p.PerfCounter = append(p.PerfCounter, powerCounters()...)
-	for i := range p.PerfCounter {
-		if l, ok := powerLevels[counterName(p.PerfCounter[i])]; ok {
-			p.PerfCounter[i].Level, p.PerfCounter[i].PerDeviceLevel = l[0], l[1]
-		}
-	}
+	p.PerfCounter = append(p.PerfCounter, powerCounters(p.PerfCounter)...)
 	p.HistoricalInterval = append([]types.PerfInterval(nil), base.HistoricalInterval...)
 	for i := range p.HistoricalInterval {
 		p.HistoricalInterval[i].Key = int32(i + 1)
