@@ -155,6 +155,10 @@ func (l *Life) host(ref types.ManagedObjectReference) *simulator.HostSystem {
 // hostState reads a host's VMs and whether it can run them.
 func (l *Life) hostState(ctx *simulator.Context, ref types.ManagedObjectReference) (vms []types.ManagedObjectReference, maintenance, down bool) {
 	hs := l.host(ref)
+	if hs == nil {
+		// a VM a client destroyed has no host: nothing can run on it
+		return nil, false, true
+	}
 	ctx.WithLock(hs, func() {
 		vms = append(vms, hs.Vm...)
 		maintenance = hs.Runtime.InMaintenanceMode

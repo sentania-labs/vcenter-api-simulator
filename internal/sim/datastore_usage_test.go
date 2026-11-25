@@ -183,6 +183,29 @@ func TestSnapshotSurvivesAClientDestroyingAVM(t *testing.T) {
 	}
 }
 
+// After a client destroys a VM that Activity manages, Activity's remove and
+// power-on skip that VM instead of panicking on its missing host.
+func TestActivitySkipsAClientDestroyedVM(t *testing.T) {
+	s := lifeSim(t, lifeScenario(t), registry.InMemory("ds-client-destroy-remove"))
+	l := s.Life()
+	cl := s.Clusters[0].Cluster
+	for n := range l.vms[cl.Key] {
+		if n != "" {
+			l.reg.Remove(l.as(""), l.vms[cl.Key][n].ref)
+			l.off[cl.Key][n] = true
+			if err := l.PowerOn(cl.Key, n); err == nil {
+				t.Errorf("power on of the destroyed %s succeeded", n)
+			}
+			break
+		}
+	}
+	for pick := uint64(0); pick < 4; pick++ {
+		if name, err := l.RemoveVM(cl.Key, pick); err != nil || name == "" {
+			t.Fatalf("remove %d: %q, %v", pick, name, err)
+		}
+	}
+}
+
 // Every datastore of a two-datacenter inventory has its own name, so the
 // console never shows an "(n)" suffix: the vSAN and local VMFS datastores
 // carry their datacenter, and the local ones use space like the others.
