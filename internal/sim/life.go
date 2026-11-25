@@ -1294,7 +1294,7 @@ func (l *Life) Restore(live Live) {
 				})
 			}
 			if at, ok := live.Backups[vm.vm.Key]; ok {
-				ctx.WithLock(obj, func() { l.restoreBackup(ctx, obj, at) })
+				ctx.WithLock(obj, func() { l.restoreBackup(ctx, obj, vm.vm, at) })
 			}
 			if off[vm.vm.Key] {
 				if obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine); ok {

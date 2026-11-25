@@ -20,13 +20,24 @@ func (l *Life) VMNames(cluster string) []string { return l.names(cluster, nil) }
 
 const backupName = "Activity nightly backup"
 
-func (l *Life) restoreBackup(ctx *simulator.Context, vm *simulator.VirtualMachine, at time.Time) {
+func (l *Life) restoreBackup(ctx *simulator.Context, vm *simulator.VirtualMachine, topo *topology.VM, at time.Time) {
 	snap := &simulator.VirtualMachineSnapshot{}
 	snap.Vm = vm.Self
 	l.reg.Put(snap)
 	vm.Snapshot = &types.VirtualMachineSnapshotInfo{CurrentSnapshot: &snap.Self, RootSnapshotList: []types.VirtualMachineSnapshotTree{{Snapshot: snap.Self, Vm: vm.Self, Name: backupName, Description: "Temporary snapshot for the simulated nightly backup", Id: 1, CreateTime: at, State: types.VirtualMachinePowerStatePoweredOff}}}
 	vm.RootSnapshot = []types.ManagedObjectReference{snap.Self}
-	updateLife(ctx, vm, []types.PropertyChange{{Name: "snapshot", Val: vm.Snapshot}, {Name: "rootSnapshot", Val: vm.RootSnapshot}})
+	if vm.LayoutEx != nil {
+		var key int32
+		for _, f := range vm.LayoutEx.File {
+			key = max(key, f.Key+1)
+		}
+		vm.LayoutEx.File = append(vm.LayoutEx.File, types.VirtualMachineFileLayoutExFileInfo{
+			Key: key, Name: "[" + topo.Cluster.Datastore + "] " + topo.NamespaceUUID + "/" + topo.Name + "-Snapshot1.vmsn",
+			Type: string(types.VirtualMachineFileLayoutExFileTypeSnapshotData), Accessible: types.NewBool(true),
+		})
+		vm.LayoutEx.Snapshot = append(vm.LayoutEx.Snapshot, types.VirtualMachineFileLayoutExSnapshotLayout{Key: snap.Self, DataKey: key, MemoryKey: -1})
+	}
+	l.publishBackup(ctx, vm, topo)
 }
 
 // SnapshotVM uses the actual snapshot implementation, including the managed
