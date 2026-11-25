@@ -392,3 +392,42 @@ func TestStorageFaultHostsFollowVariedTopology(t *testing.T) {
 		}
 	}
 }
+
+// A default environment of any size must look used: its VMs commit between
+// 30% and 60% of the vSAN capacity, not 0% and not 99%.
+func TestDefaultEnvironmentLooksUsed(t *testing.T) {
+	for _, shape := range []struct{ hosts, perHost int }{{4, 1}, {4, 2}, {8, 5}, {215, 23}} {
+		sc := scenario.Phase1("used")
+		sc.Defaults.Hosts = shape.hosts
+		sc.Defaults.VMs.PerHost = scenario.IntPtr(shape.perHost)
+		if err := sc.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		cl := Generate(sc, registry.InMemory("used")).Clusters()[0]
+		cl.SetLiveVMs(cl.VMs)
+		pct := 100 * VsanUsed(cl) / VsanCapacity(cl)
+		if pct < 30 || pct > 60 {
+			t.Errorf("%d hosts with %d VMs each: %d%% used", shape.hosts, shape.perHost, pct)
+		}
+	}
+}
+
+// With more than one datacenter the cluster number repeats, so a datastore
+// name must carry the datacenter to stay distinct; with one it need not.
+func TestDatastoreNamesAreUniqueAcrossDatacenters(t *testing.T) {
+	sc := scenario.Phase1("names")
+	sc.Datacenters = append(sc.Datacenters, scenario.Datacenter{Name: "dc-02", Clusters: 1})
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range Generate(sc, registry.InMemory("names")).Clusters() {
+		got = append(got, c.Datastore, c.StoreName)
+	}
+	if want := "[dc-01-cluster-01-vsanDatastore dc-01-cluster-01 dc-02-cluster-01-vsanDatastore dc-02-cluster-01]"; fmt.Sprint(got) != want {
+		t.Errorf("multi-datacenter names %v, want %s", got, want)
+	}
+	if c := Phase1("names").Clusters()[0]; c.Datastore != "cluster-01-vsanDatastore" || c.StoreName != "cluster-01" {
+		t.Errorf("single-datacenter names %q %q", c.Datastore, c.StoreName)
+	}
+}

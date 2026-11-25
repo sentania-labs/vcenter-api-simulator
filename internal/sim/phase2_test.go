@@ -861,9 +861,10 @@ func TestOSACapacityReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Four hosts, one claimed 4000787030016-byte device each; four VMs with one
-	// 40 GiB thin disk each, half used: 4*20*2^30.
-	const capacity, used int64 = 4 * 4000787030016, 4 * 20 << 30
+	// Four hosts, one claimed 4000787030016-byte device each; four VMs whose
+	// one thin disk each provisions four fifths of the capacity between them,
+	// 2980 GiB, half of it used: 4*1490*2^30, 37% of the capacity.
+	const capacity, used int64 = 4 * 4000787030016, 4 * 1490 << 30
 	if usage.Returnval.TotalCapacityB != capacity || usage.Returnval.FreeCapacityB != capacity-used || state.Returnval.PhysicalCapacity != capacity || state.Returnval.PhysicalCapacityUsed != used {
 		t.Fatalf("inconsistent capacity: %+v %+v", usage.Returnval, state.Returnval)
 	}
@@ -948,8 +949,8 @@ func TestOSAPerfSampleShapes(t *testing.T) {
 		refs[tc.family] = got.refs
 		if tc.family == "vsan-cluster-capacity" {
 			// Three hosts, one claimed 4000787030016-byte device each; three VMs
-			// with one 40 GiB thin disk each, half used.
-			const total, used int64 = 3 * 4000787030016, 3 * 20 << 30
+			// with one 2980 GiB thin disk each, half used.
+			const total, used int64 = 3 * 4000787030016, 3 * 1490 << 30
 			want := map[string]string{"total": fmt.Sprint(total), "used": fmt.Sprint(used), "free": fmt.Sprint(total - used)}
 			for label, value := range want {
 				if series := perfSeries(t, body, label); series != strings.TrimSuffix(strings.Repeat(value+",", 4), ",") {
@@ -979,7 +980,7 @@ func TestESACapacityPerfSeries(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl := e.cl()
-	const capacity, used int64 = 4 * 4000787030016, 4 * 20 << 30
+	const capacity, used int64 = 4 * 4000787030016, 4 * 1490 << 30
 	check := func(stage string, wantUsed int64) {
 		t.Helper()
 		status, body := e.postPerf(cl.Ref, "vsan-cluster-capacity")

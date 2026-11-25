@@ -1,12 +1,14 @@
 package sim
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/sentania/vcenter-api-simulator/internal/registry"
+	"github.com/sentania/vcenter-api-simulator/internal/scenario"
 	"github.com/sentania/vcenter-api-simulator/internal/topology"
 )
 
@@ -44,10 +46,10 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 			if files != u.Committed {
 				t.Errorf("%s: %s layoutEx files add up to %d, committed %d", stage, lv.vm.Name, files, u.Committed)
 			}
-			if len(lv.vm.Disks) == 1 && lv.vm.Disks[0].CapacityKB == 40<<20 {
-				const gib20 = 20 << 30
-				if u.Committed != gib20 || u.Uncommitted != gib20 || u.Unshared != gib20 {
-					t.Errorf("%s: %s with one 40 GiB disk has %+v, want 20 GiB committed, uncommitted and unshared", stage, lv.vm.Name, u)
+			if len(lv.vm.Disks) == 1 && lv.vm.Disks[0].CapacityKB == 596<<20 && lv.vm.SnapshotBytes() == 0 {
+				const gib298 = 298 << 30
+				if u.Committed != gib298 || u.Uncommitted != gib298 || u.Unshared != gib298 {
+					t.Errorf("%s: %s with one 596 GiB disk has %+v, want 298 GiB committed, uncommitted and unshared", stage, lv.vm.Name, u)
 				}
 				forty++
 			}
@@ -60,7 +62,7 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 			unshared += u.Unshared
 		}
 		if forty == 0 {
-			t.Errorf("%s: no VM with a single 40 GiB disk to check against the fixed figure", stage)
+			t.Errorf("%s: no VM with a single 596 GiB disk to check against the fixed figure", stage)
 		}
 		used := ds.Summary.Capacity - ds.Summary.FreeSpace
 		wantUsed := min(ds.Summary.Capacity, committed+max(0, cl.UsedDelta()))
@@ -107,5 +109,91 @@ func TestDatastoreUsageFollowsVMStorage(t *testing.T) {
 	check("filled")
 	if after := ds.Summary.Capacity - ds.Summary.FreeSpace; after <= before {
 		t.Errorf("filling left %d used, was %d", after, before)
+	}
+}
+
+// A VM's nightly backup snapshot is space on the datastore while it exists:
+// the VM's committed and unshared space and its datastore's used space grow by
+// the snapshot's size, and shrink back when the snapshot is removed.
+func TestBackupSnapshotCountsAsUsedSpace(t *testing.T) {
+	s := lifeSim(t, lifeScenario(t), registry.InMemory("ds-snapshot"))
+	l := s.Life()
+	refs := s.Clusters[0]
+	cl := refs.Cluster
+	ds := l.reg.Get(refs.Datastore).(*simulator.Datastore)
+	var name string
+	for n := range l.vms[cl.Key] {
+		name = n
+		break
+	}
+	lv := l.vms[cl.Key][name]
+	obj := l.reg.Get(lv.ref).(*simulator.VirtualMachine)
+	used := func() int64 { return ds.Summary.Capacity - ds.Summary.FreeSpace }
+	before, committed := used(), obj.Storage.PerDatastoreUsage[0].Committed
+
+	if err := l.SnapshotVM(cl.Key, name); err != nil {
+		t.Fatal(err)
+	}
+	// A 596 GiB disk commits 298 GiB; a snapshot takes a twentieth of that.
+	const snapshot = 298 << 30 / 20
+	if got := used() - before; got != snapshot {
+		t.Errorf("snapshot added %d to the datastore, want %d", got, snapshot)
+	}
+	u := obj.Storage.PerDatastoreUsage[0]
+	if u.Committed != committed+snapshot || u.Unshared != committed+snapshot || obj.Summary.Storage.Committed != u.Committed {
+		t.Errorf("VM storage with snapshot: %+v, summary %+v", u, obj.Summary.Storage)
+	}
+	var files, snapshotFile int64
+	for _, f := range obj.LayoutEx.File {
+		files += f.Size
+		if f.Type == "snapshotData" {
+			snapshotFile = f.Size
+		}
+	}
+	if files != u.Committed || snapshotFile != snapshot {
+		t.Errorf("layoutEx files add up to %d with a snapshot file of %d, want %d and %d", files, snapshotFile, u.Committed, snapshot)
+	}
+
+	if err := l.RemoveBackup(cl.Key, name); err != nil {
+		t.Fatal(err)
+	}
+	if got := used(); got != before {
+		t.Errorf("removing the snapshot left %d used, was %d", got, before)
+	}
+	if u := obj.Storage.PerDatastoreUsage[0]; u.Committed != committed {
+		t.Errorf("VM committed %d after removal, want %d", u.Committed, committed)
+	}
+}
+
+// Every datastore of a two-datacenter inventory has its own name, so the
+// console never shows an "(n)" suffix: the vSAN and local VMFS datastores
+// carry their datacenter, and the local ones use space like the others.
+func TestDatastoreNamesDistinctAcrossDatacenters(t *testing.T) {
+	sc := lifeScenario(t)
+	sc.Datacenters = append(sc.Datacenters, scenario.Datacenter{Name: "dc-02", Clusters: 2})
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	s := lifeSim(t, sc, registry.InMemory("ds-names"))
+	seen := map[string]bool{}
+	var vsan, local int
+	for _, e := range s.Life().reg.All("Datastore") {
+		ds := e.(*simulator.Datastore)
+		if seen[ds.Name] {
+			t.Errorf("datastore name %q appears twice", ds.Name)
+		}
+		seen[ds.Name] = true
+		switch {
+		case strings.HasSuffix(ds.Name, "-vsanDatastore"):
+			vsan++
+		case strings.HasPrefix(ds.Name, "local-"):
+			local++
+			if used := ds.Summary.Capacity - ds.Summary.FreeSpace; used != ds.Summary.Capacity/10 {
+				t.Errorf("%s uses %d of %d, want a tenth", ds.Name, used, ds.Summary.Capacity)
+			}
+		}
+	}
+	if vsan != 4 || local != 16 || !seen["dc-02-cluster-02-vsanDatastore"] {
+		t.Errorf("%d vSAN and %d local datastores, names %v", vsan, local, seen)
 	}
 }

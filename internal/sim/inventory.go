@@ -350,17 +350,24 @@ func vsanCapacity(cl *topology.Cluster) int64 {
 // the datastore's summary and its info, and is reused after every change to
 // the VMs or to what Activity has filled.
 func shapeDatastoreSummary(ds *simulator.Datastore, cl *topology.Cluster) {
-	capacity := vsanCapacity(cl)
-	used := topology.VsanUsed(cl)
+	shapeDatastoreUsage(ds, vsanCapacity(cl), cl.UsedDelta(), cl.LiveVMs())
+	ds.IormConfiguration = iorm
+	ds.Summary.MultipleHostAccess = types.NewBool(true)
+}
+
+// shapeDatastoreUsage is the one rule for any datastore's space: what is
+// stored there besides VMs, plus what the VMs placed on it commit. Only the
+// cluster's vSAN datastore holds VMs; the others hold what their scenario
+// says is already stored.
+func shapeDatastoreUsage(ds *simulator.Datastore, capacity, baseline int64, vms []*topology.VM) {
+	used, uncommitted := topology.DatastoreUsage(capacity, baseline, vms)
 	ds.Summary.Capacity = capacity
 	ds.Summary.FreeSpace = capacity - used
-	ds.Summary.Uncommitted = topology.VsanUncommitted(cl)
+	ds.Summary.Uncommitted = uncommitted
 	info := ds.Info.GetDatastoreInfo()
 	info.FreeSpace = ds.Summary.FreeSpace
 	ts := time.Now().UTC()
 	info.Timestamp = &ts
-	ds.IormConfiguration = iorm
-	ds.Summary.MultipleHostAccess = types.NewBool(true)
 }
 
 // shapeVMFSDatastoreSummary gives a local VMFS datastore the URL and
@@ -369,12 +376,7 @@ func shapeDatastoreSummary(ds *simulator.Datastore, cl *topology.Cluster) {
 func shapeVMFSDatastoreSummary(ds *simulator.Datastore, d *topology.Device) {
 	vol := ds.Info.(*types.VmfsDatastoreInfo).Vmfs
 	ds.Summary.Url = "ds:///vmfs/volumes/" + d.VMFSUUID + "/"
-	ds.Summary.Capacity = vol.Capacity
-	ds.Summary.FreeSpace = vol.Capacity * 9 / 10
-	ds.Summary.Uncommitted = 0
-	ds.Info.GetDatastoreInfo().FreeSpace = ds.Summary.FreeSpace
-	ts := time.Now().UTC()
-	ds.Info.GetDatastoreInfo().Timestamp = &ts
+	shapeDatastoreUsage(ds, vol.Capacity, vol.Capacity/10, nil)
 }
 
 // shapeVM gives a created VM the guest, runtime and summary a powered-on
@@ -431,10 +433,16 @@ func shapeVMStorage(obj *simulator.VirtualMachine, cl *topology.Cluster, vm *top
 		// vcsim adds up every layout file for committed space. Give the dummy
 		// files no size and put the modelled committed space on the flat
 		// backing file, so a client's RefreshStorageInfo computes the same
-		// figures instead of the few KB the dummy files happen to occupy.
+		// figures instead of the few KB the dummy files happen to occupy. The
+		// backup snapshot's space goes on its snapshot file.
+		snapshot := vm.SnapshotBytes()
 		for i := range obj.LayoutEx.File {
-			obj.LayoutEx.File[i].Size = backings[obj.LayoutEx.File[i].Name]
-			obj.LayoutEx.File[i].UniqueSize = obj.LayoutEx.File[i].Size
+			f := &obj.LayoutEx.File[i]
+			f.Size = backings[f.Name]
+			if f.Type == string(types.VirtualMachineFileLayoutExFileTypeSnapshotData) && snapshot > 0 {
+				f.Size, snapshot = snapshot, 0
+			}
+			f.UniqueSize = f.Size
 		}
 	}
 	var ds types.ManagedObjectReference

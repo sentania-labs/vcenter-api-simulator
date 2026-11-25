@@ -18,8 +18,7 @@ func (s *Simulator) createNFS(ctx *simulator.Context, dc *topology.Datacenter, n
 	if err != nil {
 		return nil, err
 	}
-	ds.Summary.Capacity = spec.Capacity
-	ds.Summary.FreeSpace = spec.FreeSpace
+	shapeDatastoreUsage(ds, spec.Capacity, spec.Capacity-spec.FreeSpace, nil)
 	ds.Summary.MultipleHostAccess = types.NewBool(true)
 	ds.Summary.Url = fmt.Sprintf("ds:///vmfs/volumes/%s/", n.UUID)
 	ds.Capability = types.DatastoreCapability{DirectoryHierarchySupported: true, PerFileThinProvisioningSupported: true, TopLevelDirectoryCreateSupported: types.NewBool(true), SeSparseSupported: types.NewBool(true), VmfsSparseSupported: types.NewBool(true), VmdkExpandSupported: types.NewBool(true)}

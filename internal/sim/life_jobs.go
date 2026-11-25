@@ -75,6 +75,7 @@ func (l *Life) SnapshotVM(cluster, name string) error {
 		return fmt.Errorf("snapshot failed: %s", task.Info.Error.LocalizedMessage)
 	}
 	ctx.WithLock(obj, func() { l.publishBackup(ctx, obj, vm.vm) })
+	l.space(ctx, refs)
 	return nil
 }
 
@@ -82,6 +83,11 @@ func (l *Life) SnapshotVM(cluster, name string) error {
 // vcsim recalculates storage from it, so put the modelled figures back before
 // publishing either.
 func (l *Life) publishBackup(ctx *simulator.Context, obj *simulator.VirtualMachine, topo *topology.VM) {
+	var snapshot int64
+	if findBackup(obj) != nil {
+		snapshot = topology.SnapshotSize(topo)
+	}
+	topo.SetSnapshotBytes(snapshot)
 	shapeVMStorage(obj, topo.Cluster, topo, l.s.Env.Now())
 	changes := []types.PropertyChange{
 		{Name: "snapshot", Val: obj.Snapshot}, {Name: "rootSnapshot", Val: obj.RootSnapshot},
@@ -135,6 +141,7 @@ func (l *Life) RemoveBackup(cluster, name string) error {
 	if !ok {
 		return fmt.Errorf("backup snapshot is missing")
 	}
+	defer l.space(ctx, refs)
 	te, chain := l.head(ctx, l.vmEvent(refs, vm, l.hostOf(ctx, vm)).Event, types.TaskInfo{Name: "RemoveSnapshot_Task", DescriptionId: "VirtualMachine.removeSnapshot", Entity: &vm.ref, EntityName: name, Reason: byUser(), QueueTime: l.now()})
 	// Use the backing path for file removal too. vcsim keeps old file entries
 	// in LayoutEx after removing a snapshot; prune only this snapshot's entries.

@@ -724,7 +724,7 @@ func (s *Simulator) createLocalDatastore(ctx *simulator.Context, refs *ClusterRe
 	dc := s.dcs[cl.Datacenter]
 	hs := s.hosts[h]
 	ccr := ctx.Map.Get(refs.Ref).(*simulator.ClusterComputeResource)
-	name := fmt.Sprintf("local-%s-%s", cl.Name, strings.SplitN(h.Name, ".", 2)[0])
+	name := fmt.Sprintf("local-%s-%s", cl.StoreName, strings.SplitN(h.Name, ".", 2)[0])
 	if d.Index > 0 {
 		name = fmt.Sprintf("%s-%d", name, d.Index)
 	}

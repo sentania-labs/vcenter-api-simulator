@@ -185,11 +185,16 @@ console settings carry over.
   theirs.
 - Each cluster's vSAN datastore is now named for the cluster, for example
   `cluster-05-vsanDatastore`, instead of `vsanDatastore` / `vsanDatastore (1)`.
+  With more than one datacenter the datacenter's name comes first
+  (`dc-02-cluster-05-vsanDatastore`) so no two datastores share a name.
   Existing volumes are renamed on the next start. The datastore's MoRef, URL and
   UUID and the VMs' identities do not change, but any saved tool configuration
   that names the old datastore must be updated. Datastore used space now follows
   the VMs placed on it, so both inventory and capacity views show the same
-  figures.
+  figures. VM disks are sized so a cluster's VMs commit about 40% of its vSAN
+  capacity, so existing environments show larger VM disks after the upgrade.
+  A VM's nightly backup snapshot counts as used space while it exists. Swap
+  space is not simulated.
 - **Helm:** see [Upgrading](charts/vcenter-api-simulator/README.md#upgrading) for
   the volume size.
 - A different seed changes every identity, and the simulator will not start with
