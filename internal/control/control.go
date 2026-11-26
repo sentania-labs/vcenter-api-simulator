@@ -643,7 +643,8 @@ func topologyForm(sc *scenario.Scenario) string {
 		ESX             scenario.Version
 		HostVersions    map[string]scenario.Version
 		ForceNewerHosts bool
-	}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed, s.VCenter, s.ESX, s.HostVersions, s.ForceNewerHosts})
+		Domain          string
+	}{s.Seed, s.TelemetrySeed, s.Datacenters, s.Defaults, s.Vary, s.Clusters, s.Removed, s.VCenter, s.ESX, s.HostVersions, s.ForceNewerHosts, s.DNSDomain()})
 	return string(b)
 }
 

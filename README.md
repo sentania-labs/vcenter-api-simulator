@@ -136,9 +136,9 @@ The exact list is in the [reference](docs/REFERENCE.md#what-is-and-is-not-answer
 **Made up**
 - Performance values are made up. They are the same every time for the same
   moment, stay inside the range a real vCenter showed, and follow a working day.
-- Hardware, host names (`*.sim.invalid`), storage connection details and
-  appliance account settings are invented. Datastore filling changes the vSAN
-  datastore only.
+- Hardware, host names (`*.sim.invalid` unless the scenario's `domain` says
+  otherwise), storage connection details and appliance account settings are
+  invented. Datastore filling changes the vSAN datastore only.
 - The key that signs sign-on tokens is the simulator's own.
 
 **With VCF Operations**

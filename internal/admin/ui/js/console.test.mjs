@@ -216,6 +216,7 @@ test('every task draws its questions and its summary', async () => {
     'cluster-versions': { values: { cluster: 'dc-01/cluster-01', mode: 'mixed', ver: '9.1.1', low: '9.0', pick: ['esx01'], allow: false }, options: { versions: [['9.0', 'ESX 9.0'], ['9.1.1', 'ESX 9.1.1']], hosts: ['esx01', 'esx02'], vcenter: '9.0' } },
     'add-user': { values: { name: 'tool-1@vsphere.local', pw: '', role: 'read' } },
     'change-user': { values: { name: 'a@b', role: 'full', pw: '' }, options: { role: 'full' } },
+    domain: { values: { domain: 'sim.invalid' }, options: { current: 'sim.invalid', default: 'sim.invalid' } },
     idle: { values: { idle: 'Never' }, options: { choices: ['Never', '15 minutes'], current: 'Never' } },
     licensing: { values: { state: 'evaluation', groups: 'in', manager: 'other', identity: '11111111-2222-4333-8444-555555555555', url: 'https://operations.example.test' }, options: {} },
     'new-certificate': { values: { names: 'vcsim.lab.example' } },

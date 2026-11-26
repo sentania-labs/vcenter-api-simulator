@@ -308,6 +308,8 @@ func taskRoute(kind string, raw json.RawMessage) string {
 		return "/versions/cluster/" + p.Cluster
 	case "vcenter-version":
 		return "/versions/vcenter"
+	case "domain":
+		return "/clusters/domain"
 	case "add-iscsi", "add-nfs":
 		return "/storage/" + kind
 	case "storage-size":

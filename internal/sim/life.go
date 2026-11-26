@@ -1257,7 +1257,7 @@ func (l *Life) Restore(live Live) {
 		cl := refs.Cluster
 		byName := map[string]types.ManagedObjectReference{}
 		for i, h := range cl.Hosts {
-			byName[h.Name] = refs.Hosts[i]
+			byName[shortName(h.Name)] = refs.Hosts[i]
 			hs := l.host(refs.Hosts[i])
 			if p, ok := live.Products[h.Key]; ok && hs.Config != nil && p.Version == hs.Config.Product.Version {
 				ctx.WithLock(hs, func() {
@@ -1284,7 +1284,7 @@ func (l *Life) Restore(live Live) {
 		// a VM whose host is now in maintenance mode, or gone, goes to the emptiest host in service
 		for _, name := range l.names(cl.Key, nil) {
 			vm := l.vms[cl.Key][name]
-			to, ok := byName[live.Hosts[vm.vm.Key]]
+			to, ok := byName[shortName(live.Hosts[vm.vm.Key])]
 			if !ok {
 				to = refs.Hosts[vm.vm.Host%len(refs.Hosts)]
 			}

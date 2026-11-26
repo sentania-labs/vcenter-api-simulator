@@ -789,6 +789,7 @@ func (e *Engine) Note(now time.Time, text string) {
 // Reconcile drops what the engine remembers about hosts and VMs that are
 // no longer there, after the inventory was rebuilt.
 func (e *Engine) Reconcile(w World) {
+	e.renameHosts(w)
 	e.reconcileJobs(w)
 	hosts := map[string]bool{}
 	known := map[string]bool{}
@@ -845,6 +846,42 @@ func moveLines(moves []Move) []string {
 		out[i] = fmt.Sprintf("%s from %s to %s", m.VM, short(m.From), short(m.To))
 	}
 	return out
+}
+
+// renameHosts gives every host the engine remembers the name it has now.
+// A host keeps its short name when the DNS domain changes, so it is found
+// again by cluster and short name.
+func (e *Engine) renameHosts(w World) {
+	now := map[string]string{}
+	for _, c := range clusters(w) {
+		for _, h := range c.Hosts {
+			now[c.Key+"|"+short(h.Name)] = h.Name
+		}
+	}
+	name := func(cluster, host string) string {
+		if n, ok := now[cluster+"|"+short(host)]; ok {
+			return n
+		}
+		return host
+	}
+	s := &e.State
+	for i := range s.Maint {
+		s.Maint[i].Host = name(s.Maint[i].Cluster, s.Maint[i].Host)
+	}
+	for cluster, host := range s.Rested {
+		s.Rested[cluster] = name(cluster, host)
+	}
+	for i := range s.Jobs.Crashes {
+		s.Jobs.Crashes[i].Host = name(s.Jobs.Crashes[i].Cluster, s.Jobs.Crashes[i].Host)
+	}
+	if p := s.Jobs.Patch; p != nil {
+		if p.Host != "" {
+			p.Host = name(p.Cluster, p.Host)
+		}
+		for i := range p.Pending {
+			p.Pending[i] = name(p.Cluster, p.Pending[i])
+		}
+	}
 }
 
 // short is a host's name without its domain.
