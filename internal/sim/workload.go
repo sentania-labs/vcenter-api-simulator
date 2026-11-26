@@ -30,10 +30,10 @@ type workloadNode struct {
 	active            bool
 	// A host that is connected and on but in maintenance mode is maintenance;
 	// one that is not connected or not powered on is unreachable.
-	maintenance, unreachable bool
-	datastores               []perfRef
-	nics, disks              []string
-	capacity, used           int64 // datastore KiB
+	maintenance, unreachable    bool
+	datastores                  []perfRef
+	nics, disks                 []string
+	capacity, used, provisioned int64 // datastore KiB
 	// loadCPU and loadMem are how loaded Activity says a VM's cluster looks:
 	// 1 is as built.
 	loadCPU, loadMem float64
@@ -124,6 +124,7 @@ func readPerformanceSubset(ctx *simulator.Context, selected *perfRef) *performan
 				case *simulator.Datastore:
 					n.capacity = o.Summary.Capacity / 1024
 					n.used = (o.Summary.Capacity - o.Summary.FreeSpace) / 1024
+					n.provisioned = n.used + o.Summary.Uncommitted/1024
 					n.identity = strings.TrimSuffix(strings.TrimPrefix(o.Summary.Url, "ds:///vmfs/volumes/"), "/")
 				}
 			})

@@ -193,8 +193,23 @@ func TestActivityBackupAndPatchVisibleAcrossRestore(t *testing.T) {
 	if vm2.Snapshot == nil {
 		t.Fatal("snapshot disappeared on restore")
 	}
+	used := func(l *Life, vm *simulator.VirtualMachine) (ds, committed, files int64) {
+		d := l.reg.Get(l.s.Clusters[0].Datastore).(*simulator.Datastore)
+		for _, f := range vm.LayoutEx.File {
+			files += f.Size
+		}
+		return d.Summary.Capacity - d.Summary.FreeSpace, vm.Storage.PerDatastoreUsage[0].Committed, files
+	}
+	ds1, c1, f1 := used(l, vm)
+	ds2, c2, f2 := used(l2, vm2)
+	if ds1 != ds2 || c1 != c2 || f1 != f2 || f2 != c2 || vm2.Summary.Storage.Committed != c2 {
+		t.Errorf("restored VM and datastore use %d/%d/%d, before the restart %d/%d/%d", ds2, c2, f2, ds1, c1, f1)
+	}
 	if err := l2.RemoveBackup(c.Key, name); err != nil {
 		t.Fatal(err)
+	}
+	if ds3, c3, f3 := used(l2, vm2); c3 >= c2 || ds3 >= ds2 || f3 != c3 {
+		t.Errorf("removing the restored snapshot left %d/%d/%d, was %d/%d/%d", ds3, c3, f3, ds2, c2, f2)
 	}
 	if vm2.Snapshot != nil {
 		t.Fatal("snapshot not removed")

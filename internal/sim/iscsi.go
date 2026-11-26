@@ -20,8 +20,7 @@ func (s *Simulator) createISCSIDatastore(ctx *simulator.Context, dc *topology.Da
 	if err != nil {
 		return nil, err
 	}
-	ds.Summary.Capacity = lun.Spec.Capacity
-	ds.Summary.FreeSpace = lun.Spec.FreeSpace
+	shapeDatastoreUsage(ds, lun.Spec.Capacity, lun.Spec.Capacity-lun.Spec.FreeSpace, nil)
 	ds.Summary.MultipleHostAccess = types.NewBool(true)
 	ds.Summary.Url = "ds:///vmfs/volumes/" + lun.UUID + "/"
 	ds.Capability = vmfsDatastoreCapability

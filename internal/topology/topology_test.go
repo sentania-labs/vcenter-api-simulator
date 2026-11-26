@@ -151,7 +151,7 @@ func TestGeneratedClustersVaryIndependently(t *testing.T) {
 	if c3.Key != "dc-01/cluster-03" || len(c3.Hosts) != 16 || c3.Dedup {
 		t.Errorf("override lost: %s hosts=%d dedup=%v", c3.Key, len(c3.Hosts), c3.Dedup)
 	}
-	if cls[0].Datastore != "vsanDatastore" || cls[1].Datastore != "vsanDatastore (1)" {
+	if cls[0].Datastore != "cluster-01-vsanDatastore" || cls[1].Datastore != "cluster-02-vsanDatastore" {
 		t.Errorf("datastore names %q %q", cls[0].Datastore, cls[1].Datastore)
 	}
 	// every identity unique across the whole vCenter
@@ -339,8 +339,8 @@ func TestRemovedClustersKeepTheOthersNumbering(t *testing.T) {
 	if reg.Has("cluster/dc-01/cluster-02") {
 		t.Error("a removed cluster minted identities")
 	}
-	// the vSAN datastore keeps the name its number gives it
-	if tp.Clusters()[1].Datastore != "vsanDatastore (2)" {
+	// a removed cluster does not renumber the surviving clusters' datastores
+	if tp.Clusters()[1].Datastore != "cluster-03-vsanDatastore" {
 		t.Errorf("datastore %q", tp.Clusters()[1].Datastore)
 	}
 	// overrides and faults may not name a removed cluster
@@ -390,6 +390,88 @@ func TestStorageFaultHostsFollowVariedTopology(t *testing.T) {
 		s.Datacenters[0].NFS[0].InaccessibleHosts = []string{fmt.Sprintf("dc-01/cluster-01/esx%02d", count+1)}
 		if err := s.Validate(); err == nil {
 			t.Fatalf("seed %d accepted nonexistent host %d", i, count+1)
+		}
+	}
+}
+
+// A default environment of any size must look used: its VMs commit between
+// 30% and 60% of the vSAN capacity, not 0% and not 99%.
+func TestDefaultEnvironmentLooksUsed(t *testing.T) {
+	for _, shape := range []struct{ hosts, perHost int }{{4, 1}, {4, 2}, {8, 5}, {215, 23}} {
+		sc := scenario.Phase1("used")
+		sc.Defaults.Hosts = shape.hosts
+		sc.Defaults.VMs.PerHost = scenario.IntPtr(shape.perHost)
+		if err := sc.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		cl := Generate(sc, registry.InMemory("used")).Clusters()[0]
+		cl.SetLiveVMs(cl.VMs)
+		pct := 100 * VsanUsed(cl) / VsanCapacity(cl)
+		if pct < 30 || pct > 60 {
+			t.Errorf("%d hosts with %d VMs each: %d%% used", shape.hosts, shape.perHost, pct)
+		}
+	}
+}
+
+// With more than one datacenter the cluster number repeats, so a datastore
+// name must carry the datacenter to stay distinct; with one it need not.
+func TestDatastoreNamesAreUniqueAcrossDatacenters(t *testing.T) {
+	sc := scenario.Phase1("names")
+	sc.Datacenters = append(sc.Datacenters, scenario.Datacenter{Name: "dc-02", Clusters: 1})
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range Generate(sc, registry.InMemory("names")).Clusters() {
+		got = append(got, c.Datastore, c.StoreName)
+	}
+	if want := "[dc-01-cluster-01-vsanDatastore dc-01-cluster-01 dc-02-cluster-01-vsanDatastore dc-02-cluster-01]"; fmt.Sprint(got) != want {
+		t.Errorf("multi-datacenter names %v, want %s", got, want)
+	}
+	if c := Phase1("names").Clusters()[0]; c.Datastore != "cluster-01-vsanDatastore" || c.StoreName != "cluster-01" {
+		t.Errorf("single-datacenter names %q %q", c.Datastore, c.StoreName)
+	}
+}
+
+// Activity adding and removing VMs is recorded in the scenario, and a rebuild
+// from it must not resize the VMs that were already there.
+func TestDiskSizesIgnoreAddedAndRemovedVMs(t *testing.T) {
+	sc := scenario.Phase1("disks")
+	reg := registry.InMemory("disks")
+	base := Generate(sc, reg).Clusters()[0]
+	if len(base.VMs) < 3 {
+		t.Fatalf("only %d VMs to work with", len(base.VMs))
+	}
+	high := base.VMHigh
+	removed := []int{1}
+	var added []int
+	for i := 1; i <= 8; i++ {
+		added = append(added, high+i)
+	}
+	sc.Clusters = []scenario.ClusterOverride{{Key: base.Key, AddedVMs: added, RemovedVMs: removed}}
+	if err := sc.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	after := Generate(sc, reg).Clusters()[0]
+	if len(after.VMs) == len(base.VMs) {
+		t.Fatalf("the rebuild still has %d VMs", len(after.VMs))
+	}
+	if after.DiskKB != base.DiskKB {
+		t.Errorf("disk capacity went from %d to %d KB", base.DiskKB, after.DiskKB)
+	}
+	byName := map[string]*VM{}
+	for _, v := range after.VMs {
+		byName[v.Name] = v
+	}
+	for _, v := range base.VMs[1:] {
+		w := byName[v.Name]
+		if w == nil {
+			t.Fatalf("%s is gone after the rebuild", v.Name)
+		}
+		c1, u1, s1 := VMStorage(v)
+		c2, u2, s2 := VMStorage(w)
+		if c1 != c2 || u1 != u2 || s1 != s2 {
+			t.Errorf("%s storage %d/%d/%d became %d/%d/%d", v.Name, c1, u1, s1, c2, u2, s2)
 		}
 	}
 }

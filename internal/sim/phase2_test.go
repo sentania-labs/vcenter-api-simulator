@@ -861,9 +861,10 @@ func TestOSACapacityReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Four hosts, one claimed 4000787030016-byte device each; four VMs with one
-	// 40 GiB thin disk each, half used: 4*20*2^30.
-	const capacity, used int64 = 4 * 4000787030016, 4 * 20 << 30
+	// Four hosts, one claimed 4000787030016-byte device each; four VMs whose
+	// one thin disk each provisions four fifths of the capacity between them,
+	// 2980 GiB, half of it used: 4*1490*2^30, 37% of the capacity.
+	const capacity, used int64 = 4 * 4000787030016, 4 * 1490 << 30
 	if usage.Returnval.TotalCapacityB != capacity || usage.Returnval.FreeCapacityB != capacity-used || state.Returnval.PhysicalCapacity != capacity || state.Returnval.PhysicalCapacityUsed != used {
 		t.Fatalf("inconsistent capacity: %+v %+v", usage.Returnval, state.Returnval)
 	}
@@ -948,8 +949,8 @@ func TestOSAPerfSampleShapes(t *testing.T) {
 		refs[tc.family] = got.refs
 		if tc.family == "vsan-cluster-capacity" {
 			// Three hosts, one claimed 4000787030016-byte device each; three VMs
-			// with one 40 GiB thin disk each, half used.
-			const total, used int64 = 3 * 4000787030016, 3 * 20 << 30
+			// with one 2980 GiB thin disk each, half used.
+			const total, used int64 = 3 * 4000787030016, 3 * 1490 << 30
 			want := map[string]string{"total": fmt.Sprint(total), "used": fmt.Sprint(used), "free": fmt.Sprint(total - used)}
 			for label, value := range want {
 				if series := perfSeries(t, body, label); series != strings.TrimSuffix(strings.Repeat(value+",", 4), ",") {
@@ -966,6 +967,41 @@ func TestOSAPerfSampleShapes(t *testing.T) {
 		if refs["cache-disk"][i] != "cache-disk:"+group || refs["capacity-disk"][i] == "capacity-disk:"+group {
 			t.Error("disk group identity mismatch")
 		}
+	}
+}
+
+// ESA capacity counters follow the same topology figures as OSA and the
+// datastore; they are not the captured values in the catalog. A datastore
+// fill must move the used and free series while total stays put.
+func TestESACapacityPerfSeries(t *testing.T) {
+	sc := scenario.Phase1("esa-capacity")
+	e := startWith(t, topology.Generate(sc, registry.InMemory(sc.Seed)), sim.Options{})
+	if err := e.login("administrator@vsphere.local", "VMware1!"); err != nil {
+		t.Fatal(err)
+	}
+	cl := e.cl()
+	const capacity, used int64 = 4 * 4000787030016, 4 * 1490 << 30
+	check := func(stage string, wantUsed int64) {
+		t.Helper()
+		status, body := e.postPerf(cl.Ref, "vsan-cluster-capacity")
+		if status != 200 {
+			t.Fatalf("%s: %d %s", stage, status, body)
+		}
+		want := map[string]string{
+			"total": fmt.Sprint(capacity), "used": fmt.Sprint(wantUsed), "free": fmt.Sprint(capacity - wantUsed),
+		}
+		for label, value := range want {
+			if series := perfSeries(t, body, label); series != strings.TrimSuffix(strings.Repeat(value+",", 4), ",") {
+				t.Errorf("%s %s = %q, want four samples of %s", stage, label, series, value)
+			}
+		}
+	}
+	check("built", used)
+	e.sim.Life().Fill(cl.Cluster.Key, 0.01)
+	if after := topology.VsanUsed(cl.Cluster); after <= used {
+		t.Fatalf("fill left vSAN used at %d", after)
+	} else {
+		check("filled", after)
 	}
 }
 

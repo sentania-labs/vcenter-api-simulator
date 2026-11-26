@@ -155,6 +155,10 @@ func (l *Life) host(ref types.ManagedObjectReference) *simulator.HostSystem {
 // hostState reads a host's VMs and whether it can run them.
 func (l *Life) hostState(ctx *simulator.Context, ref types.ManagedObjectReference) (vms []types.ManagedObjectReference, maintenance, down bool) {
 	hs := l.host(ref)
+	if hs == nil {
+		// a VM a client destroyed has no host: nothing can run on it
+		return nil, false, true
+	}
 	ctx.WithLock(hs, func() {
 		vms = append(vms, hs.Vm...)
 		maintenance = hs.Runtime.InMaintenanceMode
@@ -641,9 +645,9 @@ func (l *Life) setPower(ctx *simulator.Context, obj *simulator.VirtualMachine, v
 			obj.Summary.QuickStats = types.VirtualMachineQuickStats{GuestHeartbeatStatus: types.ManagedEntityStatusGray}
 			obj.GuestHeartbeatStatus = types.ManagedEntityStatusGray
 		}
-		updateLife(ctx, obj, []types.PropertyChange{
+		updateLife(ctx, obj, append([]types.PropertyChange{
 			{Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}, {Name: "guestHeartbeatStatus", Val: obj.GuestHeartbeatStatus},
-		})
+		}, storageChanges(obj)...))
 	})
 }
 
@@ -805,7 +809,7 @@ func (l *Life) AddVM(cluster string, pick uint64) (string, string, error) {
 	l.publishMembership(ctx, obj, true)
 	// the builder shaped the VM after vcsim announced it; say what it is now
 	ctx.WithLock(obj, func() {
-		updateLife(ctx, obj, []types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}})
+		updateLife(ctx, obj, append([]types.PropertyChange{{Name: "config", Val: obj.Config}, {Name: "runtime", Val: obj.Runtime}, {Name: "summary", Val: obj.Summary}, {Name: "guest", Val: obj.Guest}}, storageChanges(obj)...))
 	})
 	var made types.ManagedObjectReference
 	ctx.WithLock(folder, func() {
@@ -1085,12 +1089,9 @@ func (l *Life) space(ctx *simulator.Context, refs *ClusterRefs) (used, capacity 
 		return 0, 0
 	}
 	ctx.WithLock(ds, func() {
+		shapeDatastoreSummary(ds, refs.Cluster)
 		capacity = ds.Summary.Capacity
-		used = min(capacity, topology.VsanUsed(refs.Cluster))
-		ds.Summary.FreeSpace = capacity - used
-		ds.Info.GetDatastoreInfo().FreeSpace = ds.Summary.FreeSpace
-		ts := time.Now().UTC()
-		ds.Info.GetDatastoreInfo().Timestamp = &ts
+		used = capacity - ds.Summary.FreeSpace
 		updateLife(ctx, ds, []types.PropertyChange{{Name: "summary", Val: ds.Summary}, {Name: "info", Val: ds.Info}})
 	})
 	return used, capacity
@@ -1208,7 +1209,10 @@ func (l *Life) Snapshot() Live {
 			}
 		}
 		for _, vm := range l.vms[cl.Key] {
-			obj := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+			obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine)
+			if !ok {
+				continue // destroyed by a client outside Activity
+			}
 			ctx.WithLock(obj, func() {
 				if ref := findBackup(obj); ref != nil {
 					out.Backups[vm.vm.Key] = l.now()
@@ -1297,7 +1301,7 @@ func (l *Life) Restore(live Live) {
 				})
 			}
 			if at, ok := live.Backups[vm.vm.Key]; ok {
-				ctx.WithLock(obj, func() { l.restoreBackup(ctx, obj, at) })
+				ctx.WithLock(obj, func() { l.restoreBackup(ctx, obj, vm.vm, at) })
 			}
 			if off[vm.vm.Key] {
 				if obj, ok := l.reg.Get(vm.ref).(*simulator.VirtualMachine); ok {

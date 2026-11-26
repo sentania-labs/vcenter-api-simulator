@@ -304,6 +304,8 @@ recent-task list after ten minutes, as on a real vCenter.
 **What it does not do.**
 - Datastore filling changes each cluster's vSAN datastore only, not local, NFS or
   iSCSI datastores.
+- Datastore used space follows the VMs the simulator creates, moves and removes
+  itself; a VM destroyed by a client call is not reconciled.
 - A real vCenter also records a `VmMacAssignedEvent` for a new VM, distributed
   switch port events around power and removal, and a vSphere HA state event when
   a host comes out of maintenance mode. The simulator does not.
@@ -502,7 +504,16 @@ have no samples. VMs on unavailable hosts or hosts in maintenance mode contribut
 no load. A VM that moves takes its load with it. Host CPU and memory budgets cap
 usage when the VMs add up to more. Host values sum their VMs, clusters sum hosts,
 and datacenters sum clusters. Datastore I/O is split among each VM's datastores,
-and unused datastores have zero I/O.
+and unused datastores have zero I/O. Datastore capacity, used and provisioned
+counters use the same space as the datastore summary, vSAN capacity reads and each
+VM's `storage.perDatastoreUsage`: a thin disk commits half its capacity at build,
+a backup snapshot adds a twentieth of that while it exists, and Activity's fills
+and cleanups move the used figure without changing the VMs' reported storage. A
+cluster's VM disks are sized to provision four fifths of its vSAN capacity, so
+its VMs commit about 40% of it whatever its size. NFS, iSCSI and local VMFS
+datastores hold no VMs; NFS and iSCSI report the used space their scenario
+gives them and a local VMFS datastore a tenth of its capacity.
+Swap space is not simulated.
 
 History is a replay of the workload at the requested times using the **current**
 inventory and placement. Past power changes and moves are not remembered.

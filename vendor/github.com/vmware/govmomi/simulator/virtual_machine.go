@@ -44,6 +44,11 @@ type VirtualMachine struct {
 	svm *simVM
 	uid uuid.UUID
 	imc *types.CustomizationSpec
+
+	// StorageOverridden tells updateStorage and RefreshStorageInfo that storage
+	// properties and layout file sizes are modelled from the inventory rather
+	// than the dummy backing files, so a client's refresh leaves them alone.
+	StorageOverridden bool
 }
 
 func asVirtualMachineMO(obj mo.Reference) (*mo.VirtualMachine, bool) {
@@ -965,6 +970,9 @@ func (vm *VirtualMachine) updateDiskLayouts(ctx *Context) types.BaseMethodFault 
 }
 
 func (vm *VirtualMachine) updateStorage(ctx *Context) types.BaseMethodFault {
+	if vm.StorageOverridden {
+		return nil
+	}
 	// Committed - sum of Size for each file in vm.LayoutEx.File
 	// Unshared  - sum of Size for each disk (.vmdk) in vm.LayoutEx.File
 	// Uncommitted - disk capacity minus disk usage (only currently used disk)
@@ -1033,6 +1041,10 @@ func (vm *VirtualMachine) RefreshStorageInfo(ctx *Context, req *types.RefreshSto
 
 	if vm.Runtime.Host == nil {
 		// VM not fully created
+		return body
+	}
+
+	if vm.StorageOverridden {
 		return body
 	}
 
