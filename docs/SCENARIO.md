@@ -91,6 +91,7 @@ serial it was first given. Serials are never reused.
 | remove entities | the rest unchanged; a removed cluster, host, VM or device keeps its serial for a later re-add | the rest unchanged; a removed object's references stay reserved for it |
 | change `seed` | refused at start unless `-regenerate` is given; then every identity changes | all change |
 | change `telemetrySeed` | unchanged (every metric value changes) | unchanged |
+| change `domain` | unchanged | unchanged (host and guest names change; ids do not) |
 
 UUIDs are derived from the seed and registry serials. The registry also
 reserves the vcsim counter interval for each inventory creation step (one
@@ -107,6 +108,7 @@ reproduces the same identities, so change the seed to mint new ones.
 ```yaml
 seed: ten-clusters          # required; names the identity namespace
 telemetrySeed: ""           # optional; metric values only (default: seed)
+domain: sim.invalid         # optional; DNS domain of generated host names (default: sim.invalid)
 
 datacenters:                # each gets one vDS (vds-01) with four portgroups
   - name: dc-01             # lower-case letters, digits, hyphens
@@ -306,6 +308,7 @@ resumes unless the scenario file changed since, in which case the file wins.
 | Activity adds a VM, or removes one | `addedVMs` and `removedVMs` on the cluster's entry: the VM numbers added beyond the ones its hosts generate, and the numbers left out. `vmHigh` is the highest VM number the cluster has used, written when hosts are removed after Activity was started so that those hosts' VM numbers are not given to new VMs. The lists only grow: a number stays reserved. | every other VM keeps its name and serials; a number is never used twice, and a rebuild makes an added VM again with the same identities. The vCenter is not rebuilt. |
 | Replace everything with a new environment | replaces `datacenters`, `defaults`, `vary`, `clusters`, `removed` and `seed` | a new registry: every identity is replaced (the same layout name and sizes build the same identities again) |
 | Storage | `nfs:` and `iscsi:` under the datacenter | unchanged datastores keep theirs |
+| DNS domain (Clusters) | `domain` | none; hosts and VMs are renamed, not replaced. The simulator is rebuilt, so tools sign in again |
 | Versions | `vcenterVersion`, `esxVersion`, a cluster's `esxVersion`, `hostVersions`, `forceNewerHosts` | none |
 | Slowness and faults | `conditions:` | none; the running vCenter is not rebuilt |
 | Activity's dials, and where it has put things (which host each VM is on, which VMs are off, which hosts are down or in maintenance mode, how full the datastores are, snapshots and patching or backup progress) | not in the scenario: `<data>/life.json` | none; the running vCenter is not rebuilt |

@@ -464,6 +464,8 @@ type ClustersView struct {
 	Datacenters []string     `json:"datacenters"`
 	Hosts       int          `json:"hosts"`
 	VMs         int          `json:"vms"`
+	// Domain is the DNS domain generated host names are made under.
+	Domain string `json:"domain"`
 }
 
 // Clusters lists the clusters.
@@ -471,7 +473,7 @@ func (c *Controller) Clusters() ClustersView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r := c.applied()
-	v := ClustersView{Rows: []ClusterRow{}, Datacenters: []string{}}
+	v := ClustersView{Rows: []ClusterRow{}, Datacenters: []string{}, Domain: r.sc.DNSDomain()}
 	for _, dc := range r.topo.Datacenters {
 		v.Datacenters = append(v.Datacenters, dc.Name)
 	}

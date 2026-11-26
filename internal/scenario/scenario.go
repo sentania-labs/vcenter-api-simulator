@@ -38,6 +38,10 @@ type Scenario struct {
 	// TelemetrySeed feeds metric values only; empty means Seed. Changing it
 	// changes every value and no identity.
 	TelemetrySeed string `yaml:"telemetrySeed" json:"telemetrySeed,omitempty"`
+	// Domain is the DNS domain generated host names, the hosts' own DNS
+	// settings and VM guest host names live in. Empty means DefaultDomain.
+	// It changes names only: no object identity is derived from it.
+	Domain string `yaml:"domain,omitempty" json:"domain,omitempty"`
 
 	Datacenters []Datacenter      `yaml:"datacenters" json:"datacenters,omitempty"`
 	Defaults    ClusterSpec       `yaml:"defaults" json:"defaults,omitempty"`
@@ -416,6 +420,11 @@ func (s *Scenario) Validate() error {
 	if err := s.validateVersions(); err != nil {
 		return err
 	}
+	if s.Domain != "" {
+		if _, err := NormalizeDomain(s.Domain); err != nil {
+			return fmt.Errorf("scenario: domain: %w", err)
+		}
+	}
 	if s.Seed == "" {
 		return errors.New("scenario: seed is required")
 	}
@@ -441,6 +450,9 @@ func (s *Scenario) Validate() error {
 		if dc.Clusters < 0 {
 			return fmt.Errorf("scenario: datacenter %q: clusters must not be negative", dc.Name)
 		}
+	}
+	if err := s.CheckNamesFit(s.DNSDomain()); err != nil {
+		return fmt.Errorf("scenario: domain: %w", err)
 	}
 	s.Defaults = merge(builtin, s.Defaults)
 	if err := s.Defaults.check("defaults"); err != nil {
@@ -937,4 +949,68 @@ func (s *Scenario) FamilyFaults() []Fault {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Family < out[j].Family })
 	return out
+}
+
+// DefaultDomain is the DNS domain simulated host names live in unless the
+// scenario names another (an IANA-reserved name that cannot resolve).
+const DefaultDomain = "sim.invalid"
+
+// maxDNSName is the longest DNS name there is, in characters.
+const maxDNSName = 253
+
+// maxDomainLen is the longest a domain may be on its own, leaving room for
+// a one-character host label in front of it. How much room the generated
+// names really need is CheckNamesFit's question: it depends on the
+// datacenter names.
+const maxDomainLen = maxDNSName - 2
+
+var domainLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// NormalizeDomain checks that d is a DNS domain name and returns it in
+// lower case without a trailing dot. The error says what is wrong in words
+// an operator can act on.
+func NormalizeDomain(d string) (string, error) {
+	d = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(d), "."))
+	switch {
+	case d == "":
+		return "", errors.New("the DNS domain is empty; type a name such as lab.example.com")
+	case len(d) > maxDomainLen:
+		return "", fmt.Errorf("the DNS domain is %d characters long; keep it to %d or fewer because a DNS name may have at most %d", len(d), maxDomainLen, maxDNSName)
+	}
+	for _, l := range strings.Split(d, ".") {
+		switch {
+		case l == "":
+			return "", fmt.Errorf("%q has an empty part; use single dots between parts, as in lab.example.com", d)
+		case len(l) > 63:
+			return "", fmt.Errorf("the part %q is longer than the 63 characters a DNS name part allows", l)
+		case !domainLabelRe.MatchString(l):
+			return "", fmt.Errorf("the part %q is not valid; use only letters, digits and hyphens, and do not start or end a part with a hyphen", l)
+		}
+	}
+	return d, nil
+}
+
+// CheckNamesFit refuses a domain that makes the longest host name the
+// datacenters would generate, esx<NNN>.cluster-<NN>.<datacenter>.<domain>,
+// longer than a DNS name may be. The numbers are taken at their widest the
+// scenario can reach: three digits of host and as many digits of cluster
+// as the datacenter has clusters, at least two.
+func (s *Scenario) CheckNamesFit(domain string) error {
+	for _, dc := range s.Datacenters {
+		digits := max(2, len(strconv.Itoa(dc.Clusters)))
+		name := "esx999.cluster-" + strings.Repeat("9", digits) + "." + dc.Name + "." + domain
+		if len(name) > maxDNSName {
+			return fmt.Errorf("with the datacenter %q the longest host name would be %d characters, over the %d a DNS name may have; use a shorter domain or a shorter datacenter name", dc.Name, len(name), maxDNSName)
+		}
+	}
+	return nil
+}
+
+// DNSDomain is the domain generated names live in: the scenario's, or the
+// default when it names none.
+func (s *Scenario) DNSDomain() string {
+	if d, err := NormalizeDomain(s.Domain); err == nil && s.Domain != "" {
+		return d
+	}
+	return DefaultDomain
 }

@@ -264,3 +264,45 @@ func TestDerivedVersionForms(t *testing.T) {
 		t.Errorf("host of a custom vCenter: %+v", h)
 	}
 }
+
+func TestDomain(t *testing.T) {
+	base := "seed: s\ndatacenters: [{name: dc, clusters: 1}]\n"
+	sc, err := Parse([]byte(base + "domain: Lab.Example.com.\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sc.DNSDomain(); got != "lab.example.com" {
+		t.Errorf("domain %q", got)
+	}
+	plain, err := Parse([]byte(base))
+	if err != nil || plain.DNSDomain() != DefaultDomain {
+		t.Errorf("default domain %q, %v", plain.DNSDomain(), err)
+	}
+	for _, bad := range []string{"a b.com", "a_b.com", "-a.com", "a-.com", "a..com", "https://a.com", "a.com/x", strings.Repeat("a", 64) + ".com"} {
+		if _, err := Parse([]byte(base + "domain: \"" + bad + "\"\n")); err == nil {
+			t.Errorf("domain %q accepted", bad)
+		}
+	}
+}
+
+// A long but valid domain with a long datacenter name would make generated
+// host names longer than a DNS name may be; that is refused, in plain words,
+// and the same datacenter is fine with a shorter domain.
+func TestDomainMustFitGeneratedNames(t *testing.T) {
+	dc := strings.Repeat("d", 63)
+	long := strings.Join([]string{strings.Repeat("a", 63), strings.Repeat("b", 63), strings.Repeat("c", 62)}, ".") // 190 characters
+	doc := func(domain string) string {
+		return "seed: s\ndatacenters: [{name: " + dc + ", clusters: 1}]\ndomain: " + domain + "\n"
+	}
+	_, err := Parse([]byte(doc(long)))
+	if err == nil || !strings.Contains(err.Error(), "longest host name would be") {
+		t.Fatalf("a domain that overflows a DNS name was accepted or refused vaguely: %v", err)
+	}
+	if _, err := Parse([]byte(doc("lab.example.com"))); err != nil {
+		t.Errorf("a short domain was refused: %v", err)
+	}
+	sc, _ := Parse([]byte("seed: s\ndatacenters: [{name: dc, clusters: 1}]\n"))
+	if err := sc.CheckNamesFit(long); err != nil {
+		t.Errorf("the 190-character domain with a short datacenter name: %v", err)
+	}
+}
