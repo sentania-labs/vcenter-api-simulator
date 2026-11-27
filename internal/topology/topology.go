@@ -97,11 +97,16 @@ type Cluster struct {
 	Compression   bool
 	Datastore     string // the cluster's vSAN datastore name
 	StoreName     string // the cluster's name as datastore names carry it: unique across datacenters
-	DiskKB        int64  // capacity of each virtual disk of the cluster's VMs
-	ContainerID   string // the vSAN datastore container id (url ds:///vmfs/volumes/vsan:<id>/)
-	Hosts         []*Host
-	VMs           []*VM
-	Spec          scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
+	// Short is the cluster's name within its datacenter (cluster-01). Its key,
+	// its hosts' names and its VMs' keys and disk files use it, so they stay
+	// the same whatever the cluster is called in vCenter; Name is the
+	// cluster's vCenter name, unique across datacenters like StoreName.
+	Short       string
+	DiskKB      int64  // capacity of each virtual disk of the cluster's VMs
+	ContainerID string // the vSAN datastore container id (url ds:///vmfs/volumes/vsan:<id>/)
+	Hosts       []*Host
+	VMs         []*VM
+	Spec        scenario.ClusterSpec // the effective cardinality after defaults, draws and overrides
 	// VMHigh is the highest VM number the cluster has ever used.
 	VMHigh int
 
@@ -457,7 +462,7 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 	key := dc.Name + "/" + name
 	spec := s.Resolve(key, draw(s.Vary, r.Sub(key)))
 	cl := &Cluster{
-		Name: name, Key: key, Datacenter: dc,
+		Name: name, Short: name, Key: key, Datacenter: dc,
 		Serial:        r.Serial("cluster/" + key),
 		TelemetrySeed: telemetrySeed,
 		Dedup:         *spec.Dedup && spec.Architecture != "osa",
@@ -482,6 +487,11 @@ func generateCluster(s *scenario.Scenario, r *registry.Registry, dc *Datacenter,
 		cl.StoreName = dc.Name + "-" + name
 	}
 	cl.Datastore = cl.StoreName + "-vsanDatastore"
+	// Name the cluster, and so its VMs, the same way: two datacenters'
+	// "cluster-01" and their "cluster-01-vm-001" are indistinguishable in a
+	// tool that lists clusters or VMs from several datacenters. Only the
+	// name changes; the key and every identity drawn from it do not.
+	cl.Name = cl.StoreName
 	removed := s.RemovedHosts(key)
 	for hi := 1; hi <= spec.Hosts; hi++ {
 		if removed[hi] {
@@ -558,7 +568,7 @@ func generateHost(r *registry.Registry, cl *Cluster, n int) *Host {
 	key := cl.Key + "/" + short
 	h := &Host{
 		Index:      n - 1,
-		Name:       fmt.Sprintf("%s.%s.%s.%s", short, cl.Name, cl.Datacenter.Name, cl.Datacenter.Domain),
+		Name:       fmt.Sprintf("%s.%s.%s.%s", short, cl.Short, cl.Datacenter.Name, cl.Datacenter.Domain),
 		Key:        key,
 		Serial:     r.Serial("host/" + key),
 		Cluster:    cl,
@@ -638,11 +648,13 @@ func address(net, n int) string {
 }
 
 func generateVM(r *registry.Registry, cl *Cluster, n int) *VM {
-	name := fmt.Sprintf("%s-vm-%03d", cl.Name, n)
-	key := cl.Key + "/" + name
+	// The key and the disk files keep the VM's name within its datacenter, so
+	// that a cluster named for its datacenter changes no VM's identity.
+	short := fmt.Sprintf("%s-vm-%03d", cl.Short, n)
+	key := cl.Key + "/" + short
 	vm := &VM{
 		Index:    n - 1, // the VM's number less one; with VMs removed it is not its place in Cluster.VMs
-		Name:     name,
+		Name:     fmt.Sprintf("%s-vm-%03d", cl.Name, n),
 		Key:      key,
 		Serial:   r.Serial("vm/" + key),
 		Cluster:  cl,
@@ -657,9 +669,9 @@ func generateVM(r *registry.Registry, cl *Cluster, n int) *VM {
 	// backing.fileName, never through the name, so this is the one
 	// identity that is name-derived by nature.
 	for di := 0; di < cl.Spec.VMs.DisksPerVM; di++ {
-		file := vm.Name
+		file := short
 		if di > 0 {
-			file = fmt.Sprintf("%s_%d", vm.Name, di)
+			file = fmt.Sprintf("%s_%d", short, di)
 		}
 		vm.Disks = append(vm.Disks, &VDisk{
 			Path:       fmt.Sprintf("%s/%s.vmdk", vm.NamespaceUUID, file),
