@@ -183,6 +183,13 @@ console settings carry over.
 - **From 0.3.x:** the old default password is gone. With no account, every sign-in
   is refused until the console's set-up chooses a password. Existing accounts keep
   theirs.
+- With more than one datacenter, clusters and VMs are now named for their
+  datacenter the same way their vSAN datastores are: `dc-02-cluster-01` and
+  `dc-02-cluster-01-vm-001`, instead of a `cluster-01` and `cluster-01-vm-001` in
+  every datacenter. With one datacenter nothing changes. Only the names change:
+  the MoRefs, UUIDs, host names and VM disk files stay the same, so tools keep
+  their history and show the new names; a saved configuration that names a
+  cluster or VM must be updated.
 - Each cluster's vSAN datastore is now named for the cluster, for example
   `cluster-05-vsanDatastore`, instead of `vsanDatastore` / `vsanDatastore (1)`.
   With more than one datacenter the datacenter's name comes first
